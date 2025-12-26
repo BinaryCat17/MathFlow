@@ -4,6 +4,7 @@
 #include <mathflow/isa/mf_instruction.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/vm/mf_memory.h>
+#include <mathflow/vm/mf_refs.h>
 
 // Forward decl
 struct mf_vm_t;
@@ -45,13 +46,13 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
 void mf_vm_exec(mf_vm* vm);
 
 // --- Memory Accessors (Safe & Portable) ---
-f32* mf_vm_map_f32(mf_vm* vm, u16 idx);
-mf_vec2* mf_vm_map_vec2(mf_vm* vm, u16 idx);
-mf_vec3* mf_vm_map_vec3(mf_vm* vm, u16 idx);
-mf_vec4* mf_vm_map_vec4(mf_vm* vm, u16 idx);
-mf_mat3* mf_vm_map_mat3(mf_vm* vm, u16 idx);
-mf_mat4* mf_vm_map_mat4(mf_vm* vm, u16 idx);
-u8* mf_vm_map_bool(mf_vm* vm, u16 idx);
+mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx);
+mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx);
+mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx);
+mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx);
+mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx);
+mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx);
+mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx);
 
 // --- Count Accessors ---
 size_t mf_vm_get_count_f32(mf_vm* vm);

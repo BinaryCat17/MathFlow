@@ -32,8 +32,8 @@ Goal: Expand the capability of the CPU backend to support UI logic and robust se
 
 ### 2.4. Memory Abstraction (Safety & Portability)
 - [x] **Accessor API:** Replace direct column access in backends with an abstraction layer (e.g., `mf_vm_map_f32(vm, reg_idx)`).
-- [ ] **View Structs:** Define unified views (e.g., `mf_span` for CPU, `mf_handle` for GPU) to prepare for non-RAM memory types.
-- [ ] **Bounds Checking:** Optional debug-mode verification of memory access.
+- [x] **View Structs:** Define unified views (e.g., `mf_span` for CPU, `mf_handle` for GPU) to prepare for non-RAM memory types.
+- [x] **Bounds Checking:** Optional debug-mode verification of memory access.
 
 ## Phase 3: Headless Applications & Testing
 Goal: Verify the engine with complex scenarios before adding graphics.

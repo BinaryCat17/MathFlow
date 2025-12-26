@@ -166,39 +166,74 @@ void mf_vm_exec(mf_vm* vm) {
 
 // --- Accessors ---
 
-f32* mf_vm_map_f32(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->f32_col) return NULL;
-    return (f32*)mf_column_get(vm->f32_col, idx);
+mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->f32_col) return MF_NULL_F32;
+    f32* p = (f32*)mf_column_get(vm->f32_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: F32[%u]\n", idx);
+        return MF_NULL_F32;
+    }
+    return (mf_ref_f32){p};
 }
 
-mf_vec2* mf_vm_map_vec2(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec2_col) return NULL;
-    return (mf_vec2*)mf_column_get(vm->vec2_col, idx);
+mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec2_col) return MF_NULL_VEC2;
+    mf_vec2* p = (mf_vec2*)mf_column_get(vm->vec2_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Vec2[%u]\n", idx);
+        return MF_NULL_VEC2;
+    }
+    return (mf_ref_vec2){p};
 }
 
-mf_vec3* mf_vm_map_vec3(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec3_col) return NULL;
-    return (mf_vec3*)mf_column_get(vm->vec3_col, idx);
+mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec3_col) return MF_NULL_VEC3;
+    mf_vec3* p = (mf_vec3*)mf_column_get(vm->vec3_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Vec3[%u]\n", idx);
+        return MF_NULL_VEC3;
+    }
+    return (mf_ref_vec3){p};
 }
 
-mf_vec4* mf_vm_map_vec4(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec4_col) return NULL;
-    return (mf_vec4*)mf_column_get(vm->vec4_col, idx);
+mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec4_col) return MF_NULL_VEC4;
+    mf_vec4* p = (mf_vec4*)mf_column_get(vm->vec4_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Vec4[%u]\n", idx);
+        return MF_NULL_VEC4;
+    }
+    return (mf_ref_vec4){p};
 }
 
-mf_mat3* mf_vm_map_mat3(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->mat3_col) return NULL;
-    return (mf_mat3*)mf_column_get(vm->mat3_col, idx);
+mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->mat3_col) return MF_NULL_MAT3;
+    mf_mat3* p = (mf_mat3*)mf_column_get(vm->mat3_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Mat3[%u]\n", idx);
+        return MF_NULL_MAT3;
+    }
+    return (mf_ref_mat3){p};
 }
 
-mf_mat4* mf_vm_map_mat4(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->mat4_col) return NULL;
-    return (mf_mat4*)mf_column_get(vm->mat4_col, idx);
+mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->mat4_col) return MF_NULL_MAT4;
+    mf_mat4* p = (mf_mat4*)mf_column_get(vm->mat4_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Mat4[%u]\n", idx);
+        return MF_NULL_MAT4;
+    }
+    return (mf_ref_mat4){p};
 }
 
-u8* mf_vm_map_bool(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->bool_col) return NULL;
-    return (u8*)mf_column_get(vm->bool_col, idx);
+mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->bool_col) return MF_NULL_BOOL;
+    u8* p = (u8*)mf_column_get(vm->bool_col, idx);
+    if (!p) {
+        fprintf(stderr, "[VM Error] Index Out of Bounds: Bool[%u]\n", idx);
+        return MF_NULL_BOOL;
+    }
+    return (mf_ref_bool){p};
 }
 
 // --- Counts ---
