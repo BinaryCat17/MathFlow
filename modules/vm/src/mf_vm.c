@@ -163,3 +163,50 @@ void mf_vm_exec(mf_vm* vm) {
         }
     }
 }
+
+// --- Accessors ---
+
+f32* mf_vm_map_f32(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->f32_col) return NULL;
+    return (f32*)mf_column_get(vm->f32_col, idx);
+}
+
+mf_vec2* mf_vm_map_vec2(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec2_col) return NULL;
+    return (mf_vec2*)mf_column_get(vm->vec2_col, idx);
+}
+
+mf_vec3* mf_vm_map_vec3(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec3_col) return NULL;
+    return (mf_vec3*)mf_column_get(vm->vec3_col, idx);
+}
+
+mf_vec4* mf_vm_map_vec4(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->vec4_col) return NULL;
+    return (mf_vec4*)mf_column_get(vm->vec4_col, idx);
+}
+
+mf_mat3* mf_vm_map_mat3(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->mat3_col) return NULL;
+    return (mf_mat3*)mf_column_get(vm->mat3_col, idx);
+}
+
+mf_mat4* mf_vm_map_mat4(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->mat4_col) return NULL;
+    return (mf_mat4*)mf_column_get(vm->mat4_col, idx);
+}
+
+u8* mf_vm_map_bool(mf_vm* vm, u16 idx) {
+    if (!vm || !vm->bool_col) return NULL;
+    return (u8*)mf_column_get(vm->bool_col, idx);
+}
+
+// --- Counts ---
+
+size_t mf_vm_get_count_f32(mf_vm* vm) { return (vm && vm->f32_col) ? vm->f32_col->count : 0; }
+size_t mf_vm_get_count_vec2(mf_vm* vm) { return (vm && vm->vec2_col) ? vm->vec2_col->count : 0; }
+size_t mf_vm_get_count_vec3(mf_vm* vm) { return (vm && vm->vec3_col) ? vm->vec3_col->count : 0; }
+size_t mf_vm_get_count_vec4(mf_vm* vm) { return (vm && vm->vec4_col) ? vm->vec4_col->count : 0; }
+size_t mf_vm_get_count_mat3(mf_vm* vm) { return (vm && vm->mat3_col) ? vm->mat3_col->count : 0; }
+size_t mf_vm_get_count_mat4(mf_vm* vm) { return (vm && vm->mat4_col) ? vm->mat4_col->count : 0; }
+size_t mf_vm_get_count_bool(mf_vm* vm) { return (vm && vm->bool_col) ? vm->bool_col->count : 0; }

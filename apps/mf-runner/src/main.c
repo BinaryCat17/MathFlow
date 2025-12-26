@@ -99,55 +99,66 @@ int main(int argc, char** argv) {
     // 5. Dump Output (Last element of each column)
     printf("\n--- Execution Finished ---\n");
     
-    if (vm.f32_col && vm.f32_col->count > 0) {
-        printf("[F32 Output] (%zu items):\n", vm.f32_col->count);
-        for(size_t i=0; i<vm.f32_col->count; ++i) {
-             f32* v = (f32*)mf_column_get(vm.f32_col, i);
-             printf("  [%zu]: %.4f\n", i, *v);
+    size_t f32_count = mf_vm_get_count_f32(&vm);
+    if (f32_count > 0) {
+        printf("[F32 Output] (%zu items):\n", f32_count);
+        for(size_t i=0; i<f32_count; ++i) {
+             f32* v = mf_vm_map_f32(&vm, i);
+             if (v) printf("  [%zu]: %.4f\n", i, *v);
         }
     }
     
-    if (vm.vec2_col && vm.vec2_col->count > 0) {
-        mf_vec2* v = (mf_vec2*)mf_column_get(vm.vec2_col, vm.vec2_col->count - 1);
-        printf("[Vec2 Output]: {%.2f, %.2f}\n", v->x, v->y);
+    size_t vec2_count = mf_vm_get_count_vec2(&vm);
+    if (vec2_count > 0) {
+        mf_vec2* v = mf_vm_map_vec2(&vm, vec2_count - 1);
+        if (v) printf("[Vec2 Output]: {%.2f, %.2f}\n", v->x, v->y);
     }
 
-    if (vm.vec3_col && vm.vec3_col->count > 0) {
-        mf_vec3* v = (mf_vec3*)mf_column_get(vm.vec3_col, vm.vec3_col->count - 1);
-        printf("[Vec3 Output]: {%.2f, %.2f, %.2f}\n", v->x, v->y, v->z);
+    size_t vec3_count = mf_vm_get_count_vec3(&vm);
+    if (vec3_count > 0) {
+        mf_vec3* v = mf_vm_map_vec3(&vm, vec3_count - 1);
+        if (v) printf("[Vec3 Output]: {%.2f, %.2f, %.2f}\n", v->x, v->y, v->z);
     }
 
-    if (vm.vec4_col && vm.vec4_col->count > 0) {
-        mf_vec4* v = (mf_vec4*)mf_column_get(vm.vec4_col, vm.vec4_col->count - 1);
-        printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", v->x, v->y, v->z, v->w);
+    size_t vec4_count = mf_vm_get_count_vec4(&vm);
+    if (vec4_count > 0) {
+        mf_vec4* v = mf_vm_map_vec4(&vm, vec4_count - 1);
+        if (v) printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", v->x, v->y, v->z, v->w);
     }
 
-    if (vm.mat3_col && vm.mat3_col->count > 0) {
-        printf("[Mat3 Output] (%zu items):\n", vm.mat3_col->count);
-        for(size_t i=0; i<vm.mat3_col->count; ++i) {
-             mf_mat3* v = (mf_mat3*)mf_column_get(vm.mat3_col, i);
-             printf("  [%zu]:\n", i);
-             printf("    | %.2f %.2f %.2f |\n", v->m[0], v->m[3], v->m[6]);
-             printf("    | %.2f %.2f %.2f |\n", v->m[1], v->m[4], v->m[7]);
-             printf("    | %.2f %.2f %.2f |\n", v->m[2], v->m[5], v->m[8]);
+    size_t mat3_count = mf_vm_get_count_mat3(&vm);
+    if (mat3_count > 0) {
+        printf("[Mat3 Output] (%zu items):\n", mat3_count);
+        for(size_t i=0; i<mat3_count; ++i) {
+             mf_mat3* v = mf_vm_map_mat3(&vm, i);
+             if (v) {
+                 printf("  [%zu]:\n", i);
+                 printf("    | %.2f %.2f %.2f |\n", v->m[0], v->m[3], v->m[6]);
+                 printf("    | %.2f %.2f %.2f |\n", v->m[1], v->m[4], v->m[7]);
+                 printf("    | %.2f %.2f %.2f |\n", v->m[2], v->m[5], v->m[8]);
+             }
         }
     }
 
-    if (vm.mat4_col && vm.mat4_col->count > 0) {
-        printf("[Mat4 Output] (%zu items):\n", vm.mat4_col->count);
-        for(size_t i=0; i<vm.mat4_col->count; ++i) {
-             mf_mat4* v = (mf_mat4*)mf_column_get(vm.mat4_col, i);
-             printf("  [%zu]:\n", i);
-             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[0], v->m[4], v->m[8], v->m[12]);
-             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[1], v->m[5], v->m[9], v->m[13]);
-             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[2], v->m[6], v->m[10], v->m[14]);
-             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[3], v->m[7], v->m[11], v->m[15]);
+    size_t mat4_count = mf_vm_get_count_mat4(&vm);
+    if (mat4_count > 0) {
+        printf("[Mat4 Output] (%zu items):\n", mat4_count);
+        for(size_t i=0; i<mat4_count; ++i) {
+             mf_mat4* v = mf_vm_map_mat4(&vm, i);
+             if (v) {
+                 printf("  [%zu]:\n", i);
+                 printf("    | %.2f %.2f %.2f %.2f |\n", v->m[0], v->m[4], v->m[8], v->m[12]);
+                 printf("    | %.2f %.2f %.2f %.2f |\n", v->m[1], v->m[5], v->m[9], v->m[13]);
+                 printf("    | %.2f %.2f %.2f %.2f |\n", v->m[2], v->m[6], v->m[10], v->m[14]);
+                 printf("    | %.2f %.2f %.2f %.2f |\n", v->m[3], v->m[7], v->m[11], v->m[15]);
+             }
         }
     }
 
-    if (vm.bool_col && vm.bool_col->count > 0) {
-        u8* v = (u8*)mf_column_get(vm.bool_col, vm.bool_col->count - 1);
-        printf("[Bool Output]: %s\n", *v ? "true" : "false");
+    size_t bool_count = mf_vm_get_count_bool(&vm);
+    if (bool_count > 0) {
+        u8* v = mf_vm_map_bool(&vm, bool_count - 1);
+        if (v) printf("[Bool Output]: %s\n", *v ? "true" : "false");
     }
 
     free(buffer);
