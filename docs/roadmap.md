@@ -20,10 +20,10 @@ Goal: Expand the capability of the CPU backend to support UI logic and robust se
 - [x] **File I/O:** Add functions to write/read `mf_program` to/from `.bin` files.
 
 ### 2.2. Type System Expansion (UI Foundation)
-- [ ] **New Types:** Implement `vec2` (positions), `vec4` (colors), `bool` (logic).
-- [ ] **Comparison Ops:** `GREATER`, `LESS`, `EQUAL`.
-- [ ] **Logic Ops:** `AND`, `OR`, `NOT`.
-- [ ] **Control Ops:** `SELECT` (Ternary `? :`) for conditional data flow.
+- [x] **New Types:** Implement `vec2` (positions), `vec4` (colors), `bool` (logic).
+- [x] **Comparison Ops:** `GREATER`, `LESS`, `EQUAL`.
+- [x] **Logic Ops:** `AND`, `OR`, `NOT`.
+- [x] **Control Ops:** `SELECT` (Ternary `? :`) for conditional data flow.
 
 ### 2.3. Math Expansion
 - [ ] **Layout Math:** `MIN`, `MAX`, `CLAMP`, `FLOOR`, `CEIL`.
