@@ -1,54 +1,70 @@
-# MathFlow Roadmap
+# MathFlow Roadmap: The Tensor Era
 
-## Phase 1: The Modular Core (Completed)
-Goal: Establish a decoupled, Data-Oriented architecture.
+**Goal:** Transform MathFlow from a fixed-register VM into a **Generalized Tensor Compute Engine**.
+This shift unifies scalar, vector, matrix, and array operations under a single mathematical abstraction, enabling support for arbitrary data dimensions (ML-style), dynamic tables (Dataframes), and batch processing.
 
-- [x] **Monorepo Structure:** Separation into `modules/` (isa, vm, compiler, backend).
-- [x] **ISA Definition:** Abstract definition of Opcodes and Types.
-- [x] **Abstract VM:** Implementation of a dispatch-based Virtual Machine.
-- [x] **CPU Backend:** Pure C implementation of math kernels.
-- [x] **Compiler:** JSON -> Bytecode translator.
-- [x] **CLI Runner:** `mf-runner` tool for testing and headless execution.
+> **Philosophy:** Functionality first, optimization later. We prioritize code simplicity and maintainability.
 
-## Phase 2: Standard Library & Stability
-Goal: Expand the capability of the CPU backend to support UI logic and robust serialization.
+---
 
-### 2.1. Binary Asset Format (Decoupling)
-- [x] **Program Structure:** Define `mf_program` struct containing Header, Metadata (counts), Code Section, and Data Section (initial constants).
-- [x] **Compiler Update:** Refactor compiler to emit `mf_program` instead of modifying VM directly.
-- [x] **VM Loader:** Implement `mf_vm_load_program(vm, program)` to allocate memory and copy initial state.
-- [x] **File I/O:** Add functions to write/read `mf_program` to/from `.bin` files.
+## Phase 1: The Tensor Foundation (Completed)
+**Objective:** Define the universal data structure and memory model.
 
-### 2.2. Type System Expansion (UI Foundation)
-- [x] **New Types:** Implement `vec2` (positions), `vec4` (colors), `bool` (logic).
-- [x] **Comparison Ops:** `GREATER`, `LESS`, `EQUAL`.
-- [x] **Logic Ops:** `AND`, `OR`, `NOT`.
-- [x] **Control Ops:** `SELECT` (Ternary `? :`) for conditional data flow.
+- [x] **Unified Type System:** Implemented `mf_tensor` struct and `mf_dtype`.
+- [x] **Universal ISA:** Defined generic opcodes (`OP_ADD`, `OP_MUL`, `OP_MATMUL`).
+- [x] **Compiler Update:** Rewrote compiler to parse JSON into `mf_tensor` programs.
+- [x] **Generic Backend:** Implemented C-based kernel with broadcasting support for Add/Mul.
+- [x] **Tensor Runner:** Updated `mf-runner` to execute and visualize tensor graphs.
 
-### 2.3. Math Expansion
-- [x] **Layout Math:** `MIN`, `MAX`, `CLAMP`, `FLOOR`, `CEIL`.
-- [x] **Matrix Math:** `MAT3` (2D Affine), `Inverse`, `Transpose`.
-- [x] **Trigonometry:** `SIN`, `COS`, `ATAN2`.
+---
 
-### 2.4. Memory Abstraction (Safety & Portability)
-- [x] **Accessor API:** Replace direct column access in backends with an abstraction layer (e.g., `mf_vm_map_f32(vm, reg_idx)`).
-- [x] **View Structs:** Define unified views (e.g., `mf_span` for CPU, `mf_handle` for GPU) to prepare for non-RAM memory types.
-- [x] **Bounds Checking:** Optional debug-mode verification of memory access.
+## Phase 2: Compiler & Toolchain
+**Objective:** Update the toolchain to understand tensors and clean up legacy debt.
 
-### 2.5. Backend-Driven Synchronization (Protocol)
-- [x] **Sync Hooks:** Extend `mf_backend_dispatch_table` with `on_map`, `on_unmap`, and `on_exec` hooks.
-- [x] **State Awareness:** Update `mf_vm_map_*` to notify the active backend of memory access (read/write intents).
-- [ ] **Ownership Model:** Define how backends can mark columns as "Device Resident" or "Host Resident".
-- [ ] **Lazy Synchronization:** Implement a reference logic where data is only synced between CPU and GPU if states don't match.
+### 2.1. Shape Inference Pass
+The compiler must predict tensor shapes to validate the graph before execution.
+- [ ] **Static Analysis:** Propagate shapes from Inputs through the graph.
+- [ ] **Validation:** Error out on shape mismatches (e.g., trying to dot-product incompatible dimensions).
 
-## Phase 3: Headless Applications & Testing
-Goal: Verify the engine with complex scenarios before adding graphics.
+### 2.2. JSON Format Cleanup (Refactoring)
+- [ ] **Deprecation:** Remove support for legacy types like `InputVec3`, `AddFloat`.
+- [ ] **Standardization:** Enforce generic names (`Input`, `Add`, `Mul`) in the compiler.
+- [ ] **Enforce String IDs:** Transition all IDs to strings (e.g., `"id": "1"`) to unify the format.
+- [ ] **Asset Update:** Convert all existing `.json` tests to the new format.
 
-- [ ] **Unit Tests:** Comprehensive coverage for all opcodes.
-- [ ] **Layout Engine Demo:** Create a graph that calculates positions for a list of items (Flexbox-like logic) and prints coordinates.
-- [ ] **Spring Simulation:** Physics demo using `DeltaTime` input.
+---
 
-## Phase 4: High-Performance & Graphics (Future)
-- [ ] **Vulkan Backend:** Declarative rendering of Output Columns.
-- [ ] **SIMD Optimization:** AVX/NEON for CPU backend.
-- [ ] **GPGPU:** Compute Shader execution strategy.
+## Phase 3: High-Level Data & Strings
+**Objective:** Support non-numerical business logic (Strings, IDs, Categories) using mathematical primitives.
+
+### 3.1. Dictionary Encoding (String Interop)
+Treat strings as mathematical entities for performance.
+- [ ] **Global String Pool:** A central storage for unique string characters (`Blob`).
+- [ ] **Tokenization:** Strings entering the system (Inputs) are hashed and converted to `I32` (Indices).
+- [ ] **String Tensor:** A tensor of type `I32` that represents a list of strings.
+- [ ] **Debug View:** The Runner/Debugger resolves `I32` -> `String` only for display purposes.
+
+### 3.2. Dataframe Operations
+Enable database-like logic.
+- [ ] **Structs as Tensors:** Represent a "Product" `{Price, Name}` not as a C-struct, but as a collection of synchronized tensors (Columnar Store / SoA).
+- [ ] **Selection/Masking:** Implement `OP_WHERE` (Tensor masking) to filter data (e.g., `Select * From Products Where Price > 100`).
+
+---
+
+## Phase 4: Dynamic Execution
+**Objective:** Handle variable workloads.
+
+### 4.1. Dynamic Batching
+- [ ] **Runtime Resizing:** Allow tensors to change size (Dimension `N`) between frames (e.g., adding an item to a shopping cart).
+- [ ] **Memory Reallocation:** Smart handling of growing buffers.
+
+---
+
+## Summary of Changes
+| Feature | Old MathFlow | **Tensor MathFlow** |
+| :--- | :--- | :--- |
+| **Data Type** | `f32`, `vec3`, `mat4` | `Tensor<DType, Shape>` |
+| **Opcodes** | `ADD_VEC3`, `MUL_MAT4` | `ADD`, `MATMUL` (Generic) |
+| **Logic** | Single Item (Scalar) | Batch / Array Processing |
+| **Strings** | Not Supported | Dictionary Encoded (I32) |
+| **Memory** | Fixed Columns | Dynamic Buffer Pool |

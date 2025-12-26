@@ -1,4 +1,5 @@
 #include <mathflow/compiler/mf_compiler.h>
+#include <mathflow/isa/mf_opcodes.h>
 #include <cjson/cJSON.h>
 #include <string.h>
 #include <stdio.h>
@@ -11,52 +12,60 @@ typedef struct {
     mf_node_type type;
 } mf_node_map_entry;
 
+// Maps legacy/specific JSON types to Generic IR Nodes
 static const mf_node_map_entry NODE_MAP[] = {
-    // Inputs
-    {"InputFloat", MF_NODE_INPUT_F32},
-    {"InputVec2", MF_NODE_INPUT_VEC2},
-    {"InputVec3", MF_NODE_INPUT_VEC3},
-    {"InputVec4", MF_NODE_INPUT_VEC4},
-    {"InputMat3", MF_NODE_INPUT_MAT3},
-    {"InputMat4", MF_NODE_INPUT_MAT4},
-    {"InputBool", MF_NODE_INPUT_BOOL},
-    // Math - F32
-    {"AddFloat", MF_NODE_ADD_F32},
-    {"SubFloat", MF_NODE_SUB_F32},
-    {"MulFloat", MF_NODE_MUL_F32},
-    {"DivFloat", MF_NODE_DIV_F32},
-    {"MinFloat", MF_NODE_MIN_F32},
-    {"MaxFloat", MF_NODE_MAX_F32},
-    {"ClampFloat", MF_NODE_CLAMP_F32},
-    {"FloorFloat", MF_NODE_FLOOR_F32},
-    {"CeilFloat", MF_NODE_CEIL_F32},
-    {"SinFloat", MF_NODE_SIN_F32},
-    {"CosFloat", MF_NODE_COS_F32},
-    {"Atan2Float", MF_NODE_ATAN2_F32},
+    // Inputs -> Generic INPUT
+    {"InputFloat", MF_NODE_INPUT},
+    {"InputVec2", MF_NODE_INPUT},
+    {"InputVec3", MF_NODE_INPUT},
+    {"InputVec4", MF_NODE_INPUT},
+    {"InputMat3", MF_NODE_INPUT},
+    {"InputMat4", MF_NODE_INPUT},
+    {"InputBool", MF_NODE_INPUT}, // We might want to distinguish types later, but for now Input is Input
+
+    // Arithmetic
+    {"AddFloat", MF_NODE_ADD}, {"AddVec3", MF_NODE_ADD},
+    {"SubFloat", MF_NODE_SUB}, {"SubVec3", MF_NODE_SUB},
+    {"MulFloat", MF_NODE_MUL}, {"ScaleVec3", MF_NODE_MUL}, 
+    {"DivFloat", MF_NODE_DIV},
     
-    // Math - Vec3
-    {"AddVec3", MF_NODE_ADD_VEC3},
-    {"ScaleVec3", MF_NODE_SCALE_VEC3},
-    // Compare
-    {"GreaterFloat", MF_NODE_GREATER_F32},
-    {"LessFloat", MF_NODE_LESS_F32},
-    {"EqualFloat", MF_NODE_EQUAL_F32},
+    // Math
+    {"MinFloat", MF_NODE_MIN},
+    {"MaxFloat", MF_NODE_MAX},
+    {"ClampFloat", MF_NODE_CLAMP},
+    {"FloorFloat", MF_NODE_FLOOR},
+    {"CeilFloat", MF_NODE_CEIL},
+    {"SinFloat", MF_NODE_SIN},
+    {"CosFloat", MF_NODE_COS},
+    {"Atan2Float", MF_NODE_ATAN2},
+    
+    // Matrix
+    {"MulMat3", MF_NODE_MATMUL}, {"MulMat4", MF_NODE_MATMUL},
+    {"TransposeMat3", MF_NODE_TRANSPOSE}, {"TransposeMat4", MF_NODE_TRANSPOSE},
+    {"InverseMat3", MF_NODE_INVERSE}, {"InverseMat4", MF_NODE_INVERSE},
+    
+    // Comparison
+    {"GreaterFloat", MF_NODE_GREATER},
+    {"LessFloat", MF_NODE_LESS},
+    {"EqualFloat", MF_NODE_EQUAL},
+    
     // Logic
     {"And", MF_NODE_AND},
     {"Or", MF_NODE_OR},
     {"Not", MF_NODE_NOT},
-    // Select
-    {"SelectFloat", MF_NODE_SELECT_F32},
-    {"SelectVec3", MF_NODE_SELECT_VEC3},
-    {"SelectVec4", MF_NODE_SELECT_VEC4},
     
-    // Matrix
-    {"MulMat3", MF_NODE_MUL_MAT3},
-    {"TransposeMat3", MF_NODE_TRANSPOSE_MAT3},
-    {"InverseMat3", MF_NODE_INVERSE_MAT3},
-    {"MulMat4", MF_NODE_MUL_MAT4},
-    {"TransposeMat4", MF_NODE_TRANSPOSE_MAT4},
-    {"InverseMat4", MF_NODE_INVERSE_MAT4},
+    // Select
+    {"SelectFloat", MF_NODE_SELECT},
+    {"SelectVec3", MF_NODE_SELECT},
+    {"SelectVec4", MF_NODE_SELECT},
+
+    // New Generic Names (for manual JSON writing)
+    {"Input", MF_NODE_INPUT},
+    {"Add", MF_NODE_ADD},
+    {"Sub", MF_NODE_SUB},
+    {"Mul", MF_NODE_MUL},
+    {"Div", MF_NODE_DIV},
+    {"MatMul", MF_NODE_MATMUL},
     
     {NULL, MF_NODE_UNKNOWN}
 };
@@ -70,6 +79,118 @@ static mf_node_type mf_node_type_from_string(const char* type) {
     return MF_NODE_UNKNOWN;
 }
 
+// --- String Map (ID -> Index) ---
+
+typedef struct {
+    const char* key;
+    u32 value; // Node Index
+} mf_map_entry;
+
+typedef struct {
+    mf_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} mf_str_map;
+
+static u32 fnv1a_hash(const char* str) {
+    u32 hash = 2166136261u;
+    while (*str) {
+        hash ^= (u8)*str++;
+        hash *= 16777619u;
+    }
+    return hash;
+}
+
+static void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena) {
+    map->capacity = capacity;
+    map->count = 0;
+    map->entries = MF_ARENA_PUSH(arena, mf_map_entry, capacity);
+    memset(map->entries, 0, sizeof(mf_map_entry) * capacity);
+}
+
+static void mf_map_put(mf_str_map* map, const char* key, u32 value) {
+    u32 hash = fnv1a_hash(key);
+    size_t idx = hash % map->capacity;
+    while (map->entries[idx].key != NULL) {
+        if (strcmp(map->entries[idx].key, key) == 0) {
+            map->entries[idx].value = value; 
+            return;
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+    map->entries[idx].key = key;
+    map->entries[idx].value = value;
+    map->count++;
+}
+
+static bool mf_map_get(mf_str_map* map, const char* key, u32* out_val) {
+    u32 hash = fnv1a_hash(key);
+    size_t idx = hash % map->capacity;
+    while (map->entries[idx].key != NULL) {
+        if (strcmp(map->entries[idx].key, key) == 0) {
+            *out_val = map->entries[idx].value;
+            return true;
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+    return false;
+}
+
+// --- Helper: Copy String ---
+static char* arena_strdup(mf_arena* arena, const char* str) {
+    size_t len = strlen(str);
+    char* copy = MF_ARENA_PUSH(arena, char, len + 1);
+    strcpy(copy, str);
+    return copy;
+}
+
+// --- Helper: Parse Tensor from JSON Value ---
+// Supports: Number (Scalar), Array (Vector/Matrix)
+static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
+    if (cJSON_IsNumber(val)) {
+        // Scalar F32
+        t->dtype = MF_DTYPE_F32;
+        t->ndim = 0;
+        t->size = 1;
+        t->data = MF_ARENA_PUSH(arena, f32, 1);
+        *((f32*)t->data) = (f32)val->valuedouble;
+    } 
+    else if (cJSON_IsBool(val)) {
+        // Scalar Bool (U8)
+        t->dtype = MF_DTYPE_U8;
+        t->ndim = 0;
+        t->size = 1;
+        t->data = MF_ARENA_PUSH(arena, u8, 1);
+        *((u8*)t->data) = (u8)(cJSON_IsTrue(val) ? 1 : 0);
+    }
+    else if (cJSON_IsArray(val)) {
+        int count = cJSON_GetArraySize(val);
+        if (count == 0) return; // Empty tensor? 
+        
+        // Check nesting for Rank
+        cJSON* first = cJSON_GetArrayItem(val, 0);
+        
+        if (cJSON_IsNumber(first)) {
+            // Rank 1 (Vector)
+            t->dtype = MF_DTYPE_F32;
+            t->ndim = 1;
+            t->shape[0] = count;
+            t->strides[0] = 1;
+            t->size = count;
+            
+            f32* data = MF_ARENA_PUSH(arena, f32, count);
+            t->data = data;
+            
+            int i = 0;
+            cJSON* item = NULL;
+            cJSON_ArrayForEach(item, val) {
+                data[i++] = (f32)item->valuedouble;
+            }
+        }
+        // TODO: Add Rank 2 (Matrix) parsing here if needed for JSON input
+    }
+}
+
 // --- Parsing ---
 
 bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena) {
@@ -80,74 +201,77 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
     }
 
     cJSON* nodes = cJSON_GetObjectItem(root, "nodes");
-    if (nodes) {
-        int count = cJSON_GetArraySize(nodes);
-        out_ir->nodes = MF_ARENA_PUSH(arena, mf_ir_node, count);
-        out_ir->node_count = count;
-        out_ir->node_cap = count;
+    if (!nodes) { cJSON_Delete(root); return false; }
 
-        cJSON* node = NULL;
-        int i = 0;
-        cJSON_ArrayForEach(node, nodes) {
-            mf_ir_node* ir_node = &out_ir->nodes[i++];
-            ir_node->id = (u32)cJSON_GetObjectItem(node, "id")->valueint;
-            
-            char* type_str = cJSON_GetObjectItem(node, "type")->valuestring;
-            ir_node->type = mf_node_type_from_string(type_str);
+    int count = cJSON_GetArraySize(nodes);
+    out_ir->nodes = MF_ARENA_PUSH(arena, mf_ir_node, count);
+    out_ir->node_count = count;
+    out_ir->node_cap = count;
 
-            // Parse Data
+    mf_str_map map;
+    mf_map_init(&map, count * 2, arena);
+
+    // Pass 1: Nodes
+    int i = 0;
+    cJSON* node = NULL;
+    cJSON_ArrayForEach(node, nodes) {
+        mf_ir_node* ir_node = &out_ir->nodes[i];
+        
+        // ID
+        cJSON* j_id = cJSON_GetObjectItem(node, "id");
+        if (cJSON_IsString(j_id)) ir_node->id = arena_strdup(arena, j_id->valuestring);
+        else if (cJSON_IsNumber(j_id)) {
+            char buf[32];
+            snprintf(buf, 32, "%d", j_id->valueint);
+            ir_node->id = arena_strdup(arena, buf);
+        } else ir_node->id = "unknown";
+        
+        mf_map_put(&map, ir_node->id, i);
+
+        // Type
+        char* type_str = cJSON_GetObjectItem(node, "type")->valuestring;
+        ir_node->type = mf_node_type_from_string(type_str);
+
+        // Data (Constant Tensor)
+        if (ir_node->type == MF_NODE_INPUT) {
             cJSON* data = cJSON_GetObjectItem(node, "data");
             if (data) {
                 cJSON* val = cJSON_GetObjectItem(data, "value");
                 if (val) {
-                    if (ir_node->type == MF_NODE_INPUT_F32) {
-                        ir_node->val_f32 = (f32)val->valuedouble;
-                    }
-                    else if (ir_node->type == MF_NODE_INPUT_BOOL) {
-                        ir_node->val_bool = (u8)(cJSON_IsTrue(val) ? 1 : 0);
-                    }
-                    else if (cJSON_IsArray(val)) {
-                        if (ir_node->type == MF_NODE_INPUT_VEC2) {
-                            ir_node->val_vec2.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
-                            ir_node->val_vec2.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
-                        }
-                        else if (ir_node->type == MF_NODE_INPUT_VEC3) {
-                            ir_node->val_vec3.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
-                            ir_node->val_vec3.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
-                            ir_node->val_vec3.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
-                        }
-                        else if (ir_node->type == MF_NODE_INPUT_VEC4) {
-                            ir_node->val_vec4.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
-                            ir_node->val_vec4.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
-                            ir_node->val_vec4.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
-                            ir_node->val_vec4.w = (f32)cJSON_GetArrayItem(val, 3)->valuedouble;
-                        }
-                        else if (ir_node->type == MF_NODE_INPUT_MAT3) {
-                            for(int k=0; k<9; ++k) ir_node->val_mat3.m[k] = (f32)cJSON_GetArrayItem(val, k)->valuedouble;
-                        }
-                        else if (ir_node->type == MF_NODE_INPUT_MAT4) {
-                            for(int k=0; k<16; ++k) ir_node->val_mat4.m[k] = (f32)cJSON_GetArrayItem(val, k)->valuedouble;
-                        }
-                    }
+                    parse_constant_tensor(val, &ir_node->constant, arena);
                 }
             }
         }
+        i++;
     }
 
+    // Pass 2: Links
     cJSON* links = cJSON_GetObjectItem(root, "links");
     if (links) {
-        int count = cJSON_GetArraySize(links);
-        out_ir->links = MF_ARENA_PUSH(arena, mf_ir_link, count);
-        out_ir->link_count = count;
-        out_ir->link_cap = count;
+        int l_count = cJSON_GetArraySize(links);
+        out_ir->links = MF_ARENA_PUSH(arena, mf_ir_link, l_count);
+        out_ir->link_count = l_count;
+        out_ir->link_cap = l_count;
 
+        int j = 0;
         cJSON* link = NULL;
-        int i = 0;
         cJSON_ArrayForEach(link, links) {
-            mf_ir_link* ir_link = &out_ir->links[i++];
-            ir_link->src_id = (u32)cJSON_GetObjectItem(link, "src")->valueint;
+            mf_ir_link* ir_link = &out_ir->links[j++];
+            
+            // Src ID
+            cJSON* j_src = cJSON_GetObjectItem(link, "src");
+            char key[64];
+            if (cJSON_IsNumber(j_src)) snprintf(key, 64, "%d", j_src->valueint);
+            else snprintf(key, 64, "%s", j_src->valuestring);
+            mf_map_get(&map, key, &ir_link->src_node_idx);
+
+            // Dst ID
+            cJSON* j_dst = cJSON_GetObjectItem(link, "dst");
+            if (cJSON_IsNumber(j_dst)) snprintf(key, 64, "%d", j_dst->valueint);
+            else snprintf(key, 64, "%s", j_dst->valuestring);
+            mf_map_get(&map, key, &ir_link->dst_node_idx);
+
             ir_link->src_port = (u32)cJSON_GetObjectItem(link, "src_port")->valueint;
-            ir_link->dst_id = (u32)cJSON_GetObjectItem(link, "dst")->valueint;
             ir_link->dst_port = (u32)cJSON_GetObjectItem(link, "dst_port")->valueint;
         }
     }
@@ -156,17 +280,10 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
     return true;
 }
 
-static mf_ir_node* find_node(mf_graph_ir* ir, u32 id) {
-    for (size_t i = 0; i < ir->node_count; ++i) {
-        if (ir->nodes[i].id == id) return &ir->nodes[i];
-    }
-    return NULL;
-}
-
-static mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_id, u32 dst_port) {
+static mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
     for (size_t i = 0; i < ir->link_count; ++i) {
-        if (ir->links[i].dst_id == dst_id && ir->links[i].dst_port == dst_port) {
-            return find_node(ir, ir->links[i].src_id);
+        if (ir->links[i].dst_node_idx == dst_node_idx && ir->links[i].dst_port == dst_port) {
+            return &ir->nodes[ir->links[i].src_node_idx];
         }
     }
     return NULL;
@@ -180,424 +297,125 @@ typedef struct {
     mf_graph_ir* ir;
 } sort_ctx;
 
-static void visit_node(sort_ctx* ctx, mf_ir_node* node) {
-    size_t idx = node - ctx->ir->nodes;
-    if (ctx->visited[idx] == 2) return;
-    if (ctx->visited[idx] == 1) {
-        printf("Cycle detected! Node ID: %d\n", node->id);
-        return;
-    }
-    ctx->visited[idx] = 1;
+static void visit_node(sort_ctx* ctx, u32 node_idx) {
+    if (ctx->visited[node_idx] == 2) return;
+    if (ctx->visited[node_idx] == 1) return; // Cycle
+    ctx->visited[node_idx] = 1;
 
     for (size_t i = 0; i < ctx->ir->link_count; ++i) {
-        if (ctx->ir->links[i].dst_id == node->id) {
-            mf_ir_node* src = find_node(ctx->ir, ctx->ir->links[i].src_id);
-            if (src) visit_node(ctx, src);
+        if (ctx->ir->links[i].dst_node_idx == node_idx) {
+            visit_node(ctx, ctx->ir->links[i].src_node_idx);
         }
     }
-    ctx->visited[idx] = 2;
-    ctx->sorted_nodes[ctx->count++] = node;
+    ctx->visited[node_idx] = 2;
+    ctx->sorted_nodes[ctx->count++] = &ctx->ir->nodes[node_idx];
 }
 
 // --- Compilation ---
 
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
-    // 1. Setup local columns
-    mf_column col_f32, col_vec2, col_vec3, col_vec4, col_mat3, col_mat4, col_bool;
-    mf_column_init(&col_f32, sizeof(f32), 16, arena);
-    mf_column_init(&col_vec2, sizeof(mf_vec2), 16, arena);
-    mf_column_init(&col_vec3, sizeof(mf_vec3), 16, arena);
-    mf_column_init(&col_vec4, sizeof(mf_vec4), 16, arena);
-    mf_column_init(&col_mat3, sizeof(mf_mat3), 16, arena);
-    mf_column_init(&col_mat4, sizeof(mf_mat4), 16, arena);
-    mf_column_init(&col_bool, sizeof(u8), 16, arena);
-
-    // 2. Allocation Pass
-    u16 f32_head = 0;
-    u16 vec2_head = 0;
-    u16 vec3_head = 0;
-    u16 vec4_head = 0;
-    u16 mat3_head = 0;
-    u16 mat4_head = 0;
-    u16 bool_head = 0;
-    
-    for (size_t i = 0; i < ir->node_count; ++i) {
-        mf_ir_node* node = &ir->nodes[i];
-        
-        switch (node->type) {
-            // Inputs
-            case MF_NODE_INPUT_F32:
-                node->out_reg_idx = f32_head++;
-                f32* fptr = (f32*)mf_column_push(&col_f32, NULL, arena); 
-                if (fptr) *fptr = node->val_f32;
-                break;
-            case MF_NODE_INPUT_VEC2:
-                node->out_reg_idx = vec2_head++;
-                mf_column_push(&col_vec2, &node->val_vec2, arena);
-                break;
-            case MF_NODE_INPUT_VEC3:
-                node->out_reg_idx = vec3_head++;
-                mf_column_push(&col_vec3, &node->val_vec3, arena);
-                break;
-            case MF_NODE_INPUT_VEC4:
-                node->out_reg_idx = vec4_head++;
-                mf_column_push(&col_vec4, &node->val_vec4, arena);
-                break;
-            case MF_NODE_INPUT_BOOL:
-                node->out_reg_idx = bool_head++;
-                mf_column_push(&col_bool, &node->val_bool, arena);
-                break;
-            
-            case MF_NODE_INPUT_MAT3:
-                node->out_reg_idx = mat3_head++;
-                mf_column_push(&col_mat3, &node->val_mat3, arena);
-                break;
-
-            case MF_NODE_INPUT_MAT4:
-                node->out_reg_idx = mat4_head++;
-                mf_column_push(&col_mat4, &node->val_mat4, arena);
-                break;
-
-            // Matrix Ops
-            case MF_NODE_MUL_MAT3:
-            case MF_NODE_TRANSPOSE_MAT3:
-            case MF_NODE_INVERSE_MAT3:
-                node->out_reg_idx = mat3_head++;
-                mf_column_push(&col_mat3, NULL, arena);
-                break;
-            
-            case MF_NODE_MUL_MAT4:
-            case MF_NODE_TRANSPOSE_MAT4:
-            case MF_NODE_INVERSE_MAT4:
-                node->out_reg_idx = mat4_head++;
-                mf_column_push(&col_mat4, NULL, arena);
-                break;
-                
-            // Ops
-            case MF_NODE_ADD_F32:
-            case MF_NODE_SUB_F32:
-            case MF_NODE_MUL_F32:
-            case MF_NODE_DIV_F32:
-            case MF_NODE_MIN_F32:
-            case MF_NODE_MAX_F32:
-            // CLAMP handled separately
-            case MF_NODE_FLOOR_F32:
-            case MF_NODE_CEIL_F32:
-            case MF_NODE_SIN_F32:
-            case MF_NODE_COS_F32:
-            case MF_NODE_ATAN2_F32:
-            case MF_NODE_SELECT_F32:
-                node->out_reg_idx = f32_head++;
-                mf_column_push(&col_f32, NULL, arena);
-                break;
-            
-            case MF_NODE_CLAMP_F32:
-                f32_head++; // Temp
-                node->out_reg_idx = f32_head++; // Result
-                mf_column_push(&col_f32, NULL, arena);
-                mf_column_push(&col_f32, NULL, arena);
-                break;
-                
-            case MF_NODE_ADD_VEC3:
-            case MF_NODE_SCALE_VEC3:
-            case MF_NODE_SELECT_VEC3:
-                node->out_reg_idx = vec3_head++;
-                mf_column_push(&col_vec3, NULL, arena); 
-                break;
-                
-            case MF_NODE_SELECT_VEC4:
-                node->out_reg_idx = vec4_head++;
-                mf_column_push(&col_vec4, NULL, arena);
-                break;
-                
-            case MF_NODE_GREATER_F32:
-            case MF_NODE_LESS_F32:
-            case MF_NODE_EQUAL_F32:
-            case MF_NODE_AND:
-            case MF_NODE_OR:
-            case MF_NODE_NOT:
-                node->out_reg_idx = bool_head++;
-                mf_column_push(&col_bool, NULL, arena);
-                break;
-                
-            default: break;
-        }
-    }
-
-    // 3. Topological Sort
+    // 1. Sort
     mf_ir_node** sorted = MF_ARENA_PUSH(arena, mf_ir_node*, ir->node_count);
     u8* visited = MF_ARENA_PUSH(arena, u8, ir->node_count);
     memset(visited, 0, ir->node_count);
 
     sort_ctx ctx = { .sorted_nodes = sorted, .visited = visited, .count = 0, .ir = ir };
-    for (size_t i = 0; i < ir->node_count; ++i) {
-        if (visited[i] == 0) visit_node(&ctx, &ir->nodes[i]);
-    }
+    for (size_t i = 0; i < ir->node_count; ++i) visit_node(&ctx, (u32)i);
 
-    // 4. Create Program
+    // 2. Allocate Program
     mf_program* prog = MF_ARENA_PUSH(arena, mf_program, 1);
     prog->meta.magic = MF_BINARY_MAGIC;
     prog->meta.version = MF_BINARY_VERSION;
-    prog->meta.f32_count = (u32)col_f32.count;
-    prog->meta.vec2_count = (u32)col_vec2.count;
-    prog->meta.vec3_count = (u32)col_vec3.count;
-    prog->meta.vec4_count = (u32)col_vec4.count;
-    prog->meta.mat3_count = (u32)col_mat3.count;
-    prog->meta.mat4_count = (u32)col_mat4.count;
-    prog->meta.bool_count = (u32)col_bool.count;
+    prog->meta.tensor_count = (u32)ir->node_count; // 1 output tensor per node
     
-    prog->data_f32 = (f32*)col_f32.data;
-    prog->data_vec2 = (mf_vec2*)col_vec2.data;
-    prog->data_vec3 = (mf_vec3*)col_vec3.data;
-    prog->data_vec4 = (mf_vec4*)col_vec4.data;
-    prog->data_mat3 = (mf_mat3*)col_mat3.data;
-    prog->data_mat4 = (mf_mat4*)col_mat4.data;
-    prog->data_bool = (u8*)col_bool.data;
+    // Allocate Tensor Table (Descriptors)
+    prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, prog->meta.tensor_count);
+    memset(prog->tensors, 0, sizeof(mf_tensor) * prog->meta.tensor_count);
 
-    // 5. Instruction Generation
-    size_t instr_capacity = ir->node_count * 2;
-    mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, instr_capacity);
+    // 3. Instruction Generation & Tensor Init
+    mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, ir->node_count * 2);
     size_t instr_count = 0;
 
     for (size_t i = 0; i < ctx.count; ++i) {
         mf_ir_node* node = sorted[i];
-        mf_ir_node* s1 = find_input_source(ir, node->id, 0);
-        mf_ir_node* s2 = find_input_source(ir, node->id, 1);
-        mf_ir_node* s3 = find_input_source(ir, node->id, 2); 
+        u32 node_idx = (u32)(node - ir->nodes); 
+        
+        // Assign Register (Tensor Index)
+        node->out_reg_idx = (u16)node_idx; // Simple 1-to-1 mapping for now
+        
+        // Setup Tensor Descriptor
+        mf_tensor* t_desc = &prog->tensors[node_idx];
+        
+        // If INPUT, copy constant data
+        if (node->type == MF_NODE_INPUT) {
+            *t_desc = node->constant; // Copy shape, data ptr, dtype
+            // Note: data ptr points to arena memory where parsing put it. 
+            // This is safe because Program assumes data is valid.
+        } else {
+            // Logic Node: Result tensor is uninitialized (VM will allocate/shape it)
+            // But we can set dtype if we knew it (Shape Inference). 
+            // For now, leave zeroed.
+        }
+
+        mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
+        mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
+        mf_ir_node* s3 = find_input_source(ir, node_idx, 2); 
 
         mf_instruction* inst = &instrs[instr_count];
+        inst->dest_idx = node->out_reg_idx;
+        if (s1) inst->src1_idx = s1->out_reg_idx;
+        if (s2) inst->src2_idx = s2->out_reg_idx;
 
         switch (node->type) {
-            case MF_NODE_ADD_F32:
-            case MF_NODE_SUB_F32:
-            case MF_NODE_MUL_F32:
-            case MF_NODE_DIV_F32:
-            case MF_NODE_MIN_F32:
-            case MF_NODE_MAX_F32:
-            case MF_NODE_ATAN2_F32:
-                if (s1 && s2) {
-                    if (node->type == MF_NODE_ADD_F32) inst->opcode = MF_OP_ADD_F32;
-                    else if (node->type == MF_NODE_SUB_F32) inst->opcode = MF_OP_SUB_F32;
-                    else if (node->type == MF_NODE_MUL_F32) inst->opcode = MF_OP_MUL_F32;
-                    else if (node->type == MF_NODE_DIV_F32) inst->opcode = MF_OP_DIV_F32;
-                    else if (node->type == MF_NODE_MIN_F32) inst->opcode = MF_OP_MIN_F32;
-                    else if (node->type == MF_NODE_MAX_F32) inst->opcode = MF_OP_MAX_F32;
-                    else if (node->type == MF_NODE_ATAN2_F32) inst->opcode = MF_OP_ATAN2_F32;
-                    
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
+            case MF_NODE_INPUT: 
+                // No instruction, just data
                 break;
-
-            case MF_NODE_FLOOR_F32:
-            case MF_NODE_CEIL_F32:
-            case MF_NODE_SIN_F32:
-            case MF_NODE_COS_F32:
-                if (s1) {
-                     if (node->type == MF_NODE_FLOOR_F32) inst->opcode = MF_OP_FLOOR_F32;
-                     else if (node->type == MF_NODE_CEIL_F32) inst->opcode = MF_OP_CEIL_F32;
-                     else if (node->type == MF_NODE_SIN_F32) inst->opcode = MF_OP_SIN_F32;
-                     else if (node->type == MF_NODE_COS_F32) inst->opcode = MF_OP_COS_F32;
-                     
-                     inst->dest_idx = node->out_reg_idx;
-                     inst->src1_idx = s1->out_reg_idx;
-                     inst->src2_idx = 0;
-                     instr_count++;
-                }
-                break;
-
-            case MF_NODE_CLAMP_F32:
-                if (s1 && s2 && s3) {
-                     // 1. Temp = MAX(Val, Min)
-                     inst->opcode = MF_OP_MAX_F32;
-                     inst->dest_idx = node->out_reg_idx - 1; 
-                     inst->src1_idx = s1->out_reg_idx;
-                     inst->src2_idx = s2->out_reg_idx;
-                     instr_count++;
-                     
-                     // 2. Res = MIN(Temp, Max)
-                     inst = &instrs[instr_count];
-                     inst->opcode = MF_OP_MIN_F32;
-                     inst->dest_idx = node->out_reg_idx;
-                     inst->src1_idx = node->out_reg_idx - 1;
-                     inst->src2_idx = s3->out_reg_idx;
-                     instr_count++;
-                }
-                break;
-            case MF_NODE_ADD_VEC3:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_ADD_VEC3;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            case MF_NODE_SCALE_VEC3:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_SCALE_VEC3;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
+                
+            case MF_NODE_ADD: inst->opcode = MF_OP_ADD; instr_count++; break;
+            case MF_NODE_SUB: inst->opcode = MF_OP_SUB; instr_count++; break;
+            case MF_NODE_MUL: inst->opcode = MF_OP_MUL; instr_count++; break;
+            case MF_NODE_DIV: inst->opcode = MF_OP_DIV; instr_count++; break;
             
-            // Comparison
-            case MF_NODE_GREATER_F32:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_GREATER_F32;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            case MF_NODE_LESS_F32:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_LESS_F32;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            case MF_NODE_EQUAL_F32:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_EQUAL_F32;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-                
-            // Logic
-            case MF_NODE_AND:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_AND;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-             case MF_NODE_OR:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_OR;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-             case MF_NODE_NOT:
-                if (s1) {
-                    inst->opcode = MF_OP_NOT;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = 0;
-                    instr_count++;
-                }
-                break;
-                
-            // Select (Ternary)
-            case MF_NODE_SELECT_F32:
+            case MF_NODE_MIN: inst->opcode = MF_OP_MIN; instr_count++; break;
+            case MF_NODE_MAX: inst->opcode = MF_OP_MAX; instr_count++; break;
+            case MF_NODE_SIN: inst->opcode = MF_OP_SIN; instr_count++; break;
+            case MF_NODE_COS: inst->opcode = MF_OP_COS; instr_count++; break;
+            
+            case MF_NODE_MATMUL: inst->opcode = MF_OP_MATMUL; instr_count++; break;
+            
+            case MF_NODE_SELECT: 
                 if (s1 && s2 && s3) {
-                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_F32;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s3->out_reg_idx;
+                    // Node inputs: 0=Cond, 1=True, 2=False
+                    // Opcode: CMOV_TRUE dest = True if Cond
+                    // Opcode: CMOV_FALSE dest = False if !Cond
+                    
+                    // 1. Initialize Dest with False Value? 
+                    // No, CMOV writes if condition met.
+                    // We need to write both cases.
+                    
+                    // Inst 1: Dest = WHERE_TRUE(Cond, TrueVal)  (Writes valid slots, others undef/garbage)
+                    // Inst 2: Dest = WHERE_FALSE(Cond, FalseVal) (Writes the rest)
+                    // BUT: This assumes Dest preserves values between instructions.
+                    // VM must ensure this.
+                    
+                    inst->opcode = MF_OP_WHERE_TRUE;
+                    inst->src1_idx = s1->out_reg_idx; // Cond
+                    inst->src2_idx = s2->out_reg_idx; // TrueVal
                     instr_count++;
                     
-                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_F32;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-                
-            case MF_NODE_SELECT_VEC3:
-                if (s1 && s2 && s3) {
-                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_VEC3;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s3->out_reg_idx;
-                    instr_count++;
-                    
-                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_VEC3;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-                
-            case MF_NODE_SELECT_VEC4:
-                if (s1 && s2 && s3) {
-                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_VEC4;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s3->out_reg_idx;
-                    instr_count++;
-                    
-                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_VEC4;
-                    instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx;
-                    instrs[instr_count].src2_idx = s2->out_reg_idx;
+                    inst = &instrs[instr_count];
+                    inst->opcode = MF_OP_WHERE_FALSE;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx; // Cond
+                    inst->src2_idx = s3->out_reg_idx; // FalseVal
                     instr_count++;
                 }
                 break;
 
-            // --- Mat3 ---
-            case MF_NODE_MUL_MAT3:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_MUL_MAT3;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            case MF_NODE_TRANSPOSE_MAT3:
-            case MF_NODE_INVERSE_MAT3:
-                if (s1) {
-                    inst->opcode = (node->type == MF_NODE_TRANSPOSE_MAT3) ? MF_OP_TRANSPOSE_MAT3 : MF_OP_INVERSE_MAT3;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = 0;
-                    instr_count++;
-                }
-                break;
-
-            // --- Mat4 ---
-            case MF_NODE_MUL_MAT4:
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_MUL_MAT4;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-             case MF_NODE_TRANSPOSE_MAT4:
-             case MF_NODE_INVERSE_MAT4:
-                if (s1) {
-                    inst->opcode = (node->type == MF_NODE_TRANSPOSE_MAT4) ? MF_OP_TRANSPOSE_MAT4 : MF_OP_INVERSE_MAT4;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = 0;
-                    instr_count++;
-                }
-                break;
-                
             default: break;
         }
     }
-    
+
     prog->code = instrs;
     prog->meta.instruction_count = (u32)instr_count;
     
@@ -605,22 +423,37 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
 }
 
 bool mf_compile_save_program(const mf_program* prog, const char* path) {
-    if (!prog || !path) return false;
-
     FILE* f = fopen(path, "wb");
     if (!f) return false;
 
+    // 1. Header
     fwrite(&prog->meta, sizeof(mf_bin_header), 1, f);
+    
+    // 2. Code
     fwrite(prog->code, sizeof(mf_instruction), prog->meta.instruction_count, f);
 
-    // Save Data Blocks
-    if (prog->meta.f32_count > 0) fwrite(prog->data_f32, sizeof(f32), prog->meta.f32_count, f);
-    if (prog->meta.vec2_count > 0) fwrite(prog->data_vec2, sizeof(mf_vec2), prog->meta.vec2_count, f);
-    if (prog->meta.vec3_count > 0) fwrite(prog->data_vec3, sizeof(mf_vec3), prog->meta.vec3_count, f);
-    if (prog->meta.vec4_count > 0) fwrite(prog->data_vec4, sizeof(mf_vec4), prog->meta.vec4_count, f);
-    if (prog->meta.mat3_count > 0) fwrite(prog->data_mat3, sizeof(mf_mat3), prog->meta.mat3_count, f);
-    if (prog->meta.mat4_count > 0) fwrite(prog->data_mat4, sizeof(mf_mat4), prog->meta.mat4_count, f);
-    if (prog->meta.bool_count > 0) fwrite(prog->data_bool, sizeof(u8), prog->meta.bool_count, f);
+    // 3. Tensor Metadata
+    for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
+        mf_tensor* t = &prog->tensors[i];
+        mf_bin_tensor_desc desc = {0};
+        desc.dtype = (u8)t->dtype;
+        desc.ndim = t->ndim;
+        desc.is_constant = (t->data != NULL);
+        if (t->ndim > 0) memcpy(desc.shape, t->shape, sizeof(i32) * t->ndim);
+        
+        if (desc.is_constant) desc.data_size = mf_dtype_size(t->dtype) * t->size;
+        
+        fwrite(&desc, sizeof(mf_bin_tensor_desc), 1, f);
+    }
+
+    // 4. Tensor Data Blob
+    for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
+        mf_tensor* t = &prog->tensors[i];
+        if (t->data) {
+            size_t sz = mf_dtype_size(t->dtype) * t->size;
+            fwrite(t->data, 1, sz, f);
+        }
+    }
 
     fclose(f);
     return true;

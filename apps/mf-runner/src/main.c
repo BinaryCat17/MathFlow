@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mathflow/isa/mf_base.h>
-#include <mathflow/vm/mf_memory.h>
+#include <mathflow/isa/mf_tensor.h>
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
@@ -11,14 +10,11 @@
 static char* read_file(const char* path) {
     FILE* f = fopen(path, "rb");
     if (!f) return NULL;
-    
     fseek(f, 0, SEEK_END);
     long length = ftell(f);
     fseek(f, 0, SEEK_SET);
-    
     char* buffer = malloc(length + 1);
     if (!buffer) return NULL;
-    
     fread(buffer, 1, length, f);
     buffer[length] = '\0';
     fclose(f);
@@ -31,6 +27,40 @@ static const char* get_filename_ext(const char *filename) {
     return dot + 1;
 }
 
+static void print_tensor(u32 idx, mf_tensor* t) {
+    if (!t || !t->data) {
+        printf("  [%u]: (Empty)\n", idx);
+        return;
+    }
+    
+    printf("  [%u] ", idx);
+    
+    // Print Shape
+    printf("Shape: [");
+    for(int i=0; i<t->ndim; ++i) printf("%d%s", t->shape[i], i < t->ndim-1 ? "," : "");
+    printf("] ");
+    
+    // Print Data
+    if (t->dtype == MF_DTYPE_F32) {
+        printf("F32: {");
+        f32* data = (f32*)t->data;
+        size_t limit = t->size > 16 ? 16 : t->size;
+        for(size_t i=0; i<limit; ++i) {
+            printf("%.2f%s", data[i], i < limit-1 ? ", " : "");
+        }
+        if (t->size > limit) printf("... (+%zu)", t->size - limit);
+        printf("}\n");
+    } else if (t->dtype == MF_DTYPE_U8) {
+        printf("Bool: {");
+        u8* data = (u8*)t->data;
+        size_t limit = t->size > 16 ? 16 : t->size;
+        for(size_t i=0; i<limit; ++i) {
+            printf("%s%s", data[i] ? "true" : "false", i < limit-1 ? ", " : "");
+        }
+        printf("}\n");
+    }
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         printf("Usage: %s <path_to_graph.json | path_to_program.bin>\n", argv[0]);
@@ -38,10 +68,10 @@ int main(int argc, char** argv) {
     }
 
     const char* path = argv[1];
-    printf("MathFlow Runner. Loading: %s\n", path);
+    printf("MathFlow Tensor Runner. Loading: %s\n", path);
 
     // 1. Setup Memory
-    size_t arena_size = MF_MB(4);
+    size_t arena_size = MF_MB(16); // Bumped for dynamic allocations
     void* buffer = malloc(arena_size);
     mf_arena arena;
     mf_arena_init(&arena, buffer, arena_size);
@@ -52,38 +82,26 @@ int main(int argc, char** argv) {
     // 2. Load / Compile
     if (strcmp(ext, "json") == 0) {
         char* json = read_file(path);
-        if (!json) { 
-            printf("Error: Could not read file '%s'.\n", path);
-            free(buffer);
-            return 1; 
-        }
+        if (!json) return 1;
         
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(json, &ir, &arena)) {
             printf("Error: Failed to parse JSON.\n");
-            free(json);
-            free(buffer);
-            return 1;
+            free(json); free(buffer); return 1;
         }
-        printf("Graph Parsed: %zu nodes\n", ir.node_count);
         
         prog = mf_compile(&ir, &arena);
         free(json);
     } else if (strcmp(ext, "bin") == 0) {
         prog = mf_vm_load_program_from_file(path, &arena);
-    } else {
-        printf("Error: Unknown file extension '%s'. Use .json or .bin\n", ext);
-        free(buffer);
-        return 1;
     }
 
     if (!prog) {
         printf("Error: Failed to generate program.\n");
-        free(buffer);
-        return 1;
+        free(buffer); return 1;
     }
 
-    printf("Program Loaded: %u inst\n", prog->meta.instruction_count);
+    printf("Program: %u tensors, %u insts\n", prog->meta.tensor_count, prog->meta.instruction_count);
 
     // 3. Setup Backend & VM
     mf_backend_dispatch_table cpu_backend;
@@ -96,69 +114,11 @@ int main(int argc, char** argv) {
     // 4. Execute
     mf_vm_exec(&vm);
     
-    // 5. Dump Output (Last element of each column)
+    // 5. Dump All Tensors
     printf("\n--- Execution Finished ---\n");
-    
-    size_t f32_count = mf_vm_get_count_f32(&vm);
-    if (f32_count > 0) {
-        printf("[F32 Output] (%zu items):\n", f32_count);
-        for(size_t i=0; i<f32_count; ++i) {
-             mf_ref_f32 v = mf_vm_map_f32(&vm, i, MF_ACCESS_READ);
-             if (MF_VALID(v)) printf("  [%zu]: %.4f\n", i, MF_VAL(v));
-        }
-    }
-    
-    size_t vec2_count = mf_vm_get_count_vec2(&vm);
-    if (vec2_count > 0) {
-        mf_ref_vec2 v = mf_vm_map_vec2(&vm, vec2_count - 1, MF_ACCESS_READ);
-        if (MF_VALID(v)) printf("[Vec2 Output]: {%.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y);
-    }
-
-    size_t vec3_count = mf_vm_get_count_vec3(&vm);
-    if (vec3_count > 0) {
-        mf_ref_vec3 v = mf_vm_map_vec3(&vm, vec3_count - 1, MF_ACCESS_READ);
-        if (MF_VALID(v)) printf("[Vec3 Output]: {%.2f, %.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y, MF_VAL(v).z);
-    }
-
-    size_t vec4_count = mf_vm_get_count_vec4(&vm);
-    if (vec4_count > 0) {
-        mf_ref_vec4 v = mf_vm_map_vec4(&vm, vec4_count - 1, MF_ACCESS_READ);
-        if (MF_VALID(v)) printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y, MF_VAL(v).z, MF_VAL(v).w);
-    }
-
-    size_t mat3_count = mf_vm_get_count_mat3(&vm);
-    if (mat3_count > 0) {
-        printf("[Mat3 Output] (%zu items):\n", mat3_count);
-        for(size_t i=0; i<mat3_count; ++i) {
-             mf_ref_mat3 v = mf_vm_map_mat3(&vm, i, MF_ACCESS_READ);
-             if (MF_VALID(v)) {
-                 printf("  [%zu]:\n", i);
-                 printf("    | %.2f %.2f %.2f |\n", MF_VAL(v).m[0], MF_VAL(v).m[3], MF_VAL(v).m[6]);
-                 printf("    | %.2f %.2f %.2f |\n", MF_VAL(v).m[1], MF_VAL(v).m[4], MF_VAL(v).m[7]);
-                 printf("    | %.2f %.2f %.2f |\n", MF_VAL(v).m[2], MF_VAL(v).m[5], MF_VAL(v).m[8]);
-             }
-        }
-    }
-
-    size_t mat4_count = mf_vm_get_count_mat4(&vm);
-    if (mat4_count > 0) {
-        printf("[Mat4 Output] (%zu items):\n", mat4_count);
-        for(size_t i=0; i<mat4_count; ++i) {
-             mf_ref_mat4 v = mf_vm_map_mat4(&vm, i, MF_ACCESS_READ);
-             if (MF_VALID(v)) {
-                 printf("  [%zu]:\n", i);
-                 printf("    | %.2f %.2f %.2f %.2f |\n", MF_VAL(v).m[0], MF_VAL(v).m[4], MF_VAL(v).m[8], MF_VAL(v).m[12]);
-                 printf("    | %.2f %.2f %.2f %.2f |\n", MF_VAL(v).m[1], MF_VAL(v).m[5], MF_VAL(v).m[9], MF_VAL(v).m[13]);
-                 printf("    | %.2f %.2f %.2f %.2f |\n", MF_VAL(v).m[2], MF_VAL(v).m[6], MF_VAL(v).m[10], MF_VAL(v).m[14]);
-                 printf("    | %.2f %.2f %.2f %.2f |\n", MF_VAL(v).m[3], MF_VAL(v).m[7], MF_VAL(v).m[11], MF_VAL(v).m[15]);
-             }
-        }
-    }
-
-    size_t bool_count = mf_vm_get_count_bool(&vm);
-    if (bool_count > 0) {
-        mf_ref_bool v = mf_vm_map_bool(&vm, bool_count - 1, MF_ACCESS_READ);
-        if (MF_VALID(v)) printf("[Bool Output]: %s\n", MF_VAL(v) ? "true" : "false");
+    for(u32 i=0; i<vm._register_count; ++i) {
+        mf_tensor* t = mf_vm_map_tensor(&vm, i, MF_ACCESS_READ);
+        print_tensor(i, t);
     }
 
     free(buffer);

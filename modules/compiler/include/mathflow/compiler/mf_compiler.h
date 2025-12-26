@@ -3,89 +3,77 @@
 
 #include <mathflow/isa/mf_base.h>
 #include <mathflow/isa/mf_program.h>
-#include <mathflow/vm/mf_memory.h> // For mf_arena
+#include <mathflow/isa/mf_tensor.h>
+#include <mathflow/vm/mf_memory.h> 
 
 // --- Graph IR (Intermediate Representation) ---
 
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-    // Inputs
-    MF_NODE_INPUT_F32,
-    MF_NODE_INPUT_VEC2,
-    MF_NODE_INPUT_VEC3,
-    MF_NODE_INPUT_VEC4,
-    MF_NODE_INPUT_MAT3,
-    MF_NODE_INPUT_MAT4,
-    MF_NODE_INPUT_BOOL,
+    // Inputs (Constants)
+    MF_NODE_INPUT,  // Any constant tensor input
+    
+    // Arithmetic
+    MF_NODE_ADD,
+    MF_NODE_SUB,
+    MF_NODE_MUL,
+    MF_NODE_DIV,
     
     // Math
-    MF_NODE_ADD_F32,
-    MF_NODE_SUB_F32,
-    MF_NODE_MUL_F32,
-    MF_NODE_DIV_F32,
-    MF_NODE_MIN_F32,
-    MF_NODE_MAX_F32,
-    MF_NODE_CLAMP_F32,
-    MF_NODE_FLOOR_F32,
-    MF_NODE_CEIL_F32,
-    MF_NODE_SIN_F32,
-    MF_NODE_COS_F32,
-    MF_NODE_ATAN2_F32,
-    
-    MF_NODE_ADD_VEC3,
-    MF_NODE_SCALE_VEC3, // vec3 * f32
+    MF_NODE_MIN,
+    MF_NODE_MAX,
+    MF_NODE_ABS,
+    MF_NODE_CLAMP,
+    MF_NODE_FLOOR,
+    MF_NODE_CEIL,
+    MF_NODE_SIN,
+    MF_NODE_COS,
+    MF_NODE_ATAN2,
+    MF_NODE_SQRT,
+    MF_NODE_POW,
 
     // Matrix
-    MF_NODE_MUL_MAT3,
-    MF_NODE_TRANSPOSE_MAT3,
-    MF_NODE_INVERSE_MAT3,
-    
-    MF_NODE_MUL_MAT4,
-    MF_NODE_TRANSPOSE_MAT4,
-    MF_NODE_INVERSE_MAT4,
-    
-    // Comparison (f32 -> bool)
-    MF_NODE_GREATER_F32,
-    MF_NODE_LESS_F32,
-    MF_NODE_EQUAL_F32,
-    
-    // Logic (bool)
+    MF_NODE_MATMUL,
+    MF_NODE_TRANSPOSE,
+    MF_NODE_INVERSE,
+    MF_NODE_NORMALIZE,
+
+    // Comparison
+    MF_NODE_LESS,
+    MF_NODE_GREATER,
+    MF_NODE_EQUAL,
+    MF_NODE_NEQUAL,
+    MF_NODE_LEQUAL,
+    MF_NODE_GEQUAL,
+
+    // Logic
     MF_NODE_AND,
     MF_NODE_OR,
+    MF_NODE_XOR,
     MF_NODE_NOT,
     
     // Selection
-    MF_NODE_SELECT_F32,  // bool ? f32 : f32
-    MF_NODE_SELECT_VEC3, // bool ? vec3 : vec3
-    MF_NODE_SELECT_VEC4, // bool ? vec4 : vec4
+    MF_NODE_SELECT, // Where/Select
 
     MF_NODE_COUNT
 } mf_node_type;
 
 typedef struct {
-    u32 id;             // JSON ID
+    const char* id; 
     mf_node_type type;
     
-    // Initial data (if Input node)
-    union {
-        f32 val_f32;
-        mf_vec2 val_vec2;
-        mf_vec3 val_vec3;
-        mf_vec4 val_vec4;
-        mf_mat3 val_mat3;
-        mf_mat4 val_mat4;
-        u8 val_bool;
-    };
+    // Constant Data (valid if type == MF_NODE_INPUT)
+    mf_tensor constant; 
 
     // Compiler Generated info
-    u16 out_reg_idx;    // Index in the Data Column
+    u16 out_reg_idx;    // Index in the global Tensor Pool
 } mf_ir_node;
 
 typedef struct {
-    u32 src_id;
+    u32 src_node_idx; 
     u32 src_port;
-    u32 dst_id;
+    u32 dst_node_idx; 
     u32 dst_port;
 } mf_ir_link;
 
@@ -104,11 +92,10 @@ typedef struct {
 // 1. Parse JSON -> IR
 bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena);
 
-// 2. IR -> Program (Allocation & Bytecode)
-// Generates a complete program structure allocated in the arena.
+// 2. IR -> Program
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena);
 
-// 3. Save Program to Binary File
+// 3. Save Program
 bool mf_compile_save_program(const mf_program* prog, const char* path);
 
 #endif // MF_COMPILER_H

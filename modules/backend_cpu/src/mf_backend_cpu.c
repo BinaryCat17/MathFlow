@@ -1,356 +1,177 @@
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
-#include <mathflow/backend_cpu/mf_math.h>
+#include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/isa/mf_tensor.h>
+#include <stdlib.h>
+#include <string.h>
+#include <math.h>
 
-// Helper macros for kernels - Updated for Accessor API with Modes
-#define GET_F32_R(vm, idx) (mf_vm_map_f32(vm, idx, MF_ACCESS_READ))
-#define GET_F32_W(vm, idx) (mf_vm_map_f32(vm, idx, MF_ACCESS_WRITE))
+// --- Memory Helper ---
+// Basic allocator for outputs. Leak warning: no free() yet.
+static void ensure_shape(mf_tensor* dst, const mf_tensor* src_shape) {
+    bool same_shape = (dst->ndim == src_shape->ndim);
+    if (same_shape) {
+        for(int i=0; i<dst->ndim; ++i) if(dst->shape[i] != src_shape->shape[i]) same_shape = false;
+    }
 
-#define GET_VEC2_R(vm, idx) (mf_vm_map_vec2(vm, idx, MF_ACCESS_READ))
-#define GET_VEC2_W(vm, idx) (mf_vm_map_vec2(vm, idx, MF_ACCESS_WRITE))
-
-#define GET_VEC3_R(vm, idx) (mf_vm_map_vec3(vm, idx, MF_ACCESS_READ))
-#define GET_VEC3_W(vm, idx) (mf_vm_map_vec3(vm, idx, MF_ACCESS_WRITE))
-
-#define GET_VEC4_R(vm, idx) (mf_vm_map_vec4(vm, idx, MF_ACCESS_READ))
-#define GET_VEC4_W(vm, idx) (mf_vm_map_vec4(vm, idx, MF_ACCESS_WRITE))
-
-#define GET_MAT4_R(vm, idx) (mf_vm_map_mat4(vm, idx, MF_ACCESS_READ))
-#define GET_MAT4_W(vm, idx) (mf_vm_map_mat4(vm, idx, MF_ACCESS_WRITE))
-
-#define GET_MAT3_R(vm, idx) (mf_vm_map_mat3(vm, idx, MF_ACCESS_READ))
-#define GET_MAT3_W(vm, idx) (mf_vm_map_mat3(vm, idx, MF_ACCESS_WRITE))
-
-#define GET_BOOL_R(vm, idx) (mf_vm_map_bool(vm, idx, MF_ACCESS_READ))
-#define GET_BOOL_W(vm, idx) (mf_vm_map_bool(vm, idx, MF_ACCESS_WRITE))
-
-// --- Hooks ---
-
-static void hook_on_exec_begin(mf_vm* vm) {
-    (void)vm;
-    // Placeholder for synchronization start
-}
-
-static void hook_on_exec_end(mf_vm* vm) {
-    (void)vm;
-    // Placeholder for synchronization end
-}
-
-static void hook_on_map(mf_vm* vm, mf_column_type type, u16 idx, mf_access_mode mode) {
-    (void)vm; (void)type; (void)idx; (void)mode;
-    // Placeholder: This is where we would trigger lazy sync from GPU
-    // if (mode == MF_ACCESS_READ && is_dirty_on_gpu(type, idx)) { download(); }
-    // if (mode == MF_ACCESS_WRITE) { mark_dirty_on_cpu(type, idx); }
-}
-
-// --- Kernels ---
-
-static void op_noop(mf_vm* vm, u16 d, u16 s1, u16 s2) { (void)vm; (void)d; (void)s1; (void)s2; }
-
-// --- F32 Math ---
-static void op_add_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = MF_VAL(s1) + MF_VAL(s2);
-}
-
-static void op_sub_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = MF_VAL(s1) - MF_VAL(s2);
-}
-
-static void op_mul_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = MF_VAL(s1) * MF_VAL(s2);
-}
-
-static void op_div_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) {
-        if (MF_VAL(s2) != 0.0f) MF_VAL(d) = MF_VAL(s1) / MF_VAL(s2);
-        else MF_VAL(d) = 0.0f; 
+    if (!dst->data || !same_shape) {
+        // Reallocate
+        if (dst->data) free(dst->data); // Assume malloc
+        
+        dst->dtype = src_shape->dtype;
+        dst->ndim = src_shape->ndim;
+        memcpy(dst->shape, src_shape->shape, sizeof(dst->shape));
+        dst->size = src_shape->size;
+        
+        dst->data = malloc(dst->size * mf_dtype_size(dst->dtype));
     }
 }
 
-static void op_min_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = fminf(MF_VAL(s1), MF_VAL(s2));
+// --- Kernel: Binary Math ---
+
+#define OP_KERNEL_BINARY(NAME, OP) \
+static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
+    if (!a || !b) return; \
+    \
+    bool a_scalar = (a->size == 1); \
+    bool b_scalar = (b->size == 1); \
+    \
+    if (a_scalar && b_scalar) { \
+        ensure_shape(dst, a); \
+        f32 val_a = ((f32*)a->data)[0]; \
+        f32 val_b = ((f32*)b->data)[0]; \
+        ((f32*)dst->data)[0] = val_a OP val_b; \
+    } \
+    else if (!a_scalar && !b_scalar) { \
+        /* Element-wise (assume same shape) */ \
+        ensure_shape(dst, a); \
+        f32* da = (f32*)a->data; \
+        f32* db = (f32*)b->data; \
+        f32* dd = (f32*)dst->data; \
+        for(size_t i=0; i<a->size; ++i) dd[i] = da[i] OP db[i]; \
+    } \
+    else if (a_scalar) { \
+        /* Broadcast A -> B */ \
+        ensure_shape(dst, b); \
+        f32 val_a = ((f32*)a->data)[0]; \
+        f32* db = (f32*)b->data; \
+        f32* dd = (f32*)dst->data; \
+        for(size_t i=0; i<b->size; ++i) dd[i] = val_a OP db[i]; \
+    } \
+    else { \
+        /* Broadcast B -> A */ \
+        ensure_shape(dst, a); \
+        f32* da = (f32*)a->data; \
+        f32 val_b = ((f32*)b->data)[0]; \
+        f32* dd = (f32*)dst->data; \
+        for(size_t i=0; i<a->size; ++i) dd[i] = da[i] OP val_b; \
+    } \
 }
 
-static void op_max_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = fmaxf(MF_VAL(s1), MF_VAL(s2));
-}
+OP_KERNEL_BINARY(add, +)
+OP_KERNEL_BINARY(sub, -)
+OP_KERNEL_BINARY(mul, *)
+OP_KERNEL_BINARY(div, /)
 
-static void op_floor_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = floorf(MF_VAL(s1));
-}
-
-static void op_ceil_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = ceilf(MF_VAL(s1));
-}
-
-static void op_sin_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = sinf(MF_VAL(s1));
-}
-
-static void op_cos_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = cosf(MF_VAL(s1));
-}
-
-static void op_atan2_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = atan2f(MF_VAL(s1), MF_VAL(s2));
-}
-
-// --- Vec3 Math ---
-static void op_add_vec3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_vec3 d = GET_VEC3_W(vm, dest);
-    mf_ref_vec3 s1 = GET_VEC3_R(vm, src1);
-    mf_ref_vec3 s2 = GET_VEC3_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = mf_vec3_add(MF_VAL(s1), MF_VAL(s2));
-}
-
-static void op_scale_vec3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_vec3 d = GET_VEC3_W(vm, dest);
-    mf_ref_vec3 s1 = GET_VEC3_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) {
-        MF_VAL(d).x = MF_VAL(s1).x * MF_VAL(s2);
-        MF_VAL(d).y = MF_VAL(s1).y * MF_VAL(s2);
-        MF_VAL(d).z = MF_VAL(s1).z * MF_VAL(s2);
+// --- Kernel: Binary Func (Min/Max) ---
+// Need function pointers instead of operators
+static void op_min(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    if (!a || !b) return;
+    ensure_shape(dst, (a->size > b->size) ? a : b);
+    
+    f32* da = (f32*)a->data;
+    f32* db = (f32*)b->data;
+    f32* dd = (f32*)dst->data;
+    size_t n = dst->size;
+    
+    bool a_scal = (a->size == 1);
+    bool b_scal = (b->size == 1);
+    
+    for(size_t i=0; i<n; ++i) {
+        f32 va = a_scal ? da[0] : da[i];
+        f32 vb = b_scal ? db[0] : db[i];
+        dd[i] = (va < vb) ? va : vb;
     }
 }
 
-static void op_dot_vec3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_vec3 s1 = GET_VEC3_R(vm, src1);
-    mf_ref_vec3 s2 = GET_VEC3_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = mf_vec3_dot(MF_VAL(s1), MF_VAL(s2));
+static void op_max(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    if (!a || !b) return;
+    ensure_shape(dst, (a->size > b->size) ? a : b);
+    
+    f32* da = (f32*)a->data;
+    f32* db = (f32*)b->data;
+    f32* dd = (f32*)dst->data;
+    size_t n = dst->size;
+    bool a_scal = (a->size == 1);
+    bool b_scal = (b->size == 1);
+    
+    for(size_t i=0; i<n; ++i) {
+        f32 va = a_scal ? da[0] : da[i];
+        f32 vb = b_scal ? db[0] : db[i];
+        dd[i] = (va > vb) ? va : vb;
+    }
 }
 
-// --- Matrix ---
-static void op_mul_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_mat4 d = GET_MAT4_W(vm, dest);
-    mf_ref_mat4 s1 = GET_MAT4_R(vm, src1);
-    mf_ref_mat4 s2 = GET_MAT4_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = mf_mat4_mul(MF_VAL(s1), MF_VAL(s2));
+// --- Kernel: Where (Select) ---
+static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    
+    // Logic: Dest = Val where Cond is True. Else keep Dest.
+    // Ensure Dest is initialized to Shape of Val
+    ensure_shape(dst, val);
+    
+    u8* c = (u8*)cond->data; // Assume Bool U8
+    f32* v = (f32*)val->data;
+    f32* d = (f32*)dst->data;
+    
+    bool c_scal = (cond->size == 1);
+    
+    for(size_t i=0; i<dst->size; ++i) {
+        if (c[c_scal ? 0 : i]) d[i] = v[i];
+    }
 }
 
-static void op_trans_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_mat4 d = GET_MAT4_W(vm, dest);
-    mf_ref_vec3 s1 = GET_VEC3_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = mf_mat4_translate(MF_VAL(s1));
+static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    
+    ensure_shape(dst, val);
+    
+    u8* c = (u8*)cond->data;
+    f32* v = (f32*)val->data;
+    f32* d = (f32*)dst->data;
+    
+    bool c_scal = (cond->size == 1);
+    
+    for(size_t i=0; i<dst->size; ++i) {
+        if (!c[c_scal ? 0 : i]) d[i] = v[i];
+    }
 }
 
-static void op_transpose_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_mat4 d = GET_MAT4_W(vm, dest);
-    mf_ref_mat4 s1 = GET_MAT4_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = mf_mat4_transpose(MF_VAL(s1));
-}
-
-static void op_inverse_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_mat4 d = GET_MAT4_W(vm, dest);
-    mf_ref_mat4 s1 = GET_MAT4_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = mf_mat4_inverse(MF_VAL(s1));
-}
-
-// --- Mat3 ---
-
-static void op_mul_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_mat3 d = GET_MAT3_W(vm, dest);
-    mf_ref_mat3 s1 = GET_MAT3_R(vm, src1);
-    mf_ref_mat3 s2 = GET_MAT3_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = mf_mat3_mul(MF_VAL(s1), MF_VAL(s2));
-}
-
-static void op_transpose_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_mat3 d = GET_MAT3_W(vm, dest);
-    mf_ref_mat3 s1 = GET_MAT3_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = mf_mat3_transpose(MF_VAL(s1));
-}
-
-static void op_inverse_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_mat3 d = GET_MAT3_W(vm, dest);
-    mf_ref_mat3 s1 = GET_MAT3_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = mf_mat3_inverse(MF_VAL(s1));
-}
-
-// --- Comparison ---
-
-static void op_greater_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = (MF_VAL(s1) > MF_VAL(s2)) ? 1 : 0;
-}
-
-static void op_less_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = (MF_VAL(s1) < MF_VAL(s2)) ? 1 : 0;
-}
-
-static void op_equal_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_f32 s1 = GET_F32_R(vm, src1);
-    mf_ref_f32 s2 = GET_F32_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = (MF_VAL(s1) == MF_VAL(s2)) ? 1 : 0;
-}
-
-// --- Logic ---
-
-static void op_and(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_bool s1 = GET_BOOL_R(vm, src1);
-    mf_ref_bool s2 = GET_BOOL_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = (MF_VAL(s1) && MF_VAL(s2)) ? 1 : 0;
-}
-
-static void op_or(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_bool s1 = GET_BOOL_R(vm, src1);
-    mf_ref_bool s2 = GET_BOOL_R(vm, src2);
-    if (MF_VALID(d) && MF_VALID(s1) && MF_VALID(s2)) MF_VAL(d) = (MF_VAL(s1) || MF_VAL(s2)) ? 1 : 0;
-}
-
-static void op_not(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
-    (void)src2;
-    mf_ref_bool d = GET_BOOL_W(vm, dest);
-    mf_ref_bool s1 = GET_BOOL_R(vm, src1);
-    if (MF_VALID(d) && MF_VALID(s1)) MF_VAL(d) = !MF_VAL(s1);
-}
-
-// --- CMOV (Selection) ---
-
-// F32
-static void op_cmov_true_f32(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s = GET_F32_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-static void op_cmov_false_f32(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_f32 d = GET_F32_W(vm, dest);
-    mf_ref_f32 s = GET_F32_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && !MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-// Vec3
-static void op_cmov_true_vec3(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_vec3 d = GET_VEC3_W(vm, dest);
-    mf_ref_vec3 s = GET_VEC3_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-static void op_cmov_false_vec3(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_vec3 d = GET_VEC3_W(vm, dest);
-    mf_ref_vec3 s = GET_VEC3_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && !MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-// Vec4
-static void op_cmov_true_vec4(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_vec4 d = GET_VEC4_W(vm, dest);
-    mf_ref_vec4 s = GET_VEC4_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-static void op_cmov_false_vec4(mf_vm* vm, u16 dest, u16 cond, u16 src) {
-    mf_ref_bool c = GET_BOOL_R(vm, cond);
-    mf_ref_vec4 d = GET_VEC4_W(vm, dest);
-    mf_ref_vec4 s = GET_VEC4_R(vm, src);
-    if (MF_VALID(c) && MF_VALID(d) && MF_VALID(s) && !MF_VAL(c)) MF_VAL(d) = MF_VAL(s);
-}
-
-
-// --- Init Table ---
+// --- Init ---
 
 void mf_backend_cpu_init(mf_backend_dispatch_table* table) {
-    // 0. Hooks
-    table->on_exec_begin = hook_on_exec_begin;
-    table->on_exec_end = hook_on_exec_end;
-    table->on_map = hook_on_map;
-
-    // 1. Fill default NOOPs
-    for(int i=0; i<MF_OP_COUNT; ++i) table->op_table[i] = op_noop;
-
-    // 2. Register implementations
-    table->op_table[MF_OP_ADD_F32] = op_add_f32;
-    table->op_table[MF_OP_SUB_F32] = op_sub_f32;
-    table->op_table[MF_OP_MUL_F32] = op_mul_f32;
-    table->op_table[MF_OP_DIV_F32] = op_div_f32;
-    table->op_table[MF_OP_MIN_F32] = op_min_f32;
-    table->op_table[MF_OP_MAX_F32] = op_max_f32;
-    table->op_table[MF_OP_FLOOR_F32] = op_floor_f32;
-    table->op_table[MF_OP_CEIL_F32] = op_ceil_f32;
-    table->op_table[MF_OP_SIN_F32] = op_sin_f32;
-    table->op_table[MF_OP_COS_F32] = op_cos_f32;
-    table->op_table[MF_OP_ATAN2_F32] = op_atan2_f32;
+    memset(table, 0, sizeof(mf_backend_dispatch_table));
     
-    table->op_table[MF_OP_ADD_VEC3] = op_add_vec3;
-    table->op_table[MF_OP_SCALE_VEC3] = op_scale_vec3;
-    table->op_table[MF_OP_DOT_VEC3] = op_dot_vec3;
+    table->op_table[MF_OP_ADD] = op_add;
+    table->op_table[MF_OP_SUB] = op_sub;
+    table->op_table[MF_OP_MUL] = op_mul;
+    table->op_table[MF_OP_DIV] = op_div;
     
-    table->op_table[MF_OP_MUL_MAT4] = op_mul_mat4;
-    table->op_table[MF_OP_TRANS_MAT4] = op_trans_mat4;
-    table->op_table[MF_OP_TRANSPOSE_MAT4] = op_transpose_mat4;
-    table->op_table[MF_OP_INVERSE_MAT4] = op_inverse_mat4;
+    table->op_table[MF_OP_MIN] = op_min;
+    table->op_table[MF_OP_MAX] = op_max;
     
-    table->op_table[MF_OP_MUL_MAT3] = op_mul_mat3;
-    table->op_table[MF_OP_TRANSPOSE_MAT3] = op_transpose_mat3;
-    table->op_table[MF_OP_INVERSE_MAT3] = op_inverse_mat3;
-    
-    // Comparison
-    table->op_table[MF_OP_GREATER_F32] = op_greater_f32;
-    table->op_table[MF_OP_LESS_F32] = op_less_f32;
-    table->op_table[MF_OP_EQUAL_F32] = op_equal_f32;
-    
-    // Logic
-    table->op_table[MF_OP_AND] = op_and;
-    table->op_table[MF_OP_OR] = op_or;
-    table->op_table[MF_OP_NOT] = op_not;
-    
-    // CMOV
-    table->op_table[MF_OP_CMOV_TRUE_F32] = op_cmov_true_f32;
-    table->op_table[MF_OP_CMOV_FALSE_F32] = op_cmov_false_f32;
-    table->op_table[MF_OP_CMOV_TRUE_VEC3] = op_cmov_true_vec3;
-    table->op_table[MF_OP_CMOV_FALSE_VEC3] = op_cmov_false_vec3;
-    table->op_table[MF_OP_CMOV_TRUE_VEC4] = op_cmov_true_vec4;
-    table->op_table[MF_OP_CMOV_FALSE_VEC4] = op_cmov_false_vec4;
+    table->op_table[MF_OP_WHERE_TRUE] = op_where_true;
+    table->op_table[MF_OP_WHERE_FALSE] = op_where_false;
 }
