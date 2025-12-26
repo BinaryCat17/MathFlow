@@ -17,6 +17,8 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"InputVec2", MF_NODE_INPUT_VEC2},
     {"InputVec3", MF_NODE_INPUT_VEC3},
     {"InputVec4", MF_NODE_INPUT_VEC4},
+    {"InputMat3", MF_NODE_INPUT_MAT3},
+    {"InputMat4", MF_NODE_INPUT_MAT4},
     {"InputBool", MF_NODE_INPUT_BOOL},
     // Math - F32
     {"AddFloat", MF_NODE_ADD_F32},
@@ -47,6 +49,14 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"SelectFloat", MF_NODE_SELECT_F32},
     {"SelectVec3", MF_NODE_SELECT_VEC3},
     {"SelectVec4", MF_NODE_SELECT_VEC4},
+    
+    // Matrix
+    {"MulMat3", MF_NODE_MUL_MAT3},
+    {"TransposeMat3", MF_NODE_TRANSPOSE_MAT3},
+    {"InverseMat3", MF_NODE_INVERSE_MAT3},
+    {"MulMat4", MF_NODE_MUL_MAT4},
+    {"TransposeMat4", MF_NODE_TRANSPOSE_MAT4},
+    {"InverseMat4", MF_NODE_INVERSE_MAT4},
     
     {NULL, MF_NODE_UNKNOWN}
 };
@@ -111,6 +121,12 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
                             ir_node->val_vec4.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
                             ir_node->val_vec4.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
                             ir_node->val_vec4.w = (f32)cJSON_GetArrayItem(val, 3)->valuedouble;
+                        }
+                        else if (ir_node->type == MF_NODE_INPUT_MAT3) {
+                            for(int k=0; k<9; ++k) ir_node->val_mat3.m[k] = (f32)cJSON_GetArrayItem(val, k)->valuedouble;
+                        }
+                        else if (ir_node->type == MF_NODE_INPUT_MAT4) {
+                            for(int k=0; k<16; ++k) ir_node->val_mat4.m[k] = (f32)cJSON_GetArrayItem(val, k)->valuedouble;
                         }
                     }
                 }
@@ -187,11 +203,13 @@ static void visit_node(sort_ctx* ctx, mf_ir_node* node) {
 
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     // 1. Setup local columns
-    mf_column col_f32, col_vec2, col_vec3, col_vec4, col_bool;
+    mf_column col_f32, col_vec2, col_vec3, col_vec4, col_mat3, col_mat4, col_bool;
     mf_column_init(&col_f32, sizeof(f32), 16, arena);
     mf_column_init(&col_vec2, sizeof(mf_vec2), 16, arena);
     mf_column_init(&col_vec3, sizeof(mf_vec3), 16, arena);
     mf_column_init(&col_vec4, sizeof(mf_vec4), 16, arena);
+    mf_column_init(&col_mat3, sizeof(mf_mat3), 16, arena);
+    mf_column_init(&col_mat4, sizeof(mf_mat4), 16, arena);
     mf_column_init(&col_bool, sizeof(u8), 16, arena);
 
     // 2. Allocation Pass
@@ -199,6 +217,8 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     u16 vec2_head = 0;
     u16 vec3_head = 0;
     u16 vec4_head = 0;
+    u16 mat3_head = 0;
+    u16 mat4_head = 0;
     u16 bool_head = 0;
     
     for (size_t i = 0; i < ir->node_count; ++i) {
@@ -226,6 +246,31 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_INPUT_BOOL:
                 node->out_reg_idx = bool_head++;
                 mf_column_push(&col_bool, &node->val_bool, arena);
+                break;
+            
+            case MF_NODE_INPUT_MAT3:
+                node->out_reg_idx = mat3_head++;
+                mf_column_push(&col_mat3, &node->val_mat3, arena);
+                break;
+
+            case MF_NODE_INPUT_MAT4:
+                node->out_reg_idx = mat4_head++;
+                mf_column_push(&col_mat4, &node->val_mat4, arena);
+                break;
+
+            // Matrix Ops
+            case MF_NODE_MUL_MAT3:
+            case MF_NODE_TRANSPOSE_MAT3:
+            case MF_NODE_INVERSE_MAT3:
+                node->out_reg_idx = mat3_head++;
+                mf_column_push(&col_mat3, NULL, arena);
+                break;
+            
+            case MF_NODE_MUL_MAT4:
+            case MF_NODE_TRANSPOSE_MAT4:
+            case MF_NODE_INVERSE_MAT4:
+                node->out_reg_idx = mat4_head++;
+                mf_column_push(&col_mat4, NULL, arena);
                 break;
                 
             // Ops
@@ -297,14 +342,16 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     prog->meta.vec2_count = (u32)col_vec2.count;
     prog->meta.vec3_count = (u32)col_vec3.count;
     prog->meta.vec4_count = (u32)col_vec4.count;
-    prog->meta.mat4_count = 0;
+    prog->meta.mat3_count = (u32)col_mat3.count;
+    prog->meta.mat4_count = (u32)col_mat4.count;
     prog->meta.bool_count = (u32)col_bool.count;
     
     prog->data_f32 = (f32*)col_f32.data;
     prog->data_vec2 = (mf_vec2*)col_vec2.data;
     prog->data_vec3 = (mf_vec3*)col_vec3.data;
     prog->data_vec4 = (mf_vec4*)col_vec4.data;
-    prog->data_mat4 = NULL;
+    prog->data_mat3 = (mf_mat3*)col_mat3.data;
+    prog->data_mat4 = (mf_mat4*)col_mat4.data;
     prog->data_bool = (u8*)col_bool.data;
 
     // 5. Instruction Generation
@@ -504,6 +551,48 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                     instr_count++;
                 }
                 break;
+
+            // --- Mat3 ---
+            case MF_NODE_MUL_MAT3:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_MUL_MAT3;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+            case MF_NODE_TRANSPOSE_MAT3:
+            case MF_NODE_INVERSE_MAT3:
+                if (s1) {
+                    inst->opcode = (node->type == MF_NODE_TRANSPOSE_MAT3) ? MF_OP_TRANSPOSE_MAT3 : MF_OP_INVERSE_MAT3;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = 0;
+                    instr_count++;
+                }
+                break;
+
+            // --- Mat4 ---
+            case MF_NODE_MUL_MAT4:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_MUL_MAT4;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+             case MF_NODE_TRANSPOSE_MAT4:
+             case MF_NODE_INVERSE_MAT4:
+                if (s1) {
+                    inst->opcode = (node->type == MF_NODE_TRANSPOSE_MAT4) ? MF_OP_TRANSPOSE_MAT4 : MF_OP_INVERSE_MAT4;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = 0;
+                    instr_count++;
+                }
+                break;
                 
             default: break;
         }
@@ -529,6 +618,7 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
     if (prog->meta.vec2_count > 0) fwrite(prog->data_vec2, sizeof(mf_vec2), prog->meta.vec2_count, f);
     if (prog->meta.vec3_count > 0) fwrite(prog->data_vec3, sizeof(mf_vec3), prog->meta.vec3_count, f);
     if (prog->meta.vec4_count > 0) fwrite(prog->data_vec4, sizeof(mf_vec4), prog->meta.vec4_count, f);
+    if (prog->meta.mat3_count > 0) fwrite(prog->data_mat3, sizeof(mf_mat3), prog->meta.mat3_count, f);
     if (prog->meta.mat4_count > 0) fwrite(prog->data_mat4, sizeof(mf_mat4), prog->meta.mat4_count, f);
     if (prog->meta.bool_count > 0) fwrite(prog->data_bool, sizeof(u8), prog->meta.bool_count, f);
 

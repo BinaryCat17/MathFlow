@@ -15,6 +15,8 @@ typedef enum {
     MF_NODE_INPUT_VEC2,
     MF_NODE_INPUT_VEC3,
     MF_NODE_INPUT_VEC4,
+    MF_NODE_INPUT_MAT3,
+    MF_NODE_INPUT_MAT4,
     MF_NODE_INPUT_BOOL,
     
     // Math
@@ -33,6 +35,15 @@ typedef enum {
     
     MF_NODE_ADD_VEC3,
     MF_NODE_SCALE_VEC3, // vec3 * f32
+
+    // Matrix
+    MF_NODE_MUL_MAT3,
+    MF_NODE_TRANSPOSE_MAT3,
+    MF_NODE_INVERSE_MAT3,
+    
+    MF_NODE_MUL_MAT4,
+    MF_NODE_TRANSPOSE_MAT4,
+    MF_NODE_INVERSE_MAT4,
     
     // Comparison (f32 -> bool)
     MF_NODE_GREATER_F32,
@@ -62,6 +73,8 @@ typedef struct {
         mf_vec2 val_vec2;
         mf_vec3 val_vec3;
         mf_vec4 val_vec4;
+        mf_mat3 val_mat3;
+        mf_mat4 val_mat4;
         u8 val_bool;
     };
 

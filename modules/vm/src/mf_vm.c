@@ -14,6 +14,7 @@ void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena) {
     vm->vec2_col = MF_ARENA_PUSH(arena, mf_column, 1);
     vm->vec3_col = MF_ARENA_PUSH(arena, mf_column, 1);
     vm->vec4_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->mat3_col = MF_ARENA_PUSH(arena, mf_column, 1);
     vm->mat4_col = MF_ARENA_PUSH(arena, mf_column, 1);
     vm->bool_col = MF_ARENA_PUSH(arena, mf_column, 1);
 
@@ -48,6 +49,14 @@ void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena) {
     if (prog->meta.vec4_count > 0 && prog->data_vec4) {
         for (u32 i = 0; i < prog->meta.vec4_count; ++i) {
             mf_column_push(vm->vec4_col, &prog->data_vec4[i], arena);
+        }
+    }
+
+    // Mat3
+    mf_column_init(vm->mat3_col, sizeof(mf_mat3), prog->meta.mat3_count, arena);
+    if (prog->meta.mat3_count > 0 && prog->data_mat3) {
+        for (u32 i = 0; i < prog->meta.mat3_count; ++i) {
+            mf_column_push(vm->mat3_col, &prog->data_mat3[i], arena);
         }
     }
 
@@ -118,7 +127,13 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
         fread(prog->data_vec4, sizeof(mf_vec4), meta.vec4_count, f);
     } else prog->data_vec4 = NULL;
 
-    // 5. Mat4
+    // 5. Mat3
+    if (meta.mat3_count > 0) {
+        prog->data_mat3 = MF_ARENA_PUSH(arena, mf_mat3, meta.mat3_count);
+        fread(prog->data_mat3, sizeof(mf_mat3), meta.mat3_count, f);
+    } else prog->data_mat3 = NULL;
+
+    // 6. Mat4
     if (meta.mat4_count > 0) {
         prog->data_mat4 = MF_ARENA_PUSH(arena, mf_mat4, meta.mat4_count);
         fread(prog->data_mat4, sizeof(mf_mat4), meta.mat4_count, f);

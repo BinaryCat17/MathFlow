@@ -27,6 +27,7 @@ typedef struct mf_vm_t {
     mf_column* vec2_col;
     mf_column* vec3_col;
     mf_column* vec4_col;
+    mf_column* mat3_col;
     mf_column* mat4_col;
     mf_column* bool_col;
 

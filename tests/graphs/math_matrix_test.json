@@ -1,0 +1,20 @@
+{
+  "nodes": [
+    { "id": 1, "type": "InputMat3", "data": { "value": [2,0,0, 0,2,0, 0,0,2] } },
+    { "id": 2, "type": "InputMat3", "data": { "value": [1,0,0, 0,1,0, 0,0,1] } },
+    { "id": 10, "type": "MulMat3" },
+    { "id": 11, "type": "InverseMat3" },
+    
+    { "id": 20, "type": "InputMat4", "data": { "value": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,2,3,1] } },
+    { "id": 21, "type": "TransposeMat4" },
+    { "id": 22, "type": "InverseMat4" }
+  ],
+  "links": [
+    { "src": 1, "src_port": 0, "dst": 10, "dst_port": 0 },
+    { "src": 2, "src_port": 0, "dst": 10, "dst_port": 1 },
+    { "src": 1, "src_port": 0, "dst": 11, "dst_port": 0 },
+    
+    { "src": 20, "src_port": 0, "dst": 21, "dst_port": 0 },
+    { "src": 20, "src_port": 0, "dst": 22, "dst_port": 0 }
+  ]
+}

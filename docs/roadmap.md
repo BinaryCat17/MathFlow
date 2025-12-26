@@ -26,9 +26,9 @@ Goal: Expand the capability of the CPU backend to support UI logic and robust se
 - [x] **Control Ops:** `SELECT` (Ternary `? :`) for conditional data flow.
 
 ### 2.3. Math Expansion
-- [ ] **Layout Math:** `MIN`, `MAX`, `CLAMP`, `FLOOR`, `CEIL`.
-- [ ] **Matrix Math:** `MAT3` (2D Affine), `Inverse`, `Transpose`.
-- [ ] **Trigonometry:** `SIN`, `COS`, `ATAN2`.
+- [x] **Layout Math:** `MIN`, `MAX`, `CLAMP`, `FLOOR`, `CEIL`.
+- [x] **Matrix Math:** `MAT3` (2D Affine), `Inverse`, `Transpose`.
+- [x] **Trigonometry:** `SIN`, `COS`, `ATAN2`.
 
 ### 2.4. Memory Abstraction (Safety & Portability)
 - [ ] **Accessor API:** Replace direct column access in backends with an abstraction layer (e.g., `mf_vm_map_f32(vm, reg_idx)`).

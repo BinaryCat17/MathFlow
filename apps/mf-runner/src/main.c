@@ -122,6 +122,29 @@ int main(int argc, char** argv) {
         printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", v->x, v->y, v->z, v->w);
     }
 
+    if (vm.mat3_col && vm.mat3_col->count > 0) {
+        printf("[Mat3 Output] (%zu items):\n", vm.mat3_col->count);
+        for(size_t i=0; i<vm.mat3_col->count; ++i) {
+             mf_mat3* v = (mf_mat3*)mf_column_get(vm.mat3_col, i);
+             printf("  [%zu]:\n", i);
+             printf("    | %.2f %.2f %.2f |\n", v->m[0], v->m[3], v->m[6]);
+             printf("    | %.2f %.2f %.2f |\n", v->m[1], v->m[4], v->m[7]);
+             printf("    | %.2f %.2f %.2f |\n", v->m[2], v->m[5], v->m[8]);
+        }
+    }
+
+    if (vm.mat4_col && vm.mat4_col->count > 0) {
+        printf("[Mat4 Output] (%zu items):\n", vm.mat4_col->count);
+        for(size_t i=0; i<vm.mat4_col->count; ++i) {
+             mf_mat4* v = (mf_mat4*)mf_column_get(vm.mat4_col, i);
+             printf("  [%zu]:\n", i);
+             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[0], v->m[4], v->m[8], v->m[12]);
+             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[1], v->m[5], v->m[9], v->m[13]);
+             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[2], v->m[6], v->m[10], v->m[14]);
+             printf("    | %.2f %.2f %.2f %.2f |\n", v->m[3], v->m[7], v->m[11], v->m[15]);
+        }
+    }
+
     if (vm.bool_col && vm.bool_col->count > 0) {
         u8* v = (u8*)mf_column_get(vm.bool_col, vm.bool_col->count - 1);
         printf("[Bool Output]: %s\n", *v ? "true" : "false");

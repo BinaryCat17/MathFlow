@@ -32,4 +32,7 @@ typedef struct { f32 x, y, z, w; } mf_vec4;
 // Column-major 4x4 matrix
 typedef struct { f32 m[16]; } mf_mat4;
 
+// Column-major 3x3 matrix
+typedef struct { f32 m[9]; } mf_mat3;
+
 #endif // MF_BASE_H

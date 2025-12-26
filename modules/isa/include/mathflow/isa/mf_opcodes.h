@@ -35,6 +35,13 @@ typedef enum {
     // --- Matrix Math (mat4) ---
     MF_OP_MUL_MAT4,
     MF_OP_TRANS_MAT4, // Create translation matrix from vec3
+    MF_OP_TRANSPOSE_MAT4,
+    MF_OP_INVERSE_MAT4,
+
+    // --- Matrix Math (mat3) ---
+    MF_OP_MUL_MAT3,
+    MF_OP_TRANSPOSE_MAT3,
+    MF_OP_INVERSE_MAT3,
     
     // --- Comparison (f32 -> bool) ---
     // Dest: bool_col, Src1/2: f32_col

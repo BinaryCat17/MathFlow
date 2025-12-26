@@ -7,6 +7,7 @@
 #define GET_VEC3(col, idx) ((mf_vec3*)mf_column_get(col, idx))
 #define GET_VEC4(col, idx) ((mf_vec4*)mf_column_get(col, idx))
 #define GET_MAT4(col, idx) ((mf_mat4*)mf_column_get(col, idx))
+#define GET_MAT3(col, idx) ((mf_mat3*)mf_column_get(col, idx))
 #define GET_BOOL(col, idx) ((u8*)mf_column_get(col, idx))
 
 // --- Kernels ---
@@ -133,6 +134,43 @@ static void op_trans_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
     if (d && s1) *d = mf_mat4_translate(*s1);
 }
 
+static void op_transpose_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    mf_mat4* d = GET_MAT4(vm->mat4_col, dest);
+    mf_mat4* s1 = GET_MAT4(vm->mat4_col, src1);
+    if (d && s1) *d = mf_mat4_transpose(*s1);
+}
+
+static void op_inverse_mat4(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    mf_mat4* d = GET_MAT4(vm->mat4_col, dest);
+    mf_mat4* s1 = GET_MAT4(vm->mat4_col, src1);
+    if (d && s1) *d = mf_mat4_inverse(*s1);
+}
+
+// --- Mat3 ---
+
+static void op_mul_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    mf_mat3* d = GET_MAT3(vm->mat3_col, dest);
+    mf_mat3* s1 = GET_MAT3(vm->mat3_col, src1);
+    mf_mat3* s2 = GET_MAT3(vm->mat3_col, src2);
+    if (d && s1 && s2) *d = mf_mat3_mul(*s1, *s2);
+}
+
+static void op_transpose_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    mf_mat3* d = GET_MAT3(vm->mat3_col, dest);
+    mf_mat3* s1 = GET_MAT3(vm->mat3_col, src1);
+    if (d && s1) *d = mf_mat3_transpose(*s1);
+}
+
+static void op_inverse_mat3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    mf_mat3* d = GET_MAT3(vm->mat3_col, dest);
+    mf_mat3* s1 = GET_MAT3(vm->mat3_col, src1);
+    if (d && s1) *d = mf_mat3_inverse(*s1);
+}
+
 // --- Comparison ---
 
 static void op_greater_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
@@ -253,6 +291,12 @@ void mf_backend_cpu_init(mf_backend_dispatch_table* table) {
     
     table->op_table[MF_OP_MUL_MAT4] = op_mul_mat4;
     table->op_table[MF_OP_TRANS_MAT4] = op_trans_mat4;
+    table->op_table[MF_OP_TRANSPOSE_MAT4] = op_transpose_mat4;
+    table->op_table[MF_OP_INVERSE_MAT4] = op_inverse_mat4;
+    
+    table->op_table[MF_OP_MUL_MAT3] = op_mul_mat3;
+    table->op_table[MF_OP_TRANSPOSE_MAT3] = op_transpose_mat3;
+    table->op_table[MF_OP_INVERSE_MAT3] = op_inverse_mat3;
     
     // Comparison
     table->op_table[MF_OP_GREATER_F32] = op_greater_f32;
