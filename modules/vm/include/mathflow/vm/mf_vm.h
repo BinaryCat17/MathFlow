@@ -20,20 +20,20 @@ typedef struct {
 
 // --- VM State ---
 typedef struct mf_vm_t {
-    mf_instruction* code;
-    size_t code_count;
-    
-    // Data Columns (The "Matrix")
-    mf_column* f32_col;
-    mf_column* vec2_col;
-    mf_column* vec3_col;
-    mf_column* vec4_col;
-    mf_column* mat3_col;
-    mf_column* mat4_col;
-    mf_column* bool_col;
-
-    // Backend dispatch
+    // Public (for Backend Dispatch)
     const mf_backend_dispatch_table* backend;
+
+    // Internal (Do not access directly, use Accessor API)
+    mf_instruction* _code;
+    size_t _code_count;
+    
+    mf_column* _f32_col;
+    mf_column* _vec2_col;
+    mf_column* _vec3_col;
+    mf_column* _vec4_col;
+    mf_column* _mat3_col;
+    mf_column* _mat4_col;
+    mf_column* _bool_col;
 } mf_vm;
 
 // Load a program into the VM (Allocates columns and copies initial data)

@@ -6,73 +6,73 @@ void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena) {
     if (!vm || !prog || !arena) return;
 
     // 1. Setup Code
-    vm->code = prog->code;
-    vm->code_count = prog->meta.instruction_count;
+    vm->_code = prog->code;
+    vm->_code_count = prog->meta.instruction_count;
 
     // 2. Setup Columns
-    vm->f32_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->vec2_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->vec3_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->vec4_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->mat3_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->mat4_col = MF_ARENA_PUSH(arena, mf_column, 1);
-    vm->bool_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_f32_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_vec2_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_vec3_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_vec4_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_mat3_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_mat4_col = MF_ARENA_PUSH(arena, mf_column, 1);
+    vm->_bool_col = MF_ARENA_PUSH(arena, mf_column, 1);
 
     // Initialize & Copy Data
     
     // F32
-    mf_column_init(vm->f32_col, sizeof(f32), prog->meta.f32_count, arena);
+    mf_column_init(vm->_f32_col, sizeof(f32), prog->meta.f32_count, arena);
     if (prog->meta.f32_count > 0 && prog->data_f32) {
         for (u32 i = 0; i < prog->meta.f32_count; ++i) {
-            mf_column_push(vm->f32_col, &prog->data_f32[i], arena);
+            mf_column_push(vm->_f32_col, &prog->data_f32[i], arena);
         }
     }
 
     // Vec2
-    mf_column_init(vm->vec2_col, sizeof(mf_vec2), prog->meta.vec2_count, arena);
+    mf_column_init(vm->_vec2_col, sizeof(mf_vec2), prog->meta.vec2_count, arena);
     if (prog->meta.vec2_count > 0 && prog->data_vec2) {
         for (u32 i = 0; i < prog->meta.vec2_count; ++i) {
-            mf_column_push(vm->vec2_col, &prog->data_vec2[i], arena);
+            mf_column_push(vm->_vec2_col, &prog->data_vec2[i], arena);
         }
     }
     
     // Vec3
-    mf_column_init(vm->vec3_col, sizeof(mf_vec3), prog->meta.vec3_count, arena);
+    mf_column_init(vm->_vec3_col, sizeof(mf_vec3), prog->meta.vec3_count, arena);
     if (prog->meta.vec3_count > 0 && prog->data_vec3) {
         for (u32 i = 0; i < prog->meta.vec3_count; ++i) {
-            mf_column_push(vm->vec3_col, &prog->data_vec3[i], arena);
+            mf_column_push(vm->_vec3_col, &prog->data_vec3[i], arena);
         }
     }
 
     // Vec4
-    mf_column_init(vm->vec4_col, sizeof(mf_vec4), prog->meta.vec4_count, arena);
+    mf_column_init(vm->_vec4_col, sizeof(mf_vec4), prog->meta.vec4_count, arena);
     if (prog->meta.vec4_count > 0 && prog->data_vec4) {
         for (u32 i = 0; i < prog->meta.vec4_count; ++i) {
-            mf_column_push(vm->vec4_col, &prog->data_vec4[i], arena);
+            mf_column_push(vm->_vec4_col, &prog->data_vec4[i], arena);
         }
     }
 
     // Mat3
-    mf_column_init(vm->mat3_col, sizeof(mf_mat3), prog->meta.mat3_count, arena);
+    mf_column_init(vm->_mat3_col, sizeof(mf_mat3), prog->meta.mat3_count, arena);
     if (prog->meta.mat3_count > 0 && prog->data_mat3) {
         for (u32 i = 0; i < prog->meta.mat3_count; ++i) {
-            mf_column_push(vm->mat3_col, &prog->data_mat3[i], arena);
+            mf_column_push(vm->_mat3_col, &prog->data_mat3[i], arena);
         }
     }
 
     // Mat4
-    mf_column_init(vm->mat4_col, sizeof(mf_mat4), prog->meta.mat4_count, arena);
+    mf_column_init(vm->_mat4_col, sizeof(mf_mat4), prog->meta.mat4_count, arena);
     if (prog->meta.mat4_count > 0 && prog->data_mat4) {
         for (u32 i = 0; i < prog->meta.mat4_count; ++i) {
-            mf_column_push(vm->mat4_col, &prog->data_mat4[i], arena);
+            mf_column_push(vm->_mat4_col, &prog->data_mat4[i], arena);
         }
     }
 
     // Bool (u8)
-    mf_column_init(vm->bool_col, sizeof(u8), prog->meta.bool_count, arena);
+    mf_column_init(vm->_bool_col, sizeof(u8), prog->meta.bool_count, arena);
     if (prog->meta.bool_count > 0 && prog->data_bool) {
         for (u32 i = 0; i < prog->meta.bool_count; ++i) {
-            mf_column_push(vm->bool_col, &prog->data_bool[i], arena);
+            mf_column_push(vm->_bool_col, &prog->data_bool[i], arena);
         }
     }
 }
@@ -152,8 +152,8 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
 void mf_vm_exec(mf_vm* vm) {
     if (!vm->backend) return;
 
-    for (size_t i = 0; i < vm->code_count; ++i) {
-        mf_instruction inst = vm->code[i];
+    for (size_t i = 0; i < vm->_code_count; ++i) {
+        mf_instruction inst = vm->_code[i];
         
         if (inst.opcode < MF_OP_COUNT) {
             mf_op_func func = vm->backend->op_table[inst.opcode];
@@ -167,8 +167,8 @@ void mf_vm_exec(mf_vm* vm) {
 // --- Accessors ---
 
 mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->f32_col) return MF_NULL_F32;
-    f32* p = (f32*)mf_column_get(vm->f32_col, idx);
+    if (!vm || !vm->_f32_col) return MF_NULL_F32;
+    f32* p = (f32*)mf_column_get(vm->_f32_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: F32[%u]\n", idx);
         return MF_NULL_F32;
@@ -177,8 +177,8 @@ mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec2_col) return MF_NULL_VEC2;
-    mf_vec2* p = (mf_vec2*)mf_column_get(vm->vec2_col, idx);
+    if (!vm || !vm->_vec2_col) return MF_NULL_VEC2;
+    mf_vec2* p = (mf_vec2*)mf_column_get(vm->_vec2_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec2[%u]\n", idx);
         return MF_NULL_VEC2;
@@ -187,8 +187,8 @@ mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec3_col) return MF_NULL_VEC3;
-    mf_vec3* p = (mf_vec3*)mf_column_get(vm->vec3_col, idx);
+    if (!vm || !vm->_vec3_col) return MF_NULL_VEC3;
+    mf_vec3* p = (mf_vec3*)mf_column_get(vm->_vec3_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec3[%u]\n", idx);
         return MF_NULL_VEC3;
@@ -197,8 +197,8 @@ mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->vec4_col) return MF_NULL_VEC4;
-    mf_vec4* p = (mf_vec4*)mf_column_get(vm->vec4_col, idx);
+    if (!vm || !vm->_vec4_col) return MF_NULL_VEC4;
+    mf_vec4* p = (mf_vec4*)mf_column_get(vm->_vec4_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec4[%u]\n", idx);
         return MF_NULL_VEC4;
@@ -207,8 +207,8 @@ mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->mat3_col) return MF_NULL_MAT3;
-    mf_mat3* p = (mf_mat3*)mf_column_get(vm->mat3_col, idx);
+    if (!vm || !vm->_mat3_col) return MF_NULL_MAT3;
+    mf_mat3* p = (mf_mat3*)mf_column_get(vm->_mat3_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Mat3[%u]\n", idx);
         return MF_NULL_MAT3;
@@ -217,8 +217,8 @@ mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->mat4_col) return MF_NULL_MAT4;
-    mf_mat4* p = (mf_mat4*)mf_column_get(vm->mat4_col, idx);
+    if (!vm || !vm->_mat4_col) return MF_NULL_MAT4;
+    mf_mat4* p = (mf_mat4*)mf_column_get(vm->_mat4_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Mat4[%u]\n", idx);
         return MF_NULL_MAT4;
@@ -227,8 +227,8 @@ mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx) {
 }
 
 mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx) {
-    if (!vm || !vm->bool_col) return MF_NULL_BOOL;
-    u8* p = (u8*)mf_column_get(vm->bool_col, idx);
+    if (!vm || !vm->_bool_col) return MF_NULL_BOOL;
+    u8* p = (u8*)mf_column_get(vm->_bool_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Bool[%u]\n", idx);
         return MF_NULL_BOOL;
@@ -238,10 +238,10 @@ mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx) {
 
 // --- Counts ---
 
-size_t mf_vm_get_count_f32(mf_vm* vm) { return (vm && vm->f32_col) ? vm->f32_col->count : 0; }
-size_t mf_vm_get_count_vec2(mf_vm* vm) { return (vm && vm->vec2_col) ? vm->vec2_col->count : 0; }
-size_t mf_vm_get_count_vec3(mf_vm* vm) { return (vm && vm->vec3_col) ? vm->vec3_col->count : 0; }
-size_t mf_vm_get_count_vec4(mf_vm* vm) { return (vm && vm->vec4_col) ? vm->vec4_col->count : 0; }
-size_t mf_vm_get_count_mat3(mf_vm* vm) { return (vm && vm->mat3_col) ? vm->mat3_col->count : 0; }
-size_t mf_vm_get_count_mat4(mf_vm* vm) { return (vm && vm->mat4_col) ? vm->mat4_col->count : 0; }
-size_t mf_vm_get_count_bool(mf_vm* vm) { return (vm && vm->bool_col) ? vm->bool_col->count : 0; }
+size_t mf_vm_get_count_f32(mf_vm* vm) { return (vm && vm->_f32_col) ? vm->_f32_col->count : 0; }
+size_t mf_vm_get_count_vec2(mf_vm* vm) { return (vm && vm->_vec2_col) ? vm->_vec2_col->count : 0; }
+size_t mf_vm_get_count_vec3(mf_vm* vm) { return (vm && vm->_vec3_col) ? vm->_vec3_col->count : 0; }
+size_t mf_vm_get_count_vec4(mf_vm* vm) { return (vm && vm->_vec4_col) ? vm->_vec4_col->count : 0; }
+size_t mf_vm_get_count_mat3(mf_vm* vm) { return (vm && vm->_mat3_col) ? vm->_mat3_col->count : 0; }
+size_t mf_vm_get_count_mat4(mf_vm* vm) { return (vm && vm->_mat4_col) ? vm->_mat4_col->count : 0; }
+size_t mf_vm_get_count_bool(mf_vm* vm) { return (vm && vm->_bool_col) ? vm->_bool_col->count : 0; }
