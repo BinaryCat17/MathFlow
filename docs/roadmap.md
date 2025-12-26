@@ -31,7 +31,7 @@ Goal: Expand the capability of the CPU backend to support UI logic and robust se
 - [x] **Trigonometry:** `SIN`, `COS`, `ATAN2`.
 
 ### 2.4. Memory Abstraction (Safety & Portability)
-- [ ] **Accessor API:** Replace direct column access in backends with an abstraction layer (e.g., `mf_vm_map_f32(vm, reg_idx)`).
+- [x] **Accessor API:** Replace direct column access in backends with an abstraction layer (e.g., `mf_vm_map_f32(vm, reg_idx)`).
 - [ ] **View Structs:** Define unified views (e.g., `mf_span` for CPU, `mf_handle` for GPU) to prepare for non-RAM memory types.
 - [ ] **Bounds Checking:** Optional debug-mode verification of memory access.
 
