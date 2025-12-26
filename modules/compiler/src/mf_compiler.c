@@ -4,36 +4,50 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static mf_node_type mf_node_type_from_string(const char* type) {
+// --- Node Type Mapping ---
+
+typedef struct {
+    const char* name;
+    mf_node_type type;
+} mf_node_map_entry;
+
+static const mf_node_map_entry NODE_MAP[] = {
     // Inputs
-    if (strcmp(type, "InputFloat") == 0) return MF_NODE_INPUT_F32;
-    if (strcmp(type, "InputVec2") == 0) return MF_NODE_INPUT_VEC2;
-    if (strcmp(type, "InputVec3") == 0) return MF_NODE_INPUT_VEC3;
-    if (strcmp(type, "InputVec4") == 0) return MF_NODE_INPUT_VEC4;
-    if (strcmp(type, "InputBool") == 0) return MF_NODE_INPUT_BOOL;
-    
+    {"InputFloat", MF_NODE_INPUT_F32},
+    {"InputVec2", MF_NODE_INPUT_VEC2},
+    {"InputVec3", MF_NODE_INPUT_VEC3},
+    {"InputVec4", MF_NODE_INPUT_VEC4},
+    {"InputBool", MF_NODE_INPUT_BOOL},
     // Math
-    if (strcmp(type, "AddFloat") == 0) return MF_NODE_ADD_F32;
-    if (strcmp(type, "AddVec3") == 0) return MF_NODE_ADD_VEC3;
-    if (strcmp(type, "ScaleVec3") == 0) return MF_NODE_SCALE_VEC3;
-    
+    {"AddFloat", MF_NODE_ADD_F32},
+    {"AddVec3", MF_NODE_ADD_VEC3},
+    {"ScaleVec3", MF_NODE_SCALE_VEC3},
     // Compare
-    if (strcmp(type, "GreaterFloat") == 0) return MF_NODE_GREATER_F32;
-    if (strcmp(type, "LessFloat") == 0) return MF_NODE_LESS_F32;
-    if (strcmp(type, "EqualFloat") == 0) return MF_NODE_EQUAL_F32;
-    
+    {"GreaterFloat", MF_NODE_GREATER_F32},
+    {"LessFloat", MF_NODE_LESS_F32},
+    {"EqualFloat", MF_NODE_EQUAL_F32},
     // Logic
-    if (strcmp(type, "And") == 0) return MF_NODE_AND;
-    if (strcmp(type, "Or") == 0) return MF_NODE_OR;
-    if (strcmp(type, "Not") == 0) return MF_NODE_NOT;
-    
+    {"And", MF_NODE_AND},
+    {"Or", MF_NODE_OR},
+    {"Not", MF_NODE_NOT},
     // Select
-    if (strcmp(type, "SelectFloat") == 0) return MF_NODE_SELECT_F32;
-    if (strcmp(type, "SelectVec3") == 0) return MF_NODE_SELECT_VEC3;
-    if (strcmp(type, "SelectVec4") == 0) return MF_NODE_SELECT_VEC4;
+    {"SelectFloat", MF_NODE_SELECT_F32},
+    {"SelectVec3", MF_NODE_SELECT_VEC3},
+    {"SelectVec4", MF_NODE_SELECT_VEC4},
     
+    {NULL, MF_NODE_UNKNOWN}
+};
+
+static mf_node_type mf_node_type_from_string(const char* type) {
+    for (const mf_node_map_entry* entry = NODE_MAP; entry->name != NULL; ++entry) {
+        if (strcmp(type, entry->name) == 0) {
+            return entry->type;
+        }
+    }
     return MF_NODE_UNKNOWN;
 }
+
+// --- Parsing ---
 
 bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena) {
     cJSON* root = cJSON_Parse(json_str);
@@ -156,6 +170,8 @@ static void visit_node(sort_ctx* ctx, mf_ir_node* node) {
     ctx->sorted_nodes[ctx->count++] = node;
 }
 
+// --- Compilation ---
+
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     // 1. Setup local columns
     mf_column col_f32, col_vec2, col_vec3, col_vec4, col_bool;
@@ -175,7 +191,6 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     for (size_t i = 0; i < ir->node_count; ++i) {
         mf_ir_node* node = &ir->nodes[i];
         
-        // Determine which column this node belongs to
         switch (node->type) {
             // Inputs
             case MF_NODE_INPUT_F32:
@@ -200,7 +215,7 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 mf_column_push(&col_bool, &node->val_bool, arena);
                 break;
                 
-            // Ops -> Alloc result register
+            // Ops
             case MF_NODE_ADD_F32:
             case MF_NODE_SELECT_F32:
                 node->out_reg_idx = f32_head++;
@@ -229,7 +244,7 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 mf_column_push(&col_bool, NULL, arena);
                 break;
                 
-default: break;
+            default: break;
         }
     }
 
@@ -262,7 +277,7 @@ default: break;
     prog->data_bool = (u8*)col_bool.data;
 
     // 5. Instruction Generation
-    size_t instr_capacity = ir->node_count * 2; // Extra space for double instructions (Select) 
+    size_t instr_capacity = ir->node_count * 2;
     mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, instr_capacity);
     size_t instr_count = 0;
 
@@ -270,7 +285,7 @@ default: break;
         mf_ir_node* node = sorted[i];
         mf_ir_node* s1 = find_input_source(ir, node->id, 0);
         mf_ir_node* s2 = find_input_source(ir, node->id, 1);
-        mf_ir_node* s3 = find_input_source(ir, node->id, 2); // For Select (FalseVal)
+        mf_ir_node* s3 = find_input_source(ir, node->id, 2); 
 
         mf_instruction* inst = &instrs[instr_count];
 
@@ -362,21 +377,18 @@ default: break;
                 break;
                 
             // Select (Ternary)
-            // Inputs: 0=Cond, 1=TrueVal, 2=FalseVal
             case MF_NODE_SELECT_F32:
                 if (s1 && s2 && s3) {
-                    // Inst 1: CMOV_FALSE (Dest = FalseVal if !Cond)
                     instrs[instr_count].opcode = MF_OP_CMOV_FALSE_F32;
                     instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx; // Cond
-                    instrs[instr_count].src2_idx = s3->out_reg_idx; // FalseVal
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s3->out_reg_idx;
                     instr_count++;
                     
-                    // Inst 2: CMOV_TRUE (Dest = TrueVal if Cond)
                     instrs[instr_count].opcode = MF_OP_CMOV_TRUE_F32;
                     instrs[instr_count].dest_idx = node->out_reg_idx;
-                    instrs[instr_count].src1_idx = s1->out_reg_idx; // Cond
-                    instrs[instr_count].src2_idx = s2->out_reg_idx; // TrueVal
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s2->out_reg_idx;
                     instr_count++;
                 }
                 break;
@@ -413,7 +425,7 @@ default: break;
                 }
                 break;
                 
-default: break;
+            default: break;
         }
     }
     
@@ -432,7 +444,7 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
     fwrite(&prog->meta, sizeof(mf_bin_header), 1, f);
     fwrite(prog->code, sizeof(mf_instruction), prog->meta.instruction_count, f);
 
-    // Save Data Blocks in order
+    // Save Data Blocks
     if (prog->meta.f32_count > 0) fwrite(prog->data_f32, sizeof(f32), prog->meta.f32_count, f);
     if (prog->meta.vec2_count > 0) fwrite(prog->data_vec2, sizeof(mf_vec2), prog->meta.vec2_count, f);
     if (prog->meta.vec3_count > 0) fwrite(prog->data_vec3, sizeof(mf_vec3), prog->meta.vec3_count, f);

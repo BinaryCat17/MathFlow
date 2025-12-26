@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <mathflow/isa/mf_base.h>
 #include <mathflow/vm/mf_memory.h>
 #include <mathflow/vm/mf_vm.h>
@@ -16,92 +17,113 @@ static char* read_file(const char* path) {
     fseek(f, 0, SEEK_SET);
     
     char* buffer = malloc(length + 1);
+    if (!buffer) return NULL;
+    
     fread(buffer, 1, length, f);
     buffer[length] = '\0';
     fclose(f);
     return buffer;
 }
 
-int main(void) {
-    printf("MathFlow Logic Test\n");
+static const char* get_filename_ext(const char *filename) {
+    const char *dot = strrchr(filename, '.');
+    if(!dot || dot == filename) return "";
+    return dot + 1;
+}
+
+int main(int argc, char** argv) {
+    if (argc < 2) {
+        printf("Usage: %s <path_to_graph.json | path_to_program.bin>\n", argv[0]);
+        return 1;
+    }
+
+    const char* path = argv[1];
+    printf("MathFlow Runner. Loading: %s\n", path);
 
     // 1. Setup Memory
-    size_t arena_size = MF_MB(1);
+    size_t arena_size = MF_MB(4);
     void* buffer = malloc(arena_size);
     mf_arena arena;
     mf_arena_init(&arena, buffer, arena_size);
 
-    // 2. Load Graph
-    const char* path = "assets/graphs/logic_test.json";
-    char* json = read_file(path);
-    if (!json) {
-         json = read_file("../../../assets/graphs/logic_test.json");
-    }
-    
-    if (!json) {
-        printf("Failed to read file: %s\n", path);
+    mf_program* prog = NULL;
+    const char* ext = get_filename_ext(path);
+
+    // 2. Load / Compile
+    if (strcmp(ext, "json") == 0) {
+        char* json = read_file(path);
+        if (!json) { 
+            printf("Error: Could not read file '%s'.\n", path);
+            free(buffer);
+            return 1; 
+        }
+        
+        mf_graph_ir ir = {0};
+        if (!mf_compile_load_json(json, &ir, &arena)) {
+            printf("Error: Failed to parse JSON.\n");
+            free(json);
+            free(buffer);
+            return 1;
+        }
+        printf("Graph Parsed: %zu nodes\n", ir.node_count);
+        
+        prog = mf_compile(&ir, &arena);
+        free(json);
+    } else if (strcmp(ext, "bin") == 0) {
+        prog = mf_vm_load_program_from_file(path, &arena);
+    } else {
+        printf("Error: Unknown file extension '%s'. Use .json or .bin\n", ext);
+        free(buffer);
         return 1;
     }
-    printf("Graph loaded.\n");
 
-    mf_graph_ir ir = {0};
-    if (!mf_compile_load_json(json, &ir, &arena)) {
-        printf("Failed to parse JSON\n");
+    if (!prog) {
+        printf("Error: Failed to generate program.\n");
+        free(buffer);
         return 1;
     }
 
-    // 3. Compile
-    mf_program* prog = mf_compile(&ir, &arena);
-    printf("Compiled: %u instructions\n", prog->meta.instruction_count);
+    printf("Program Loaded: %u inst\n", prog->meta.instruction_count);
 
-    // --- I/O Test (Verify binary format with new types) ---
-    const char* bin_path = "logic_test.bin";
-    if (mf_compile_save_program(prog, bin_path)) {
-        printf("Saved program to %s\n", bin_path);
-    }
-    
-    mf_program* prog2 = mf_vm_load_program_from_file(bin_path, &arena);
-    if (prog2) {
-        printf("Loaded program from %s\n", bin_path);
-        prog = prog2;
-    }
-    // ----------------
-
-    // 4. Setup Backend
+    // 3. Setup Backend & VM
     mf_backend_dispatch_table cpu_backend;
     mf_backend_cpu_init(&cpu_backend);
-
-    // 5. Setup VM
+    
     mf_vm vm = {0};
     vm.backend = &cpu_backend;
-
     mf_vm_load_program(&vm, prog, &arena);
-    printf("Program Loaded. Memory initialized.\n");
-
-    // 6. Execute
+    
+    // 4. Execute
     mf_vm_exec(&vm);
-
-    // 7. Verify Results (Expect Green: 0, 1, 0, 1)
-    // The output node is ID 6. It's the 3rd Vec4 node (ID 4, 5 are inputs).
-    // Or just check the last element.
-    if (vm.vec4_col && vm.vec4_col->count > 0) {
-        size_t idx = vm.vec4_col->count - 1;
-        mf_vec4* res = (mf_vec4*)mf_column_get(vm.vec4_col, idx);
-        if (res) {
-            printf("Final Result: {%.2f, %.2f, %.2f, %.2f}\n", res->x, res->y, res->z, res->w);
-            printf("Expected:     {0.00, 1.00, 0.00, 1.00}\n");
-            
-            if (res->y == 1.0f && res->x == 0.0f) {
-                printf("SUCCESS: Logic Correct.\n");
-            } else {
-                printf("FAILURE: Logic Incorrect.\n");
-            }
-        }
-    } else {
-        printf("Error: No Vec4 output.\n");
+    
+    // 5. Dump Output (Last element of each column)
+    printf("\n--- Execution Finished ---\n");
+    
+    if (vm.f32_col && vm.f32_col->count > 0) {
+        f32* v = (f32*)mf_column_get(vm.f32_col, vm.f32_col->count - 1);
+        printf("[F32 Output]: %.4f\n", *v);
+    }
+    
+    if (vm.vec2_col && vm.vec2_col->count > 0) {
+        mf_vec2* v = (mf_vec2*)mf_column_get(vm.vec2_col, vm.vec2_col->count - 1);
+        printf("[Vec2 Output]: {%.2f, %.2f}\n", v->x, v->y);
     }
 
-    free(json);
+    if (vm.vec3_col && vm.vec3_col->count > 0) {
+        mf_vec3* v = (mf_vec3*)mf_column_get(vm.vec3_col, vm.vec3_col->count - 1);
+        printf("[Vec3 Output]: {%.2f, %.2f, %.2f}\n", v->x, v->y, v->z);
+    }
+
+    if (vm.vec4_col && vm.vec4_col->count > 0) {
+        mf_vec4* v = (mf_vec4*)mf_column_get(vm.vec4_col, vm.vec4_col->count - 1);
+        printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", v->x, v->y, v->z, v->w);
+    }
+
+    if (vm.bool_col && vm.bool_col->count > 0) {
+        u8* v = (u8*)mf_column_get(vm.bool_col, vm.bool_col->count - 1);
+        printf("[Bool Output]: %s\n", *v ? "true" : "false");
+    }
+
     free(buffer);
     return 0;
 }
