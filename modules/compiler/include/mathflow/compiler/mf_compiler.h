@@ -19,6 +19,18 @@ typedef enum {
     
     // Math
     MF_NODE_ADD_F32,
+    MF_NODE_SUB_F32,
+    MF_NODE_MUL_F32,
+    MF_NODE_DIV_F32,
+    MF_NODE_MIN_F32,
+    MF_NODE_MAX_F32,
+    MF_NODE_CLAMP_F32,
+    MF_NODE_FLOOR_F32,
+    MF_NODE_CEIL_F32,
+    MF_NODE_SIN_F32,
+    MF_NODE_COS_F32,
+    MF_NODE_ATAN2_F32,
+    
     MF_NODE_ADD_VEC3,
     MF_NODE_SCALE_VEC3, // vec3 * f32
     

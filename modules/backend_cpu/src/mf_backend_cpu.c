@@ -35,6 +35,63 @@ static void op_mul_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
     if (d && s1 && s2) *d = *s1 * *s2;
 }
 
+static void op_div_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    f32* s2 = GET_F32(vm->f32_col, src2);
+    if (d && s1 && s2 && *s2 != 0.0f) *d = *s1 / *s2;
+    else if (d) *d = 0.0f; 
+}
+
+static void op_min_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    f32* s2 = GET_F32(vm->f32_col, src2);
+    if (d && s1 && s2) *d = fminf(*s1, *s2);
+}
+
+static void op_max_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    f32* s2 = GET_F32(vm->f32_col, src2);
+    if (d && s1 && s2) *d = fmaxf(*s1, *s2);
+}
+
+static void op_floor_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    if (d && s1) *d = floorf(*s1);
+}
+
+static void op_ceil_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    if (d && s1) *d = ceilf(*s1);
+}
+
+static void op_sin_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    if (d && s1) *d = sinf(*s1);
+}
+
+static void op_cos_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    (void)src2;
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    if (d && s1) *d = cosf(*s1);
+}
+
+static void op_atan2_f32(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
+    f32* d = GET_F32(vm->f32_col, dest);
+    f32* s1 = GET_F32(vm->f32_col, src1);
+    f32* s2 = GET_F32(vm->f32_col, src2);
+    if (d && s1 && s2) *d = atan2f(*s1, *s2);
+}
+
 // --- Vec3 Math ---
 static void op_add_vec3(mf_vm* vm, u16 dest, u16 src1, u16 src2) {
     mf_vec3* d = GET_VEC3(vm->vec3_col, dest);
@@ -181,6 +238,14 @@ void mf_backend_cpu_init(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_ADD_F32] = op_add_f32;
     table->op_table[MF_OP_SUB_F32] = op_sub_f32;
     table->op_table[MF_OP_MUL_F32] = op_mul_f32;
+    table->op_table[MF_OP_DIV_F32] = op_div_f32;
+    table->op_table[MF_OP_MIN_F32] = op_min_f32;
+    table->op_table[MF_OP_MAX_F32] = op_max_f32;
+    table->op_table[MF_OP_FLOOR_F32] = op_floor_f32;
+    table->op_table[MF_OP_CEIL_F32] = op_ceil_f32;
+    table->op_table[MF_OP_SIN_F32] = op_sin_f32;
+    table->op_table[MF_OP_COS_F32] = op_cos_f32;
+    table->op_table[MF_OP_ATAN2_F32] = op_atan2_f32;
     
     table->op_table[MF_OP_ADD_VEC3] = op_add_vec3;
     table->op_table[MF_OP_SCALE_VEC3] = op_scale_vec3;

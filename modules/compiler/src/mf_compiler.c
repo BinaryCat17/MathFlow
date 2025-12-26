@@ -18,8 +18,21 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"InputVec3", MF_NODE_INPUT_VEC3},
     {"InputVec4", MF_NODE_INPUT_VEC4},
     {"InputBool", MF_NODE_INPUT_BOOL},
-    // Math
+    // Math - F32
     {"AddFloat", MF_NODE_ADD_F32},
+    {"SubFloat", MF_NODE_SUB_F32},
+    {"MulFloat", MF_NODE_MUL_F32},
+    {"DivFloat", MF_NODE_DIV_F32},
+    {"MinFloat", MF_NODE_MIN_F32},
+    {"MaxFloat", MF_NODE_MAX_F32},
+    {"ClampFloat", MF_NODE_CLAMP_F32},
+    {"FloorFloat", MF_NODE_FLOOR_F32},
+    {"CeilFloat", MF_NODE_CEIL_F32},
+    {"SinFloat", MF_NODE_SIN_F32},
+    {"CosFloat", MF_NODE_COS_F32},
+    {"Atan2Float", MF_NODE_ATAN2_F32},
+    
+    // Math - Vec3
     {"AddVec3", MF_NODE_ADD_VEC3},
     {"ScaleVec3", MF_NODE_SCALE_VEC3},
     // Compare
@@ -217,8 +230,26 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 
             // Ops
             case MF_NODE_ADD_F32:
+            case MF_NODE_SUB_F32:
+            case MF_NODE_MUL_F32:
+            case MF_NODE_DIV_F32:
+            case MF_NODE_MIN_F32:
+            case MF_NODE_MAX_F32:
+            // CLAMP handled separately
+            case MF_NODE_FLOOR_F32:
+            case MF_NODE_CEIL_F32:
+            case MF_NODE_SIN_F32:
+            case MF_NODE_COS_F32:
+            case MF_NODE_ATAN2_F32:
             case MF_NODE_SELECT_F32:
                 node->out_reg_idx = f32_head++;
+                mf_column_push(&col_f32, NULL, arena);
+                break;
+            
+            case MF_NODE_CLAMP_F32:
+                f32_head++; // Temp
+                node->out_reg_idx = f32_head++; // Result
+                mf_column_push(&col_f32, NULL, arena);
                 mf_column_push(&col_f32, NULL, arena);
                 break;
                 
@@ -291,12 +322,61 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
 
         switch (node->type) {
             case MF_NODE_ADD_F32:
+            case MF_NODE_SUB_F32:
+            case MF_NODE_MUL_F32:
+            case MF_NODE_DIV_F32:
+            case MF_NODE_MIN_F32:
+            case MF_NODE_MAX_F32:
+            case MF_NODE_ATAN2_F32:
                 if (s1 && s2) {
-                    inst->opcode = MF_OP_ADD_F32;
+                    if (node->type == MF_NODE_ADD_F32) inst->opcode = MF_OP_ADD_F32;
+                    else if (node->type == MF_NODE_SUB_F32) inst->opcode = MF_OP_SUB_F32;
+                    else if (node->type == MF_NODE_MUL_F32) inst->opcode = MF_OP_MUL_F32;
+                    else if (node->type == MF_NODE_DIV_F32) inst->opcode = MF_OP_DIV_F32;
+                    else if (node->type == MF_NODE_MIN_F32) inst->opcode = MF_OP_MIN_F32;
+                    else if (node->type == MF_NODE_MAX_F32) inst->opcode = MF_OP_MAX_F32;
+                    else if (node->type == MF_NODE_ATAN2_F32) inst->opcode = MF_OP_ATAN2_F32;
+                    
                     inst->dest_idx = node->out_reg_idx;
                     inst->src1_idx = s1->out_reg_idx;
                     inst->src2_idx = s2->out_reg_idx;
                     instr_count++;
+                }
+                break;
+
+            case MF_NODE_FLOOR_F32:
+            case MF_NODE_CEIL_F32:
+            case MF_NODE_SIN_F32:
+            case MF_NODE_COS_F32:
+                if (s1) {
+                     if (node->type == MF_NODE_FLOOR_F32) inst->opcode = MF_OP_FLOOR_F32;
+                     else if (node->type == MF_NODE_CEIL_F32) inst->opcode = MF_OP_CEIL_F32;
+                     else if (node->type == MF_NODE_SIN_F32) inst->opcode = MF_OP_SIN_F32;
+                     else if (node->type == MF_NODE_COS_F32) inst->opcode = MF_OP_COS_F32;
+                     
+                     inst->dest_idx = node->out_reg_idx;
+                     inst->src1_idx = s1->out_reg_idx;
+                     inst->src2_idx = 0;
+                     instr_count++;
+                }
+                break;
+
+            case MF_NODE_CLAMP_F32:
+                if (s1 && s2 && s3) {
+                     // 1. Temp = MAX(Val, Min)
+                     inst->opcode = MF_OP_MAX_F32;
+                     inst->dest_idx = node->out_reg_idx - 1; 
+                     inst->src1_idx = s1->out_reg_idx;
+                     inst->src2_idx = s2->out_reg_idx;
+                     instr_count++;
+                     
+                     // 2. Res = MIN(Temp, Max)
+                     inst = &instrs[instr_count];
+                     inst->opcode = MF_OP_MIN_F32;
+                     inst->dest_idx = node->out_reg_idx;
+                     inst->src1_idx = node->out_reg_idx - 1;
+                     inst->src2_idx = s3->out_reg_idx;
+                     instr_count++;
                 }
                 break;
             case MF_NODE_ADD_VEC3:

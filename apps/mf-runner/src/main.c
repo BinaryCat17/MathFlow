@@ -100,8 +100,11 @@ int main(int argc, char** argv) {
     printf("\n--- Execution Finished ---\n");
     
     if (vm.f32_col && vm.f32_col->count > 0) {
-        f32* v = (f32*)mf_column_get(vm.f32_col, vm.f32_col->count - 1);
-        printf("[F32 Output]: %.4f\n", *v);
+        printf("[F32 Output] (%zu items):\n", vm.f32_col->count);
+        for(size_t i=0; i<vm.f32_col->count; ++i) {
+             f32* v = (f32*)mf_column_get(vm.f32_col, i);
+             printf("  [%zu]: %.4f\n", i, *v);
+        }
     }
     
     if (vm.vec2_col && vm.vec2_col->count > 0) {

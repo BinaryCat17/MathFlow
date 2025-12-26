@@ -9,6 +9,11 @@ typedef enum {
     MF_OP_SUB_F32,
     MF_OP_MUL_F32,
     MF_OP_DIV_F32,
+    MF_OP_MIN_F32,
+    MF_OP_MAX_F32,
+    MF_OP_CLAMP_F32,
+    MF_OP_FLOOR_F32,
+    MF_OP_CEIL_F32,
     
     // --- Vector Math (vec2) ---
     MF_OP_ADD_VEC2,
@@ -98,6 +103,11 @@ typedef enum {
     
     MF_OP_CMOV_TRUE_VEC4,
     MF_OP_CMOV_FALSE_VEC4,
+
+    // --- Trigonometry (f32) ---
+    MF_OP_SIN_F32,
+    MF_OP_COS_F32,
+    MF_OP_ATAN2_F32,
 
     MF_OP_COUNT
 } mf_opcode;

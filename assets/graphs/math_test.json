@@ -1,0 +1,24 @@
+{
+  "nodes": [
+    { "id": 1, "type": "InputFloat", "data": { "value": -2.5 } }, 
+    { "id": 2, "type": "InputFloat", "data": { "value": 0.0 } },
+    { "id": 3, "type": "InputFloat", "data": { "value": 10.0 } },
+    
+    { "id": 10, "type": "FloorFloat" },
+    { "id": 11, "type": "CeilFloat" },
+    { "id": 12, "type": "ClampFloat" },
+    { "id": 13, "type": "SinFloat" },
+    { "id": 14, "type": "CosFloat" }
+  ],
+  "links": [
+    { "src": 1, "src_port": 0, "dst": 10, "dst_port": 0 },
+    { "src": 1, "src_port": 0, "dst": 11, "dst_port": 0 },
+    
+    { "src": 1, "src_port": 0, "dst": 12, "dst_port": 0 },
+    { "src": 2, "src_port": 0, "dst": 12, "dst_port": 1 },
+    { "src": 3, "src_port": 0, "dst": 12, "dst_port": 2 },
+    
+    { "src": 2, "src_port": 0, "dst": 13, "dst_port": 0 },
+    { "src": 2, "src_port": 0, "dst": 14, "dst_port": 0 }
+  ]
+}
