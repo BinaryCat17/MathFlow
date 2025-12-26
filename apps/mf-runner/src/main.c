@@ -103,26 +103,26 @@ int main(int argc, char** argv) {
     if (f32_count > 0) {
         printf("[F32 Output] (%zu items):\n", f32_count);
         for(size_t i=0; i<f32_count; ++i) {
-             mf_ref_f32 v = mf_vm_map_f32(&vm, i);
+             mf_ref_f32 v = mf_vm_map_f32(&vm, i, MF_ACCESS_READ);
              if (MF_VALID(v)) printf("  [%zu]: %.4f\n", i, MF_VAL(v));
         }
     }
     
     size_t vec2_count = mf_vm_get_count_vec2(&vm);
     if (vec2_count > 0) {
-        mf_ref_vec2 v = mf_vm_map_vec2(&vm, vec2_count - 1);
+        mf_ref_vec2 v = mf_vm_map_vec2(&vm, vec2_count - 1, MF_ACCESS_READ);
         if (MF_VALID(v)) printf("[Vec2 Output]: {%.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y);
     }
 
     size_t vec3_count = mf_vm_get_count_vec3(&vm);
     if (vec3_count > 0) {
-        mf_ref_vec3 v = mf_vm_map_vec3(&vm, vec3_count - 1);
+        mf_ref_vec3 v = mf_vm_map_vec3(&vm, vec3_count - 1, MF_ACCESS_READ);
         if (MF_VALID(v)) printf("[Vec3 Output]: {%.2f, %.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y, MF_VAL(v).z);
     }
 
     size_t vec4_count = mf_vm_get_count_vec4(&vm);
     if (vec4_count > 0) {
-        mf_ref_vec4 v = mf_vm_map_vec4(&vm, vec4_count - 1);
+        mf_ref_vec4 v = mf_vm_map_vec4(&vm, vec4_count - 1, MF_ACCESS_READ);
         if (MF_VALID(v)) printf("[Vec4 Output]: {%.2f, %.2f, %.2f, %.2f}\n", MF_VAL(v).x, MF_VAL(v).y, MF_VAL(v).z, MF_VAL(v).w);
     }
 
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
     if (mat3_count > 0) {
         printf("[Mat3 Output] (%zu items):\n", mat3_count);
         for(size_t i=0; i<mat3_count; ++i) {
-             mf_ref_mat3 v = mf_vm_map_mat3(&vm, i);
+             mf_ref_mat3 v = mf_vm_map_mat3(&vm, i, MF_ACCESS_READ);
              if (MF_VALID(v)) {
                  printf("  [%zu]:\n", i);
                  printf("    | %.2f %.2f %.2f |\n", MF_VAL(v).m[0], MF_VAL(v).m[3], MF_VAL(v).m[6]);
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
     if (mat4_count > 0) {
         printf("[Mat4 Output] (%zu items):\n", mat4_count);
         for(size_t i=0; i<mat4_count; ++i) {
-             mf_ref_mat4 v = mf_vm_map_mat4(&vm, i);
+             mf_ref_mat4 v = mf_vm_map_mat4(&vm, i, MF_ACCESS_READ);
              if (MF_VALID(v)) {
                  printf("  [%zu]:\n", i);
                  printf("    | %.2f %.2f %.2f %.2f |\n", MF_VAL(v).m[0], MF_VAL(v).m[4], MF_VAL(v).m[8], MF_VAL(v).m[12]);
@@ -157,7 +157,7 @@ int main(int argc, char** argv) {
 
     size_t bool_count = mf_vm_get_count_bool(&vm);
     if (bool_count > 0) {
-        mf_ref_bool v = mf_vm_map_bool(&vm, bool_count - 1);
+        mf_ref_bool v = mf_vm_map_bool(&vm, bool_count - 1, MF_ACCESS_READ);
         if (MF_VALID(v)) printf("[Bool Output]: %s\n", MF_VAL(v) ? "true" : "false");
     }
 

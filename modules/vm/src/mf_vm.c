@@ -150,7 +150,11 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
 }
 
 void mf_vm_exec(mf_vm* vm) {
-    if (!vm->backend) return;
+    if (!vm || !vm->backend) return;
+
+    if (vm->backend->on_exec_begin) {
+        vm->backend->on_exec_begin(vm);
+    }
 
     for (size_t i = 0; i < vm->_code_count; ++i) {
         mf_instruction inst = vm->_code[i];
@@ -162,12 +166,18 @@ void mf_vm_exec(mf_vm* vm) {
             }
         }
     }
+
+    if (vm->backend->on_exec_end) {
+        vm->backend->on_exec_end(vm);
+    }
 }
 
 // --- Accessors ---
 
-mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx) {
+mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_f32_col) return MF_NULL_F32;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_F32, idx, mode);
+    
     f32* p = (f32*)mf_column_get(vm->_f32_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: F32[%u]\n", idx);
@@ -176,8 +186,10 @@ mf_ref_f32 mf_vm_map_f32(mf_vm* vm, u16 idx) {
     return (mf_ref_f32){p};
 }
 
-mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx) {
+mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_vec2_col) return MF_NULL_VEC2;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_VEC2, idx, mode);
+
     mf_vec2* p = (mf_vec2*)mf_column_get(vm->_vec2_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec2[%u]\n", idx);
@@ -186,8 +198,10 @@ mf_ref_vec2 mf_vm_map_vec2(mf_vm* vm, u16 idx) {
     return (mf_ref_vec2){p};
 }
 
-mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx) {
+mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_vec3_col) return MF_NULL_VEC3;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_VEC3, idx, mode);
+
     mf_vec3* p = (mf_vec3*)mf_column_get(vm->_vec3_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec3[%u]\n", idx);
@@ -196,8 +210,10 @@ mf_ref_vec3 mf_vm_map_vec3(mf_vm* vm, u16 idx) {
     return (mf_ref_vec3){p};
 }
 
-mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx) {
+mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_vec4_col) return MF_NULL_VEC4;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_VEC4, idx, mode);
+
     mf_vec4* p = (mf_vec4*)mf_column_get(vm->_vec4_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Vec4[%u]\n", idx);
@@ -206,8 +222,10 @@ mf_ref_vec4 mf_vm_map_vec4(mf_vm* vm, u16 idx) {
     return (mf_ref_vec4){p};
 }
 
-mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx) {
+mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_mat3_col) return MF_NULL_MAT3;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_MAT3, idx, mode);
+
     mf_mat3* p = (mf_mat3*)mf_column_get(vm->_mat3_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Mat3[%u]\n", idx);
@@ -216,8 +234,10 @@ mf_ref_mat3 mf_vm_map_mat3(mf_vm* vm, u16 idx) {
     return (mf_ref_mat3){p};
 }
 
-mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx) {
+mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_mat4_col) return MF_NULL_MAT4;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_MAT4, idx, mode);
+
     mf_mat4* p = (mf_mat4*)mf_column_get(vm->_mat4_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Mat4[%u]\n", idx);
@@ -226,8 +246,10 @@ mf_ref_mat4 mf_vm_map_mat4(mf_vm* vm, u16 idx) {
     return (mf_ref_mat4){p};
 }
 
-mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx) {
+mf_ref_bool mf_vm_map_bool(mf_vm* vm, u16 idx, mf_access_mode mode) {
     if (!vm || !vm->_bool_col) return MF_NULL_BOOL;
+    if (vm->backend && vm->backend->on_map) vm->backend->on_map(vm, MF_COL_BOOL, idx, mode);
+
     u8* p = (u8*)mf_column_get(vm->_bool_col, idx);
     if (!p) {
         fprintf(stderr, "[VM Error] Index Out of Bounds: Bool[%u]\n", idx);

@@ -35,6 +35,12 @@ Goal: Expand the capability of the CPU backend to support UI logic and robust se
 - [x] **View Structs:** Define unified views (e.g., `mf_span` for CPU, `mf_handle` for GPU) to prepare for non-RAM memory types.
 - [x] **Bounds Checking:** Optional debug-mode verification of memory access.
 
+### 2.5. Backend-Driven Synchronization (Protocol)
+- [x] **Sync Hooks:** Extend `mf_backend_dispatch_table` with `on_map`, `on_unmap`, and `on_exec` hooks.
+- [x] **State Awareness:** Update `mf_vm_map_*` to notify the active backend of memory access (read/write intents).
+- [ ] **Ownership Model:** Define how backends can mark columns as "Device Resident" or "Host Resident".
+- [ ] **Lazy Synchronization:** Implement a reference logic where data is only synced between CPU and GPU if states don't match.
+
 ## Phase 3: Headless Applications & Testing
 Goal: Verify the engine with complex scenarios before adding graphics.
 
