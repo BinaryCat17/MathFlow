@@ -1,37 +1,74 @@
 # MathFlow
 
-MathFlow — это высокопроизводительная система для визуализации 3D-графики, математических функций и сложных концепций в реальном времени. Вдохновленная архитектурой TensorFlow, система строит вычисления на основе графов, описываемых в формате JSON.
+**MathFlow** is a high-performance, data-oriented computation engine designed for real-time applications, games, and creative tools. It separates the **definition** of logic (Node Graphs) from its **execution** (Virtual Machine), using a Columnar Memory Model (SoA) for maximum cache efficiency and future GPU scalability.
 
-## Основные цели
-- **Real-time execution:** Ориентация на мгновенную визуализацию изменений в графе.
-- **Node-based architecture:** Модульная система, где каждый узел выполняет конкретную математическую или графическую операцию.
-- **C11 Core:** Минималистичное и быстрое ядро, написанное на строгом стандарте C11.
-- **Vulkan Rendering:** Использование современного графического API для максимальной производительности.
+> **Status:** Active Development (Core VM & Compiler Phase).
 
-## Текущее состояние
-Проект находится на стадии прототипирования базового движка. На данный момент реализована инициализация проекта и базовая сборка с использованием CMake и vcpkg.
+## Key Features
 
-## Сборка и запуск
+*   **Data-Oriented Architecture:** Data is stored in Structure-of-Arrays (Columns), optimized for SIMD and GPU transfer.
+*   **Modular Design:** Decoupled modules for Compiler, VM, and Backends.
+*   **Portable C11:** Written in strict C11, no heavy dependencies (only `cJSON` for the compiler).
+*   **Safety & Abstraction:** Accessor API with bounds checking protects memory integrity while keeping the backend agnostic to storage location (RAM/VRAM).
+*   **Cross-Platform:** Built with CMake, supports Linux and Windows via presets.
 
-### Зависимости
-Проект использует `vcpkg` для управления зависимостями. Требуются:
-- GLFW3
-- Vulkan SDK
-- stb (header-only библиотеки)
+## Getting Started
 
-### Сборка (Linux/Ninja)
+### Prerequisites
+*   CMake (3.25+)
+*   C Compiler (GCC/Clang/MSVC)
+*   [vcpkg](https://github.com/microsoft/vcpkg) (for dependency management)
+
+### Build Instructions
+
+1.  **Configure vcpkg:**
+    Ensure `VCPKG_ROOT` environment variable is set.
+
+2.  **Build (Linux):**
+    ```bash
+    cmake --preset x64-debug-linux
+    cmake --build out/build/x64-debug-linux
+    ```
+
+3.  **Build (Windows):**
+    Open the folder in Visual Studio or use:
+    ```cmd
+    cmake --preset x64-debug-win
+    cmake --build out/build/x64-debug-win
+    ```
+
+## Usage
+
+MathFlow comes with a CLI tool `mf-runner` that can compile JSON graphs and execute them using the CPU backend.
+
+**Run a test graph:**
 ```bash
-cmake --preset x64-debug-linux
-cmake --build out/build/x64-debug-linux
+./out/build/x64-debug-linux/mf-runner assets/graphs/simple_math.json
 ```
 
-### Запуск
-```bash
-./out/build/x64-debug-linux/MathFlow
+**Output:**
+```
+MathFlow Runner. Loading: assets/graphs/simple_math.json
+Graph Parsed: 5 nodes
+Program Loaded: 2 inst
+...
+[Vec3 Output]: {10.00, 14.00, 18.00}
 ```
 
-## Планы по развитию
-- [ ] Реализация системы загрузки и парсинга JSON-графов.
-- [ ] Разработка базового набора математических и графических нод.
-- [ ] Интеграция рендеринга на Vulkan.
-- [ ] Создание встроенного графического интерфейса средствами самой системы.
+## Documentation
+
+For deep dives into the system design:
+
+*   [Architecture](docs/architecture.md) - System overview, modules, and memory model.
+*   [Roadmap](docs/roadmap.md) - Current progress and future plans.
+
+## Project Structure
+
+*   `modules/`
+    *   `isa/` - Instruction Set Architecture definitions (The Contract).
+    *   `vm/` - Virtual Machine core, Memory management, Accessor API.
+    *   `compiler/` - Translates JSON Graphs to Bytecode (`mf_program`).
+    *   `backend_cpu/` - Reference C11 implementation of math operations.
+*   `apps/`
+    *   `mf-runner/` - CLI tool for testing and execution.
+*   `assets/` - Test graphs and data.
