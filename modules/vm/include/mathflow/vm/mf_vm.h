@@ -24,8 +24,11 @@ typedef struct mf_vm_t {
     
     // Data Columns (The "Matrix")
     mf_column* f32_col;
+    mf_column* vec2_col;
     mf_column* vec3_col;
+    mf_column* vec4_col;
     mf_column* mat4_col;
+    mf_column* bool_col;
 
     // Backend dispatch
     const mf_backend_dispatch_table* backend;

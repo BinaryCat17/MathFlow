@@ -9,11 +9,34 @@
 
 typedef enum {
     MF_NODE_UNKNOWN = 0,
+    
+    // Inputs
     MF_NODE_INPUT_F32,
+    MF_NODE_INPUT_VEC2,
     MF_NODE_INPUT_VEC3,
+    MF_NODE_INPUT_VEC4,
+    MF_NODE_INPUT_BOOL,
+    
+    // Math
     MF_NODE_ADD_F32,
     MF_NODE_ADD_VEC3,
     MF_NODE_SCALE_VEC3, // vec3 * f32
+    
+    // Comparison (f32 -> bool)
+    MF_NODE_GREATER_F32,
+    MF_NODE_LESS_F32,
+    MF_NODE_EQUAL_F32,
+    
+    // Logic (bool)
+    MF_NODE_AND,
+    MF_NODE_OR,
+    MF_NODE_NOT,
+    
+    // Selection
+    MF_NODE_SELECT_F32,  // bool ? f32 : f32
+    MF_NODE_SELECT_VEC3, // bool ? vec3 : vec3
+    MF_NODE_SELECT_VEC4, // bool ? vec4 : vec4
+
     MF_NODE_COUNT
 } mf_node_type;
 
@@ -24,7 +47,10 @@ typedef struct {
     // Initial data (if Input node)
     union {
         f32 val_f32;
+        mf_vec2 val_vec2;
         mf_vec3 val_vec3;
+        mf_vec4 val_vec4;
+        u8 val_bool;
     };
 
     // Compiler Generated info

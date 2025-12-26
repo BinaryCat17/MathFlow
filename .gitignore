@@ -11,3 +11,4 @@ logs
 src/generated
 project_context.txt
 test_prog.bin
+logic_test.bin

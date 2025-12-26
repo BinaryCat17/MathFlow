@@ -5,10 +5,33 @@
 #include <stdlib.h>
 
 static mf_node_type mf_node_type_from_string(const char* type) {
+    // Inputs
     if (strcmp(type, "InputFloat") == 0) return MF_NODE_INPUT_F32;
+    if (strcmp(type, "InputVec2") == 0) return MF_NODE_INPUT_VEC2;
     if (strcmp(type, "InputVec3") == 0) return MF_NODE_INPUT_VEC3;
+    if (strcmp(type, "InputVec4") == 0) return MF_NODE_INPUT_VEC4;
+    if (strcmp(type, "InputBool") == 0) return MF_NODE_INPUT_BOOL;
+    
+    // Math
+    if (strcmp(type, "AddFloat") == 0) return MF_NODE_ADD_F32;
     if (strcmp(type, "AddVec3") == 0) return MF_NODE_ADD_VEC3;
     if (strcmp(type, "ScaleVec3") == 0) return MF_NODE_SCALE_VEC3;
+    
+    // Compare
+    if (strcmp(type, "GreaterFloat") == 0) return MF_NODE_GREATER_F32;
+    if (strcmp(type, "LessFloat") == 0) return MF_NODE_LESS_F32;
+    if (strcmp(type, "EqualFloat") == 0) return MF_NODE_EQUAL_F32;
+    
+    // Logic
+    if (strcmp(type, "And") == 0) return MF_NODE_AND;
+    if (strcmp(type, "Or") == 0) return MF_NODE_OR;
+    if (strcmp(type, "Not") == 0) return MF_NODE_NOT;
+    
+    // Select
+    if (strcmp(type, "SelectFloat") == 0) return MF_NODE_SELECT_F32;
+    if (strcmp(type, "SelectVec3") == 0) return MF_NODE_SELECT_VEC3;
+    if (strcmp(type, "SelectVec4") == 0) return MF_NODE_SELECT_VEC4;
+    
     return MF_NODE_UNKNOWN;
 }
 
@@ -19,7 +42,6 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
         return false;
     }
 
-    // 1. Parse Nodes
     cJSON* nodes = cJSON_GetObjectItem(root, "nodes");
     if (nodes) {
         int count = cJSON_GetArraySize(nodes);
@@ -40,19 +62,35 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
             cJSON* data = cJSON_GetObjectItem(node, "data");
             if (data) {
                 cJSON* val = cJSON_GetObjectItem(data, "value");
-                if (ir_node->type == MF_NODE_INPUT_F32 && val) {
-                    ir_node->val_f32 = (f32)val->valuedouble;
-                }
-                else if (ir_node->type == MF_NODE_INPUT_VEC3 && val && cJSON_IsArray(val)) {
-                    ir_node->val_vec3.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
-                    ir_node->val_vec3.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
-                    ir_node->val_vec3.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
+                if (val) {
+                    if (ir_node->type == MF_NODE_INPUT_F32) {
+                        ir_node->val_f32 = (f32)val->valuedouble;
+                    }
+                    else if (ir_node->type == MF_NODE_INPUT_BOOL) {
+                        ir_node->val_bool = (u8)(cJSON_IsTrue(val) ? 1 : 0);
+                    }
+                    else if (cJSON_IsArray(val)) {
+                        if (ir_node->type == MF_NODE_INPUT_VEC2) {
+                            ir_node->val_vec2.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
+                            ir_node->val_vec2.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
+                        }
+                        else if (ir_node->type == MF_NODE_INPUT_VEC3) {
+                            ir_node->val_vec3.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
+                            ir_node->val_vec3.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
+                            ir_node->val_vec3.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
+                        }
+                        else if (ir_node->type == MF_NODE_INPUT_VEC4) {
+                            ir_node->val_vec4.x = (f32)cJSON_GetArrayItem(val, 0)->valuedouble;
+                            ir_node->val_vec4.y = (f32)cJSON_GetArrayItem(val, 1)->valuedouble;
+                            ir_node->val_vec4.z = (f32)cJSON_GetArrayItem(val, 2)->valuedouble;
+                            ir_node->val_vec4.w = (f32)cJSON_GetArrayItem(val, 3)->valuedouble;
+                        }
+                    }
                 }
             }
         }
     }
 
-    // 2. Parse Links
     cJSON* links = cJSON_GetObjectItem(root, "links");
     if (links) {
         int count = cJSON_GetArraySize(links);
@@ -75,7 +113,6 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
     return true;
 }
 
-// Helper: Find node by ID
 static mf_ir_node* find_node(mf_graph_ir* ir, u32 id) {
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].id == id) return &ir->nodes[i];
@@ -83,7 +120,6 @@ static mf_ir_node* find_node(mf_graph_ir* ir, u32 id) {
     return NULL;
 }
 
-// Helper: Find source node for a specific input port
 static mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_id, u32 dst_port) {
     for (size_t i = 0; i < ir->link_count; ++i) {
         if (ir->links[i].dst_id == dst_id && ir->links[i].dst_port == dst_port) {
@@ -94,23 +130,20 @@ static mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_id, u32 dst_port) 
 }
 
 // --- Topological Sort Helpers ---
-
 typedef struct {
-    mf_ir_node** sorted_nodes; // Array of pointers to nodes
-    u8* visited;               // 0=no, 1=visiting, 2=visited
+    mf_ir_node** sorted_nodes; 
+    u8* visited;
     size_t count;
     mf_graph_ir* ir;
 } sort_ctx;
 
 static void visit_node(sort_ctx* ctx, mf_ir_node* node) {
     size_t idx = node - ctx->ir->nodes;
-    
     if (ctx->visited[idx] == 2) return;
     if (ctx->visited[idx] == 1) {
         printf("Cycle detected! Node ID: %d\n", node->id);
         return;
     }
-    
     ctx->visited[idx] = 1;
 
     for (size_t i = 0; i < ctx->ir->link_count; ++i) {
@@ -119,44 +152,84 @@ static void visit_node(sort_ctx* ctx, mf_ir_node* node) {
             if (src) visit_node(ctx, src);
         }
     }
-
     ctx->visited[idx] = 2;
     ctx->sorted_nodes[ctx->count++] = node;
 }
 
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
-    // 1. Setup local columns to accumulate data
-    // using vm memory utils (included via header)
-    mf_column col_f32, col_vec3;
+    // 1. Setup local columns
+    mf_column col_f32, col_vec2, col_vec3, col_vec4, col_bool;
     mf_column_init(&col_f32, sizeof(f32), 16, arena);
+    mf_column_init(&col_vec2, sizeof(mf_vec2), 16, arena);
     mf_column_init(&col_vec3, sizeof(mf_vec3), 16, arena);
+    mf_column_init(&col_vec4, sizeof(mf_vec4), 16, arena);
+    mf_column_init(&col_bool, sizeof(u8), 16, arena);
 
     // 2. Allocation Pass
     u16 f32_head = 0;
+    u16 vec2_head = 0;
     u16 vec3_head = 0;
+    u16 vec4_head = 0;
+    u16 bool_head = 0;
     
     for (size_t i = 0; i < ir->node_count; ++i) {
         mf_ir_node* node = &ir->nodes[i];
         
+        // Determine which column this node belongs to
         switch (node->type) {
+            // Inputs
             case MF_NODE_INPUT_F32:
                 node->out_reg_idx = f32_head++;
                 f32* fptr = (f32*)mf_column_push(&col_f32, NULL, arena); 
                 if (fptr) *fptr = node->val_f32;
                 break;
-                
+            case MF_NODE_INPUT_VEC2:
+                node->out_reg_idx = vec2_head++;
+                mf_column_push(&col_vec2, &node->val_vec2, arena);
+                break;
             case MF_NODE_INPUT_VEC3:
                 node->out_reg_idx = vec3_head++;
                 mf_column_push(&col_vec3, &node->val_vec3, arena);
                 break;
+            case MF_NODE_INPUT_VEC4:
+                node->out_reg_idx = vec4_head++;
+                mf_column_push(&col_vec4, &node->val_vec4, arena);
+                break;
+            case MF_NODE_INPUT_BOOL:
+                node->out_reg_idx = bool_head++;
+                mf_column_push(&col_bool, &node->val_bool, arena);
+                break;
+                
+            // Ops -> Alloc result register
+            case MF_NODE_ADD_F32:
+            case MF_NODE_SELECT_F32:
+                node->out_reg_idx = f32_head++;
+                mf_column_push(&col_f32, NULL, arena);
+                break;
                 
             case MF_NODE_ADD_VEC3:
             case MF_NODE_SCALE_VEC3:
+            case MF_NODE_SELECT_VEC3:
                 node->out_reg_idx = vec3_head++;
                 mf_column_push(&col_vec3, NULL, arena); 
                 break;
                 
-            default: break;
+            case MF_NODE_SELECT_VEC4:
+                node->out_reg_idx = vec4_head++;
+                mf_column_push(&col_vec4, NULL, arena);
+                break;
+                
+            case MF_NODE_GREATER_F32:
+            case MF_NODE_LESS_F32:
+            case MF_NODE_EQUAL_F32:
+            case MF_NODE_AND:
+            case MF_NODE_OR:
+            case MF_NODE_NOT:
+                node->out_reg_idx = bool_head++;
+                mf_column_push(&col_bool, NULL, arena);
+                break;
+                
+default: break;
         }
     }
 
@@ -166,11 +239,8 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     memset(visited, 0, ir->node_count);
 
     sort_ctx ctx = { .sorted_nodes = sorted, .visited = visited, .count = 0, .ir = ir };
-    
     for (size_t i = 0; i < ir->node_count; ++i) {
-        if (visited[i] == 0) {
-            visit_node(&ctx, &ir->nodes[i]);
-        }
+        if (visited[i] == 0) visit_node(&ctx, &ir->nodes[i]);
     }
 
     // 4. Create Program
@@ -178,45 +248,172 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     prog->meta.magic = MF_BINARY_MAGIC;
     prog->meta.version = MF_BINARY_VERSION;
     prog->meta.f32_count = (u32)col_f32.count;
+    prog->meta.vec2_count = (u32)col_vec2.count;
     prog->meta.vec3_count = (u32)col_vec3.count;
+    prog->meta.vec4_count = (u32)col_vec4.count;
     prog->meta.mat4_count = 0;
+    prog->meta.bool_count = (u32)col_bool.count;
     
-    // Assign data pointers (pointing to data inside arena)
     prog->data_f32 = (f32*)col_f32.data;
+    prog->data_vec2 = (mf_vec2*)col_vec2.data;
     prog->data_vec3 = (mf_vec3*)col_vec3.data;
+    prog->data_vec4 = (mf_vec4*)col_vec4.data;
     prog->data_mat4 = NULL;
+    prog->data_bool = (u8*)col_bool.data;
 
-    // 5. Instruction Generation Pass
-    size_t instr_capacity = ir->node_count;
+    // 5. Instruction Generation
+    size_t instr_capacity = ir->node_count * 2; // Extra space for double instructions (Select) 
     mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, instr_capacity);
     size_t instr_count = 0;
 
     for (size_t i = 0; i < ctx.count; ++i) {
         mf_ir_node* node = sorted[i];
-        
-        if (node->type == MF_NODE_ADD_VEC3) {
-            mf_ir_node* src1 = find_input_source(ir, node->id, 0);
-            mf_ir_node* src2 = find_input_source(ir, node->id, 1);
+        mf_ir_node* s1 = find_input_source(ir, node->id, 0);
+        mf_ir_node* s2 = find_input_source(ir, node->id, 1);
+        mf_ir_node* s3 = find_input_source(ir, node->id, 2); // For Select (FalseVal)
+
+        mf_instruction* inst = &instrs[instr_count];
+
+        switch (node->type) {
+            case MF_NODE_ADD_F32:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_ADD_F32;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+            case MF_NODE_ADD_VEC3:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_ADD_VEC3;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+            case MF_NODE_SCALE_VEC3:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_SCALE_VEC3;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
             
-            if (src1 && src2) {
-                mf_instruction* inst = &instrs[instr_count++];
-                inst->opcode = MF_OP_ADD_VEC3;
-                inst->dest_idx = node->out_reg_idx;
-                inst->src1_idx = src1->out_reg_idx;
-                inst->src2_idx = src2->out_reg_idx;
-            }
-        }
-        else if (node->type == MF_NODE_SCALE_VEC3) {
-            mf_ir_node* src_vec = find_input_source(ir, node->id, 0);
-            mf_ir_node* src_scale = find_input_source(ir, node->id, 1);
-            
-            if (src_vec && src_scale) {
-                mf_instruction* inst = &instrs[instr_count++];
-                inst->opcode = MF_OP_SCALE_VEC3;
-                inst->dest_idx = node->out_reg_idx;
-                inst->src1_idx = src_vec->out_reg_idx; // Vec3 col
-                inst->src2_idx = src_scale->out_reg_idx; // F32 col
-            }
+            // Comparison
+            case MF_NODE_GREATER_F32:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_GREATER_F32;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+            case MF_NODE_LESS_F32:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_LESS_F32;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+            case MF_NODE_EQUAL_F32:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_EQUAL_F32;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+                
+            // Logic
+            case MF_NODE_AND:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_AND;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+             case MF_NODE_OR:
+                if (s1 && s2) {
+                    inst->opcode = MF_OP_OR;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+             case MF_NODE_NOT:
+                if (s1) {
+                    inst->opcode = MF_OP_NOT;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = 0;
+                    instr_count++;
+                }
+                break;
+                
+            // Select (Ternary)
+            // Inputs: 0=Cond, 1=TrueVal, 2=FalseVal
+            case MF_NODE_SELECT_F32:
+                if (s1 && s2 && s3) {
+                    // Inst 1: CMOV_FALSE (Dest = FalseVal if !Cond)
+                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_F32;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx; // Cond
+                    instrs[instr_count].src2_idx = s3->out_reg_idx; // FalseVal
+                    instr_count++;
+                    
+                    // Inst 2: CMOV_TRUE (Dest = TrueVal if Cond)
+                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_F32;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx; // Cond
+                    instrs[instr_count].src2_idx = s2->out_reg_idx; // TrueVal
+                    instr_count++;
+                }
+                break;
+                
+            case MF_NODE_SELECT_VEC3:
+                if (s1 && s2 && s3) {
+                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_VEC3;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s3->out_reg_idx;
+                    instr_count++;
+                    
+                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_VEC3;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+                
+            case MF_NODE_SELECT_VEC4:
+                if (s1 && s2 && s3) {
+                    instrs[instr_count].opcode = MF_OP_CMOV_FALSE_VEC4;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s3->out_reg_idx;
+                    instr_count++;
+                    
+                    instrs[instr_count].opcode = MF_OP_CMOV_TRUE_VEC4;
+                    instrs[instr_count].dest_idx = node->out_reg_idx;
+                    instrs[instr_count].src1_idx = s1->out_reg_idx;
+                    instrs[instr_count].src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+                
+default: break;
         }
     }
     
@@ -232,21 +429,16 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
     FILE* f = fopen(path, "wb");
     if (!f) return false;
 
-    // 1. Header
     fwrite(&prog->meta, sizeof(mf_bin_header), 1, f);
-
-    // 2. Code
     fwrite(prog->code, sizeof(mf_instruction), prog->meta.instruction_count, f);
 
-    // 3. Data
-    if (prog->meta.f32_count > 0 && prog->data_f32)
-        fwrite(prog->data_f32, sizeof(f32), prog->meta.f32_count, f);
-    
-    if (prog->meta.vec3_count > 0 && prog->data_vec3)
-        fwrite(prog->data_vec3, sizeof(mf_vec3), prog->meta.vec3_count, f);
-
-    if (prog->meta.mat4_count > 0 && prog->data_mat4)
-        fwrite(prog->data_mat4, sizeof(mf_mat4), prog->meta.mat4_count, f);
+    // Save Data Blocks in order
+    if (prog->meta.f32_count > 0) fwrite(prog->data_f32, sizeof(f32), prog->meta.f32_count, f);
+    if (prog->meta.vec2_count > 0) fwrite(prog->data_vec2, sizeof(mf_vec2), prog->meta.vec2_count, f);
+    if (prog->meta.vec3_count > 0) fwrite(prog->data_vec3, sizeof(mf_vec3), prog->meta.vec3_count, f);
+    if (prog->meta.vec4_count > 0) fwrite(prog->data_vec4, sizeof(mf_vec4), prog->meta.vec4_count, f);
+    if (prog->meta.mat4_count > 0) fwrite(prog->data_mat4, sizeof(mf_mat4), prog->meta.mat4_count, f);
+    if (prog->meta.bool_count > 0) fwrite(prog->data_bool, sizeof(u8), prog->meta.bool_count, f);
 
     fclose(f);
     return true;

@@ -23,7 +23,7 @@ static char* read_file(const char* path) {
 }
 
 int main(void) {
-    printf("MathFlow Engine Initialized (Modular)\n");
+    printf("MathFlow Logic Test\n");
 
     // 1. Setup Memory
     size_t arena_size = MF_MB(1);
@@ -31,12 +31,11 @@ int main(void) {
     mf_arena arena;
     mf_arena_init(&arena, buffer, arena_size);
 
-    // 2. Load Graph & Compile
-    const char* path = "assets/graphs/simple_math.json";
+    // 2. Load Graph
+    const char* path = "assets/graphs/logic_test.json";
     char* json = read_file(path);
     if (!json) {
-         // Fallback for different CWD
-         json = read_file("../../../assets/graphs/simple_math.json");
+         json = read_file("../../../assets/graphs/logic_test.json");
     }
     
     if (!json) {
@@ -50,31 +49,25 @@ int main(void) {
         printf("Failed to parse JSON\n");
         return 1;
     }
-    printf("Graph Parsed: %zu nodes, %zu links\n", ir.node_count, ir.link_count);
 
-    // 3. Compile to Program (Decoupled)
+    // 3. Compile
     mf_program* prog = mf_compile(&ir, &arena);
     printf("Compiled: %u instructions\n", prog->meta.instruction_count);
 
-    // --- I/O Test ---
-    const char* bin_path = "test_prog.bin";
+    // --- I/O Test (Verify binary format with new types) ---
+    const char* bin_path = "logic_test.bin";
     if (mf_compile_save_program(prog, bin_path)) {
         printf("Saved program to %s\n", bin_path);
-    } else {
-        printf("Failed to save program to %s\n", bin_path);
     }
-
+    
     mf_program* prog2 = mf_vm_load_program_from_file(bin_path, &arena);
     if (prog2) {
-        printf("Loaded program from %s (Inst: %u)\n", bin_path, prog2->meta.instruction_count);
-        // Use the loaded program to verify IO
+        printf("Loaded program from %s\n", bin_path);
         prog = prog2;
-    } else {
-        printf("Failed to load program from %s\n", bin_path);
     }
     // ----------------
 
-    // 4. Setup Backend (CPU)
+    // 4. Setup Backend
     mf_backend_dispatch_table cpu_backend;
     mf_backend_cpu_init(&cpu_backend);
 
@@ -82,23 +75,30 @@ int main(void) {
     mf_vm vm = {0};
     vm.backend = &cpu_backend;
 
-    // 6. Load Program into VM
     mf_vm_load_program(&vm, prog, &arena);
     printf("Program Loaded. Memory initialized.\n");
 
-    // 7. Execute
+    // 6. Execute
     mf_vm_exec(&vm);
 
-    // 8. Verify Results
-    // We expect the result at index 3 of vec3 column (based on simple_math.json structure)
-    if (vm.vec3_col && vm.vec3_col->count > 3) {
-        mf_vec3* res = (mf_vec3*)mf_column_get(vm.vec3_col, 3);
+    // 7. Verify Results (Expect Green: 0, 1, 0, 1)
+    // The output node is ID 6. It's the 3rd Vec4 node (ID 4, 5 are inputs).
+    // Or just check the last element.
+    if (vm.vec4_col && vm.vec4_col->count > 0) {
+        size_t idx = vm.vec4_col->count - 1;
+        mf_vec4* res = (mf_vec4*)mf_column_get(vm.vec4_col, idx);
         if (res) {
-            printf("Final Result: {%.2f, %.2f, %.2f}\n", res->x, res->y, res->z);
-            printf("Expected:     {10.00, 14.00, 18.00}\n");
+            printf("Final Result: {%.2f, %.2f, %.2f, %.2f}\n", res->x, res->y, res->z, res->w);
+            printf("Expected:     {0.00, 1.00, 0.00, 1.00}\n");
+            
+            if (res->y == 1.0f && res->x == 0.0f) {
+                printf("SUCCESS: Logic Correct.\n");
+            } else {
+                printf("FAILURE: Logic Incorrect.\n");
+            }
         }
     } else {
-        printf("Error: Could not retrieve result (index 3 out of bounds).\n");
+        printf("Error: No Vec4 output.\n");
     }
 
     free(json);
