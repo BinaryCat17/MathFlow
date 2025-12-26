@@ -14,10 +14,10 @@ Goal: Establish a decoupled, Data-Oriented architecture.
 Goal: Expand the capability of the CPU backend to support UI logic and robust serialization.
 
 ### 2.1. Binary Asset Format (Decoupling)
-- [ ] **Program Structure:** Define `mf_program` struct containing Header, Metadata (counts), Code Section, and Data Section (initial constants).
-- [ ] **Compiler Update:** Refactor compiler to emit `mf_program` instead of modifying VM directly.
-- [ ] **VM Loader:** Implement `mf_vm_load_program(vm, program)` to allocate memory and copy initial state.
-- [ ] **File I/O:** Add functions to write/read `mf_program` to/from `.bin` files.
+- [x] **Program Structure:** Define `mf_program` struct containing Header, Metadata (counts), Code Section, and Data Section (initial constants).
+- [x] **Compiler Update:** Refactor compiler to emit `mf_program` instead of modifying VM directly.
+- [x] **VM Loader:** Implement `mf_vm_load_program(vm, program)` to allocate memory and copy initial state.
+- [x] **File I/O:** Add functions to write/read `mf_program` to/from `.bin` files.
 
 ### 2.2. Type System Expansion (UI Foundation)
 - [ ] **New Types:** Implement `vec2` (positions), `vec4` (colors), `bool` (logic).
