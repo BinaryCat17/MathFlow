@@ -1,0 +1,12 @@
+.vs
+out
+vcpkg_installed
+*.spv
+.gemini
+worktmp/
+__pycache__/
+CMakeFiles
+CMakeCache.txt
+logs
+src/generated
+project_context.txt
