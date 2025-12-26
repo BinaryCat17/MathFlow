@@ -10,3 +10,4 @@ CMakeCache.txt
 logs
 src/generated
 project_context.txt
+test_prog.bin
