@@ -1,15 +1,15 @@
 {
   "nodes": [
-    { "id": 1, "type": "InputVec3", "data": { "value": [1.0, 2.0, 3.0] } },
-    { "id": 2, "type": "InputVec3", "data": { "value": [4.0, 5.0, 6.0] } },
-    { "id": 3, "type": "AddVec3" },
-    { "id": 4, "type": "InputFloat", "data": { "value": 2.0 } },
-    { "id": 5, "type": "ScaleVec3" }
+    { "id": "1", "type": "Input", "data": { "value": [1.0, 2.0, 3.0] } },
+    { "id": "2", "type": "Input", "data": { "value": [4.0, 5.0, 6.0] } },
+    { "id": "3", "type": "Add" },
+    { "id": "4", "type": "Input", "data": { "value": 2.0 } },
+    { "id": "5", "type": "Mul" }
   ],
   "links": [
-    { "src": 1, "src_port": 0, "dst": 3, "dst_port": 0 },
-    { "src": 2, "src_port": 0, "dst": 3, "dst_port": 1 },
-    { "src": 3, "src_port": 0, "dst": 5, "dst_port": 0 },
-    { "src": 4, "src_port": 0, "dst": 5, "dst_port": 1 }
+    { "src": "1", "src_port": 0, "dst": "3", "dst_port": 0 },
+    { "src": "2", "src_port": 0, "dst": "3", "dst_port": 1 },
+    { "src": "3", "src_port": 0, "dst": "5", "dst_port": 0 },
+    { "src": "4", "src_port": 0, "dst": "5", "dst_port": 1 }
   ]
 }

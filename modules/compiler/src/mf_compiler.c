@@ -14,59 +14,43 @@ typedef struct {
 
 // Maps legacy/specific JSON types to Generic IR Nodes
 static const mf_node_map_entry NODE_MAP[] = {
-    // Inputs -> Generic INPUT
-    {"InputFloat", MF_NODE_INPUT},
-    {"InputVec2", MF_NODE_INPUT},
-    {"InputVec3", MF_NODE_INPUT},
-    {"InputVec4", MF_NODE_INPUT},
-    {"InputMat3", MF_NODE_INPUT},
-    {"InputMat4", MF_NODE_INPUT},
-    {"InputBool", MF_NODE_INPUT}, // We might want to distinguish types later, but for now Input is Input
-
-    // Arithmetic
-    {"AddFloat", MF_NODE_ADD}, {"AddVec3", MF_NODE_ADD},
-    {"SubFloat", MF_NODE_SUB}, {"SubVec3", MF_NODE_SUB},
-    {"MulFloat", MF_NODE_MUL}, {"ScaleVec3", MF_NODE_MUL}, 
-    {"DivFloat", MF_NODE_DIV},
-    
-    // Math
-    {"MinFloat", MF_NODE_MIN},
-    {"MaxFloat", MF_NODE_MAX},
-    {"ClampFloat", MF_NODE_CLAMP},
-    {"FloorFloat", MF_NODE_FLOOR},
-    {"CeilFloat", MF_NODE_CEIL},
-    {"SinFloat", MF_NODE_SIN},
-    {"CosFloat", MF_NODE_COS},
-    {"Atan2Float", MF_NODE_ATAN2},
-    
-    // Matrix
-    {"MulMat3", MF_NODE_MATMUL}, {"MulMat4", MF_NODE_MATMUL},
-    {"TransposeMat3", MF_NODE_TRANSPOSE}, {"TransposeMat4", MF_NODE_TRANSPOSE},
-    {"InverseMat3", MF_NODE_INVERSE}, {"InverseMat4", MF_NODE_INVERSE},
-    
-    // Comparison
-    {"GreaterFloat", MF_NODE_GREATER},
-    {"LessFloat", MF_NODE_LESS},
-    {"EqualFloat", MF_NODE_EQUAL},
-    
-    // Logic
-    {"And", MF_NODE_AND},
-    {"Or", MF_NODE_OR},
-    {"Not", MF_NODE_NOT},
-    
-    // Select
-    {"SelectFloat", MF_NODE_SELECT},
-    {"SelectVec3", MF_NODE_SELECT},
-    {"SelectVec4", MF_NODE_SELECT},
-
-    // New Generic Names (for manual JSON writing)
+    // --- Core ---
     {"Input", MF_NODE_INPUT},
+    
+    // --- Arithmetic ---
     {"Add", MF_NODE_ADD},
     {"Sub", MF_NODE_SUB},
     {"Mul", MF_NODE_MUL},
     {"Div", MF_NODE_DIV},
-    {"MatMul", MF_NODE_MATMUL},
     
+    // --- Math ---
+    {"Min", MF_NODE_MIN},
+    {"Max", MF_NODE_MAX},
+    {"Clamp", MF_NODE_CLAMP},
+    {"Floor", MF_NODE_FLOOR},
+    {"Ceil", MF_NODE_CEIL},
+    {"Sin", MF_NODE_SIN},
+    {"Cos", MF_NODE_COS},
+    {"Atan2", MF_NODE_ATAN2},
+    
+    // --- Matrix ---
+    {"MatMul", MF_NODE_MATMUL},
+    {"Transpose", MF_NODE_TRANSPOSE},
+    {"Inverse", MF_NODE_INVERSE},
+    
+    // --- Comparison ---
+    {"Greater", MF_NODE_GREATER},
+    {"Less", MF_NODE_LESS},
+    {"Equal", MF_NODE_EQUAL},
+    
+    // --- Logic ---
+    {"And", MF_NODE_AND},
+    {"Or", MF_NODE_OR},
+    {"Not", MF_NODE_NOT},
+    
+    // --- Selection ---
+    {"Select", MF_NODE_SELECT},
+
     {NULL, MF_NODE_UNKNOWN}
 };
 
@@ -220,11 +204,7 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
         // ID
         cJSON* j_id = cJSON_GetObjectItem(node, "id");
         if (cJSON_IsString(j_id)) ir_node->id = arena_strdup(arena, j_id->valuestring);
-        else if (cJSON_IsNumber(j_id)) {
-            char buf[32];
-            snprintf(buf, 32, "%d", j_id->valueint);
-            ir_node->id = arena_strdup(arena, buf);
-        } else ir_node->id = "unknown";
+        else ir_node->id = "unknown";
         
         mf_map_put(&map, ir_node->id, i);
 
@@ -261,14 +241,14 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
             // Src ID
             cJSON* j_src = cJSON_GetObjectItem(link, "src");
             char key[64];
-            if (cJSON_IsNumber(j_src)) snprintf(key, 64, "%d", j_src->valueint);
-            else snprintf(key, 64, "%s", j_src->valuestring);
+            if (cJSON_IsString(j_src)) snprintf(key, 64, "%s", j_src->valuestring);
+            else key[0] = '\0';
             mf_map_get(&map, key, &ir_link->src_node_idx);
 
             // Dst ID
             cJSON* j_dst = cJSON_GetObjectItem(link, "dst");
-            if (cJSON_IsNumber(j_dst)) snprintf(key, 64, "%d", j_dst->valueint);
-            else snprintf(key, 64, "%s", j_dst->valuestring);
+            if (cJSON_IsString(j_dst)) snprintf(key, 64, "%s", j_dst->valuestring);
+            else key[0] = '\0';
             mf_map_get(&map, key, &ir_link->dst_node_idx);
 
             ir_link->src_port = (u32)cJSON_GetObjectItem(link, "src_port")->valueint;
@@ -382,6 +362,39 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_COS: inst->opcode = MF_OP_COS; instr_count++; break;
             
             case MF_NODE_MATMUL: inst->opcode = MF_OP_MATMUL; instr_count++; break;
+            case MF_NODE_TRANSPOSE: inst->opcode = MF_OP_TRANSPOSE; instr_count++; break;
+            case MF_NODE_INVERSE: inst->opcode = MF_OP_INVERSE; instr_count++; break;
+            
+            case MF_NODE_FLOOR: inst->opcode = MF_OP_FLOOR; instr_count++; break;
+            case MF_NODE_CEIL: inst->opcode = MF_OP_CEIL; instr_count++; break;
+            case MF_NODE_ATAN2: inst->opcode = MF_OP_ATAN2; instr_count++; break;
+            
+            case MF_NODE_GREATER: inst->opcode = MF_OP_GREATER; instr_count++; break;
+            case MF_NODE_LESS: inst->opcode = MF_OP_LESS; instr_count++; break;
+            case MF_NODE_EQUAL: inst->opcode = MF_OP_EQUAL; instr_count++; break;
+            
+            case MF_NODE_AND: inst->opcode = MF_OP_AND; instr_count++; break;
+            case MF_NODE_OR: inst->opcode = MF_OP_OR; instr_count++; break;
+            case MF_NODE_NOT: inst->opcode = MF_OP_NOT; instr_count++; break;
+
+            case MF_NODE_CLAMP:
+                if (s1 && s2 && s3) {
+                    // Clamp(Val, Min, Max)
+                    // 1. Dest = MAX(Val, Min)
+                    inst->opcode = MF_OP_MAX;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    instr_count++;
+                    
+                    // 2. Dest = MIN(Dest, Max)
+                    inst = &instrs[instr_count];
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->opcode = MF_OP_MIN;
+                    inst->src1_idx = node->out_reg_idx; // Reuse result
+                    inst->src2_idx = s3->out_reg_idx;
+                    instr_count++;
+                }
+                break;
             
             case MF_NODE_SELECT: 
                 if (s1 && s2 && s3) {
