@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    { "id": "init_val", "type": "Input", "data": { "value": 0.0 } },
+    { "id": "step", "type": "Input", "data": { "value": 1.0 } },
+    { "id": "counter", "type": "Memory", "init": 0.0 },
+    { "id": "next_val", "type": "Add" }
+  ],
+  "links": [
+    { "src": "counter", "src_port": 0, "dst": "next_val", "dst_port": 0 },
+    { "src": "step", "src_port": 0, "dst": "next_val", "dst_port": 1 },
+    { "src": "next_val", "src_port": 0, "dst": "counter", "dst_port": 0 }
+  ]
+}

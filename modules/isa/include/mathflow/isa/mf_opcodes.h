@@ -75,6 +75,15 @@ typedef enum {
 
     MF_OP_ARRAY_END = 511,
 
+    // --- State / Memory (512 - 767) ---
+    MF_OP_STATE_BEGIN = 512,
+    
+    MF_OP_COPY = 520, // Dest = Src1 (Tensor Copy)
+
+    MF_OP_STATE_END = 767,
+    
+    // --- Random / Noise (768 - ...) ---
+
 } mf_opcode;
 
 #endif // MF_OPCODES_H

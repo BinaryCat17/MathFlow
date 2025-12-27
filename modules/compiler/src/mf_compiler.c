@@ -56,6 +56,9 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS},
 
+    // --- State ---
+    {"Memory", MF_NODE_MEMORY},
+
     {NULL, MF_NODE_UNKNOWN}
 };
 
@@ -260,6 +263,20 @@ bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* a
                 }
             }
         }
+        else if (ir_node->type == MF_NODE_MEMORY) {
+            // Memory Node: Parse 'init' value
+             cJSON* init_val = cJSON_GetObjectItem(node, "init");
+             if (init_val) {
+                 parse_constant_tensor(init_val, &ir_node->constant, arena);
+             } else {
+                 // Default to scalar 0
+                 ir_node->constant.dtype = MF_DTYPE_F32;
+                 ir_node->constant.ndim = 0;
+                 ir_node->constant.size = 1;
+                 ir_node->constant.data = MF_ARENA_PUSH(arena, f32, 1);
+                 *((f32*)ir_node->constant.data) = 0.0f;
+             }
+        }
         i++;
     }
 
@@ -317,14 +334,30 @@ typedef struct {
 
 static void visit_node(sort_ctx* ctx, u32 node_idx) {
     if (ctx->visited[node_idx] == 2) return;
-    if (ctx->visited[node_idx] == 1) return; // Cycle
+    
+    // Cycle detection
+    if (ctx->visited[node_idx] == 1) {
+        // If we hit a node currently being visited, it's a cycle.
+        // However, if the current node is a MEMORY node, it breaks the cycle naturally 
+        // because its output does not depend on its input within the SAME frame.
+        // BUT, visit_node is called recursively.
+        // Actually, we should treat Memory nodes as Roots (no dependencies) during traversal.
+        return; 
+    }
+    
     ctx->visited[node_idx] = 1;
 
-    for (size_t i = 0; i < ctx->ir->link_count; ++i) {
-        if (ctx->ir->links[i].dst_node_idx == node_idx) {
-            visit_node(ctx, ctx->ir->links[i].src_node_idx);
+    // Visit dependencies
+    // For Memory nodes, we do NOT visit dependencies during Topo Sort.
+    // They act as inputs for the current frame.
+    if (ctx->ir->nodes[node_idx].type != MF_NODE_MEMORY) {
+        for (size_t i = 0; i < ctx->ir->link_count; ++i) {
+            if (ctx->ir->links[i].dst_node_idx == node_idx) {
+                visit_node(ctx, ctx->ir->links[i].src_node_idx);
+            }
         }
     }
+
     ctx->visited[node_idx] = 2;
     ctx->sorted_nodes[ctx->count++] = &ctx->ir->nodes[node_idx];
 }
@@ -457,6 +490,21 @@ static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_
             }
             break;
 
+        case MF_NODE_MEMORY:
+            // Output shape is defined by 'init' constant.
+            // Input shape must match (broadcasting might apply, but let's be strict for state).
+            *out = node->constant;
+            
+            // Validate input matches init shape (Optional but good)
+            if (s1) {
+                // If input is dynamic, we might resize? 
+                // For now, assume Memory node shape is fixed by Init.
+                // Or maybe Memory node takes shape of Input?
+                // Better: Memory node starts with Init, but if Input is different, it might be an error or resize.
+                // Let's stick to: Output Shape = Init Shape.
+            }
+            break;
+
         default: break;
     }
     return true;
@@ -505,7 +553,14 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
         if (node->type == MF_NODE_INPUT) {
             *t_desc = node->constant; 
             node->out_shape = node->constant;
-        } else {
+        } 
+        else if (node->type == MF_NODE_MEMORY) {
+            // Memory: Initial state comes from constant 'init'
+            *t_desc = node->constant;
+            node->out_shape = node->constant;
+            // It acts as a constant/variable in the data section.
+        }
+        else {
             // Logic Node
             if (!mf_infer_shape(node, s1, s2, s3)) {
                 return NULL; // Validation failed
@@ -524,6 +579,11 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
         switch (node->type) {
             case MF_NODE_INPUT: 
                 // No instruction, just data
+                break;
+            
+            case MF_NODE_MEMORY:
+                // Memory nodes do not generate compute instructions in the main pass.
+                // Their update (State Transition) is handled in the "Append Memory Updates" pass below.
                 break;
                 
             case MF_NODE_ADD: inst->opcode = MF_OP_ADD; instr_count++; break;
@@ -607,6 +667,23 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 break;
 
             default: break;
+        }
+    }
+
+    // 4. Append Memory Updates (State Transition)
+    // We iterate over all nodes again to find Memory nodes and generate their update instructions.
+    // This ensures updates happen AFTER all calculations.
+    for (size_t i = 0; i < ir->node_count; ++i) {
+        mf_ir_node* node = &ir->nodes[i];
+        if (node->type == MF_NODE_MEMORY) {
+            mf_ir_node* input = find_input_source(ir, (u32)(node - ir->nodes), 0);
+            if (input) {
+                mf_instruction* inst = &instrs[instr_count++];
+                inst->opcode = MF_OP_COPY;
+                inst->dest_idx = node->out_reg_idx;
+                inst->src1_idx = input->out_reg_idx;
+                inst->src2_idx = 0;
+            }
         }
     }
 

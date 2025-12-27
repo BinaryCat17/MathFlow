@@ -61,6 +61,9 @@ typedef enum {
     MF_NODE_CUMSUM,
     MF_NODE_COMPRESS,
 
+    // State
+    MF_NODE_MEMORY,
+
     MF_NODE_COUNT
 } mf_node_type;
 

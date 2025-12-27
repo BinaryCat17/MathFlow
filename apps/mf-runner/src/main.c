@@ -77,6 +77,11 @@ int main(int argc, char** argv) {
     }
 
     const char* path = argv[1];
+    int frames = 1;
+    if (argc >= 4 && strcmp(argv[2], "--frames") == 0) {
+        frames = atoi(argv[3]);
+    }
+
     printf("MathFlow Tensor Runner. Loading: %s\n", path);
 
     // 1. Setup Memory
@@ -130,7 +135,23 @@ int main(int argc, char** argv) {
     mf_vm_load_program(&vm, prog, &arena);
     
     // 4. Execute
-    mf_vm_exec(&vm);
+    printf("Running for %d frames...\n", frames);
+    for (int f = 0; f < frames; ++f) {
+        mf_vm_exec(&vm);
+        
+        // Debug output for first few frames
+        if (f < 5) {
+             printf("Frame %d:\n", f);
+             for(u32 i=0; i<vm._register_count; ++i) {
+                mf_tensor* t = &vm._registers[i];
+                // Heuristic to find 'interesting' tensors (non-constant inputs)
+                // For now just dump everything for small graphs
+                if (prog->meta.tensor_count < 20) {
+                    print_tensor(i, t);
+                }
+             }
+        }
+    }
     
     // 5. Dump All Tensors
     printf("\n--- Execution Finished ---\n");

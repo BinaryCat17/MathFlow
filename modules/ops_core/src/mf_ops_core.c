@@ -153,6 +153,19 @@ static void op_inverse(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     } else memcpy(out, m, a->size * sizeof(f32));
 }
 
+// --- Kernel: Memory/State ---
+static void op_copy(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    if (!dst || !src) return;
+
+    dst->dtype = src->dtype;
+    if (!mf_vm_resize_tensor(vm, dst, src->shape, src->ndim)) return;
+
+    size_t size = mf_dtype_size(src->dtype) * src->size;
+    memcpy(dst->data, src->data, size);
+}
+
 // --- Registration ---
 void mf_ops_core_register(mf_backend_dispatch_table* table) {
     // Core Math
@@ -169,4 +182,6 @@ void mf_ops_core_register(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_WHERE_TRUE] = op_where_true; table->op_table[MF_OP_WHERE_FALSE] = op_where_false;
     // Matrix
     table->op_table[MF_OP_MATMUL] = op_matmul; table->op_table[MF_OP_TRANSPOSE] = op_transpose; table->op_table[MF_OP_INVERSE] = op_inverse;
+    // State
+    table->op_table[MF_OP_COPY] = op_copy;
 }
