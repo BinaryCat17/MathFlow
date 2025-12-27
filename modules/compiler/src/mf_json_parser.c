@@ -3,6 +3,45 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+// --- Path Helpers ---
+
+static char* get_dir(const char* path, mf_arena* arena) {
+    // Find last slash
+    const char* last_slash = strrchr(path, '/');
+#ifdef _WIN32
+    const char* last_bslash = strrchr(path, '\\');
+    if (last_bslash > last_slash) last_slash = last_bslash;
+#endif
+
+    if (!last_slash) return arena_strdup(arena, ".");
+
+    size_t len = last_slash - path;
+    char* dir = MF_ARENA_PUSH(arena, char, len + 1);
+    memcpy(dir, path, len);
+    dir[len] = '\0';
+    return dir;
+}
+
+static char* join_path(const char* dir, const char* file, mf_arena* arena) {
+    // If file is absolute, return file
+    // Simple absolute check (Linux/Win)
+    if (file[0] == '/' || file[0] == '\\' || (strlen(file) > 2 && file[1] == ':')) {
+        return arena_strdup(arena, file);
+    }
+
+    size_t len1 = strlen(dir);
+    size_t len2 = strlen(file);
+    char* path = MF_ARENA_PUSH(arena, char, len1 + len2 + 2);
+    
+    // Check if dir already has trailing slash
+    bool slash = (dir[len1-1] == '/' || dir[len1-1] == '\\');
+    
+    if (slash) sprintf(path, "%s%s", dir, file);
+    else sprintf(path, "%s/%s", dir, file);
+    
+    return path;
+}
+
 // --- Node Type Mapping ---
 
 typedef struct {
@@ -134,8 +173,7 @@ char* arena_strdup(mf_arena* arena, const char* str) {
 
 static char* arena_sprintf(mf_arena* arena, const char* fmt, const char* arg1, const char* arg2) {
     // Simple helper for "arg1::arg2"
-    size_t len = strlen(arg1) + strlen(arg2) + 2; // +1 for :: (actually 2) + 1 null? 
-    // fmt is just for context, we assume "prefix::name"
+    size_t len = strlen(arg1) + strlen(arg2) + 2; 
     char* buf = MF_ARENA_PUSH(arena, char, len + 3); 
     sprintf(buf, "%s::%s", arg1, arg2);
     return buf;
@@ -225,7 +263,7 @@ void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
 
 // --- Parsing (Flat) ---
 
-static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena) {
+static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena, const char* base_path) {
     cJSON* root = cJSON_Parse(json_str);
     if (!root) return false;
 
@@ -276,12 +314,17 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
         else if (ir_node->type == MF_NODE_CALL && data) {
             cJSON* path_val = cJSON_GetObjectItem(data, "path");
             if (path_val && cJSON_IsString(path_val)) {
-                ir_node->sub_graph_path = arena_strdup(arena, path_val->valuestring);
+                // If base_path is provided, resolve relative paths
+                if (base_path) {
+                    char* dir = get_dir(base_path, arena);
+                    ir_node->sub_graph_path = join_path(dir, path_val->valuestring, arena);
+                } else {
+                    ir_node->sub_graph_path = arena_strdup(arena, path_val->valuestring);
+                }
             }
         }
         else if ((ir_node->type == MF_NODE_EXPORT_INPUT || ir_node->type == MF_NODE_EXPORT_OUTPUT) && data) {
             cJSON* idx_val = cJSON_GetObjectItem(data, "index");
-            // Store index in constant data (Scalar I32)
             ir_node->constant.dtype = MF_DTYPE_I32;
             ir_node->constant.ndim = 0;
             ir_node->constant.size = 1;
@@ -340,12 +383,6 @@ static bool has_call_nodes(mf_graph_ir* ir) {
 
 static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
     // 1. Calculate capacity (simplification: assume max 10x expansion per pass, or just count)
-    // We will just push to arena and hope for the best (Arena is large) 
-    
-    // We need lists to accumulate result
-    // Limitation: We can't easily resize arrays in Arena. 
-    // We will use a linked list for nodes/links then flatten.
-    
     typedef struct LNode { mf_ir_node n; struct LNode* next; } LNode;
     typedef struct LLink { mf_ir_link l; struct LLink* next; } LLink;
     
@@ -375,30 +412,9 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
         new_link_count++; \
     }
 
-    // Map for OldIdx -> NewIdx (in this pass)
-    // Actually we need to remap IDs? No, we use string IDs for linking in the end?
-    // The IR uses indices. We need to reconstruct indices.
-    // Strategy:
-    // 1. Iterate src nodes.
-    // 2. If Normal: Add to list. Keep track of "OldIdx -> NewIdx".
-    // 3. If Call: 
-    //      Load Child. Prefix Child IDs. Add Child Nodes to list.
-    //      Store "CallIdx:Port -> ChildNodeIdx" mappings.
-    // 4. Rebuild Links.
-
-    // Better Strategy:
-    // IR uses indices. IDs are for debugging/loading.
-    // But expanding breaks indices.
-    // We need to rely on string IDs during expansion, then re-resolve to indices?
-    // Yes. Re-resolution is safest.
-
-    // Step 1: Collect all Nodes (Flattening)
-    // To resolve links, we need a Map<StringID, NodeIdx> for the *New* graph.
     mf_str_map global_map;
-    mf_map_init(&global_map, 4096, arena); // Assume large enough
+    mf_map_init(&global_map, 4096, arena); 
 
-    // We also need to handle "CallPort -> ChildNode" mapping for stitching.
-    // Key: "CallNodeID:p<PortIndex>" (e.g., "node5:p0") -> "ChildNodeID"
     mf_str_map port_map;
     mf_map_init(&port_map, 1024, arena);
 
@@ -418,36 +434,27 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             }
 
             mf_graph_ir child_ir;
-            if (!parse_flat(json_content, &child_ir, arena)) continue;
+            // Pass node->sub_graph_path as base_path so nested calls are resolved correctly
+            if (!parse_flat(json_content, &child_ir, arena, node->sub_graph_path)) continue;
 
             // Process Child Nodes
             for (size_t k = 0; k < child_ir.node_count; ++k) {
                 mf_ir_node* c_node = &child_ir.nodes[k];
                 
                 // 1. Generate Prefixed ID
-                char* new_id = arena_sprintf(arena, "%s::%s", node->id, c_node->id); // "call_id::child_id"
+                char* new_id = arena_sprintf(arena, "%s::%s", node->id, c_node->id);
                 
                 // 2. Register Ports (Exports)
                 if (c_node->type == MF_NODE_EXPORT_INPUT) {
                     i32 port_idx = *((i32*)c_node->constant.data);
                     char port_key[128];
-                    snprintf(port_key, 128, "%s:i%d", node->id, port_idx); // Input to Call -> ExportInput
-                    mf_map_put(&port_map, arena_strdup(arena, port_key), 0); // Value unused, we need target ID.
+                    snprintf(port_key, 128, "%s:i%d", node->id, port_idx); 
+                    mf_map_put(&port_map, arena_strdup(arena, port_key), 0); 
                     
-                    // Actually, we need to map "CallNodeID:InputPort" -> "ChildNodeThatUsesExportInput".
-                    // Wait, links go TO ExportInput. Then ExportInput goes TO ChildNode.
-                    // Flattening removes ExportInput?
-                    // Let's keep ExportInput nodes for now, and let optimization remove them?
-                    // Or turn them into Identity/Copy?
-                    // Let's turn ExportInput/Output into Identity (or just leave as is and let VM handle? No, VM doesn't know).
-                    // Best: Treat ExportInput as "Anchor".
-                    
-                    // Let's just add the node with the new ID.
                     c_node->id = new_id;
                     mf_map_put(&global_map, new_id, current_idx);
                     
-                    // Register "Call:i0" -> "Call::ExportInput"
-                    mf_map_put(&port_map, arena_strdup(arena, port_key), current_idx); // Map to the new node index
+                    mf_map_put(&port_map, arena_strdup(arena, port_key), current_idx); 
                     
                     APPEND_NODE(*c_node);
                     current_idx++;
@@ -475,17 +482,8 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             // Process Child Links
             for (size_t k = 0; k < child_ir.link_count; ++k) {
                 mf_ir_link l = child_ir.links[k];
-                // Resolve IDs using the Prefixed IDs
-                const char* src_id_old = child_ir.nodes[l.src_node_idx].id; // These are already prefixed? No, child_ir has original pointers?
-                // Wait, child_ir.nodes[k].id was modified in place above!
-                // So l.src_node_idx points to the node in child_ir array, which has the NEW ID.
                 const char* src_id = child_ir.nodes[l.src_node_idx].id;
                 const char* dst_id = child_ir.nodes[l.dst_node_idx].id;
-                
-                // We will resolve indices later. Store IDs?
-                // We can't store IDs in mf_ir_link (it has u32).
-                // But we know the Global Map has the IDs.
-                // So we can look up the New Index immediately!
                 
                 u32 new_src_idx, new_dst_idx;
                 if (mf_map_get(&global_map, src_id, &new_src_idx) && 
@@ -517,46 +515,20 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
 
         // RESOLVE SOURCE
         if (src_node->type == MF_NODE_CALL) {
-            // Comes FROM a Call node (Output)
-            // Look up in PortMap: "CallID:o<Port>"
             char key[128];
             snprintf(key, 128, "%s:o%d", src_node->id, l.src_port);
-            if (!mf_map_get(&port_map, key, &final_src_idx)) {
-                // Port not found?
-                drop_link = true; 
-            } else {
-                // The new source is the ExportOutput node.
-                // We need to connect ExportOutput -> Dst.
-                // Wait, ExportOutput is an Input to the external world?
-                // Inside child: Node -> ExportOutput.
-                // Outside: Call -> Node.
-                // Result: Node -> ExportOutput -> Node.
-                // ExportOutput acts as a relay.
-                // We need to ensure ExportOutput behaves like a Copy or Identity.
-                l.src_port = 0; // ExportOutput has only 1 input (0) and we treat it as passing through?
-                // Actually, ExportOutput isn't an operation. It's a marker.
-                // If we treat it as `MF_NODE_INPUT` (Identity) that takes an input?
-                // Let's set its type to `MF_NODE_ADD` (0 + x) or just `Copy`?
-                // We don't have Copy. `MF_NODE_MAX` with itself?
-                // Better: The Compiler's CodeGen should handle ExportOutput by just aliasing the register.
-                // For now, let's treat it as a node that exists.
-            }
+            if (!mf_map_get(&port_map, key, &final_src_idx)) drop_link = true; 
+            else l.src_port = 0; 
         } else {
-            // Normal source
             mf_map_get(&global_map, src_node->id, &final_src_idx);
         }
 
         // RESOLVE DEST
         if (dst_node->type == MF_NODE_CALL) {
-            // Goes TO a Call node (Input)
-            // Look up in PortMap: "CallID:i<Port>"
             char key[128];
             snprintf(key, 128, "%s:i%d", dst_node->id, l.dst_port);
-            if (!mf_map_get(&port_map, key, &final_dst_idx)) {
-                drop_link = true;
-            } else {
-                l.dst_port = 0; // ExportInput has 1 output (0)
-            }
+            if (!mf_map_get(&port_map, key, &final_dst_idx)) drop_link = true;
+            else l.dst_port = 0;
         } else {
             mf_map_get(&global_map, dst_node->id, &final_dst_idx);
         }
@@ -588,11 +560,17 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
 
 // --- Main Entry Point ---
 
-bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena) {
-    mf_graph_ir initial_ir;
-    if (!parse_flat(json_str, &initial_ir, arena)) return false;
+bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena) {
+    char* json_content = read_file(json_path, arena);
+    if (!json_content) {
+        printf("Error: Could not read file %s\n", json_path);
+        return false;
+    }
 
-    // Expand Loop (Max depth 10)
+    mf_graph_ir initial_ir;
+    if (!parse_flat(json_content, &initial_ir, arena, json_path)) return false;
+
+    // Expand Loop
     mf_graph_ir current_ir = initial_ir;
     for (int pass = 0; pass < 10; ++pass) {
         if (!has_call_nodes(&current_ir)) {

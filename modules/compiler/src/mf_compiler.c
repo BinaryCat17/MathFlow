@@ -62,6 +62,10 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
 
         // If INPUT, copy constant data
         if (node->type == MF_NODE_INPUT) {
+            if (node->constant.data == NULL) {
+                printf("Error: Input node '%s' has no data. Check if type is correct (Input vs Constant) or data is loaded.\n", node->id ? node->id : "unknown");
+                return NULL;
+            }
             *t_desc = node->constant; 
             node->out_shape = node->constant;
         } 
@@ -74,7 +78,8 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
         else {
             // Logic Node
             if (!mf_infer_shape(node, s1, s2, s3)) {
-                return NULL; // Validation failed
+                printf("Error: Shape inference failed for node '%s'.\n", node->id ? node->id : "unknown");
+                return NULL; 
             }
 
             // Write predicted shape to program tensor descriptor

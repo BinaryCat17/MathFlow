@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    { "id": "val", "type": "Input", "data": { "value": 7.0 } },
+    { "id": "call", "type": "Call", "data": { "path": "../sub_inner.json" } },
+    { "id": "res", "type": "ExportOutput", "data": { "index": 0 } }
+  ],
+  "links": [
+    { "src": "val", "src_port": 0, "dst": "call", "dst_port": 0 },
+    { "src": "call", "src_port": 0, "dst": "res", "dst_port": 0 }
+  ]
+}

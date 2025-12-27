@@ -6,21 +6,6 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
 
-// Helper to read file
-static char* read_file(const char* path) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char* buffer = malloc(length + 1);
-    if (!buffer) return NULL;
-    fread(buffer, 1, length, f);
-    buffer[length] = '\0';
-    fclose(f);
-    return buffer;
-}
-
 static const char* get_filename_ext(const char *filename) {
     const char *dot = strrchr(filename, '.');
     if(!dot || dot == filename) return "";
@@ -103,17 +88,13 @@ int main(int argc, char** argv) {
 
     // 2. Load / Compile
     if (strcmp(ext, "json") == 0) {
-        char* json = read_file(path);
-        if (!json) return 1;
-        
         mf_graph_ir ir = {0};
-        if (!mf_compile_load_json(json, &ir, &arena)) {
-            printf("Error: Failed to parse JSON.\n");
-            free(json); free(arena_buffer); free(heap_buffer); return 1;
+        if (!mf_compile_load_json(path, &ir, &arena)) {
+            printf("Error: Failed to parse JSON or expand graph.\n");
+            free(arena_buffer); free(heap_buffer); return 1;
         }
         
         prog = mf_compile(&ir, &arena);
-        free(json);
     } else if (strcmp(ext, "bin") == 0) {
         prog = mf_vm_load_program_from_file(path, &arena);
     }
