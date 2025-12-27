@@ -112,11 +112,20 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor t_shape = (a->size > b->size) ? *a : *b; \
     t_shape.dtype = MF_DTYPE_U8; \
     ensure_shape(dst, &t_shape); \
-    f32* da = (f32*)a->data; f32* db = (f32*)b->data; u8* dd = (u8*)dst->data; \
     bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
-    for(size_t i=0; i<dst->size; ++i) { \
-        f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i]; \
-        dd[i] = (va OP vb) ? 1 : 0; \
+    u8* dd = (u8*)dst->data; \
+    if (a->dtype == MF_DTYPE_F32) { \
+        f32* da = (f32*)a->data; f32* db = (f32*)b->data; \
+        for(size_t i=0; i<dst->size; ++i) { \
+            f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i]; \
+            dd[i] = (va OP vb) ? 1 : 0; \
+        } \
+    } else if (a->dtype == MF_DTYPE_I32) { \
+        int32_t* da = (int32_t*)a->data; int32_t* db = (int32_t*)b->data; \
+        for(size_t i=0; i<dst->size; ++i) { \
+            int32_t va = a_s ? da[0] : da[i]; int32_t vb = b_s ? db[0] : db[i]; \
+            dd[i] = (va OP vb) ? 1 : 0; \
+        } \
     } \
 }
 
@@ -132,10 +141,11 @@ static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     ensure_shape(dst, val); // Assume initialized to val size
     
     u8* c = (u8*)cond->data;
-    f32* v = (f32*)val->data;
-    f32* d = (f32*)dst->data;
+    u8* v = (u8*)val->data;
+    u8* d = (u8*)dst->data;
+    size_t es = mf_dtype_size(val->dtype);
     bool c_scal = (cond->size == 1);
-    for(size_t i=0; i<dst->size; ++i) if (c[c_scal ? 0 : i]) d[i] = v[i];
+    for(size_t i=0; i<dst->size; ++i) if (c[c_scal ? 0 : i]) memcpy(d + i*es, v + i*es, es);
 }
 
 static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
@@ -145,10 +155,11 @@ static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     ensure_shape(dst, val);
     
     u8* c = (u8*)cond->data;
-    f32* v = (f32*)val->data;
-    f32* d = (f32*)dst->data;
+    u8* v = (u8*)val->data;
+    u8* d = (u8*)dst->data;
+    size_t es = mf_dtype_size(val->dtype);
     bool c_scal = (cond->size == 1);
-    for(size_t i=0; i<dst->size; ++i) if (!c[c_scal ? 0 : i]) d[i] = v[i];
+    for(size_t i=0; i<dst->size; ++i) if (!c[c_scal ? 0 : i]) memcpy(d + i*es, v + i*es, es);
 }
 
 // --- Kernel: Matrix ---

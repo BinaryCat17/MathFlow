@@ -129,7 +129,7 @@ static char* arena_strdup(mf_arena* arena, const char* str) {
 }
 
 // --- Helper: Parse Tensor from JSON Value ---
-// Supports: Number (Scalar), Array (Vector/Matrix)
+// Supports: Number (Scalar), Array (Vector/Matrix), String (Hash), Bool
 static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
     if (cJSON_IsNumber(val)) {
         // Scalar F32
@@ -147,15 +147,23 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
         t->data = MF_ARENA_PUSH(arena, u8, 1);
         *((u8*)t->data) = (u8)(cJSON_IsTrue(val) ? 1 : 0);
     }
+    else if (cJSON_IsString(val)) {
+        // String -> I32 Hash
+        t->dtype = MF_DTYPE_I32;
+        t->ndim = 0;
+        t->size = 1;
+        t->data = MF_ARENA_PUSH(arena, int32_t, 1);
+        *((int32_t*)t->data) = (int32_t)fnv1a_hash(val->valuestring);
+    }
     else if (cJSON_IsArray(val)) {
         int count = cJSON_GetArraySize(val);
         if (count == 0) return; // Empty tensor? 
         
-        // Check nesting for Rank
+        // Check nesting and type
         cJSON* first = cJSON_GetArrayItem(val, 0);
         
         if (cJSON_IsNumber(first)) {
-            // Rank 1 (Vector)
+            // Rank 1 (Vector F32)
             t->dtype = MF_DTYPE_F32;
             t->ndim = 1;
             t->shape[0] = count;
@@ -169,6 +177,26 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
             cJSON* item = NULL;
             cJSON_ArrayForEach(item, val) {
                 data[i++] = (f32)item->valuedouble;
+            }
+        }
+        else if (cJSON_IsString(first)) {
+             // Rank 1 (Vector String -> I32)
+            t->dtype = MF_DTYPE_I32;
+            t->ndim = 1;
+            t->shape[0] = count;
+            t->strides[0] = 1;
+            t->size = count;
+            
+            int32_t* data = MF_ARENA_PUSH(arena, int32_t, count);
+            t->data = data;
+            
+            int i = 0;
+            cJSON* item = NULL;
+            cJSON_ArrayForEach(item, val) {
+                if (cJSON_IsString(item))
+                    data[i++] = (int32_t)fnv1a_hash(item->valuestring);
+                else 
+                    data[i++] = 0;
             }
         }
         // TODO: Add Rank 2 (Matrix) parsing here if needed for JSON input

@@ -50,6 +50,15 @@ static void print_tensor(u32 idx, mf_tensor* t) {
         }
         if (t->size > limit) printf("... (+%zu)", t->size - limit);
         printf("}\n");
+    } else if (t->dtype == MF_DTYPE_I32) {
+        printf("I32: {");
+        int32_t* data = (int32_t*)t->data;
+        size_t limit = t->size > 16 ? 16 : t->size;
+        for(size_t i=0; i<limit; ++i) {
+            printf("%d%s", data[i], i < limit-1 ? ", " : "");
+        }
+        if (t->size > limit) printf("... (+%zu)", t->size - limit);
+        printf("}\n");
     } else if (t->dtype == MF_DTYPE_U8) {
         printf("Bool: {");
         u8* data = (u8*)t->data;
