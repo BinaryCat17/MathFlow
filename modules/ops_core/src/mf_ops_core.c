@@ -1,5 +1,5 @@
-#include <mathflow/backend_cpu/ops/mf_ops_core.h>
-#include <mathflow/backend_cpu/mf_backend_utils.h>
+#include <mathflow/ops_core/mf_ops_core.h>
+#include <mathflow/vm/mf_vm_utils.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
 #include <math.h>

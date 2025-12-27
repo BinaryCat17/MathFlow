@@ -64,7 +64,13 @@ typedef enum {
 
     // --- Array Ops (256 - 511) ---
     MF_OP_ARRAY_BEGIN = 256,
-    // (To be filled by ops_array module)
+    
+    // Generators
+    MF_OP_RANGE = 260, // Output: [0, 1, 2, ... N-1]
+
+    // Algorithms
+    MF_OP_CUMSUM = 270, // Output[i] = Sum(Input[0]...Input[i])
+
     MF_OP_ARRAY_END = 511,
 
 } mf_opcode;

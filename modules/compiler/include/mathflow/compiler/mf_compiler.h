@@ -56,6 +56,10 @@ typedef enum {
     // Selection
     MF_NODE_SELECT, // Where/Select
 
+    // Array Ops
+    MF_NODE_RANGE,
+    MF_NODE_CUMSUM,
+
     MF_NODE_COUNT
 } mf_node_type;
 

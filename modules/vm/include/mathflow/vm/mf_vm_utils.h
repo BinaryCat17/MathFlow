@@ -1,5 +1,5 @@
-#ifndef MF_BACKEND_UTILS_H
-#define MF_BACKEND_UTILS_H
+#ifndef MF_VM_UTILS_H
+#define MF_VM_UTILS_H
 
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/isa/mf_tensor.h>
@@ -93,4 +93,4 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     for(size_t i=0; i<dst->size; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
 }
 
-#endif // MF_BACKEND_UTILS_H
+#endif // MF_VM_UTILS_H

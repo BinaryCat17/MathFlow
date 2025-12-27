@@ -35,15 +35,32 @@ target_include_directories(mf_compiler PUBLIC
 )
 target_link_libraries(mf_compiler PUBLIC mf_vm cjson) # Needs VM for column types, cjson for parsing
 
-# 4. Backend: CPU
+# 4. Ops: Core
+add_library(mf_ops_core STATIC
+    modules/ops_core/src/mf_ops_core.c
+)
+target_include_directories(mf_ops_core PUBLIC
+    modules/ops_core/include
+)
+target_link_libraries(mf_ops_core PUBLIC mf_vm m)
+
+# 5. Ops: Array
+add_library(mf_ops_array STATIC
+    modules/ops_array/src/mf_ops_array.c
+)
+target_include_directories(mf_ops_array PUBLIC
+    modules/ops_array/include
+)
+target_link_libraries(mf_ops_array PUBLIC mf_vm m)
+
+# 6. Backend: CPU
 add_library(mf_backend_cpu STATIC
     modules/backend_cpu/src/mf_backend_cpu.c
-    modules/backend_cpu/src/ops/mf_ops_core.c
 )
 target_include_directories(mf_backend_cpu PUBLIC
     modules/backend_cpu/include
 )
-target_link_libraries(mf_backend_cpu PUBLIC mf_vm)
+target_link_libraries(mf_backend_cpu PUBLIC mf_vm mf_ops_core mf_ops_array)
 
 # --- Apps ---
 

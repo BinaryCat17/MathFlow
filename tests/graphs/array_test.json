@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    { 
+      "id": "count", 
+      "type": "Input", 
+      "data": { "value": 5.0 } 
+    },
+    { "id": "range_out", "type": "Range" },
+    { "id": "cumsum_out", "type": "CumSum" }
+  ],
+  "links": [
+    { "src": "count", "src_port": 0, "dst": "range_out", "dst_port": 0 },
+    { "src": "range_out", "src_port": 0, "dst": "cumsum_out", "dst_port": 0 }
+  ]
+}

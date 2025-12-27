@@ -51,6 +51,10 @@ static const mf_node_map_entry NODE_MAP[] = {
     // --- Selection ---
     {"Select", MF_NODE_SELECT},
 
+    // --- Array Ops ---
+    {"Range", MF_NODE_RANGE},
+    {"CumSum", MF_NODE_CUMSUM},
+
     {NULL, MF_NODE_UNKNOWN}
 };
 
@@ -430,6 +434,18 @@ static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_
             if (s1) *out = s1->out_shape;
             break;
 
+        case MF_NODE_RANGE:
+            // Output is 1D Array of F32. Size is dynamic (determined by input value).
+            out->dtype = MF_DTYPE_F32; 
+            out->ndim = 1;
+            out->shape[0] = 0; // Dynamic
+            out->size = 0;
+            break;
+
+        case MF_NODE_CUMSUM:
+            if (s1) *out = s1->out_shape;
+            break;
+
         default: break;
     }
     return true;
@@ -530,6 +546,9 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_AND: inst->opcode = MF_OP_AND; instr_count++; break;
             case MF_NODE_OR: inst->opcode = MF_OP_OR; instr_count++; break;
             case MF_NODE_NOT: inst->opcode = MF_OP_NOT; instr_count++; break;
+            
+            case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
+            case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
 
             case MF_NODE_CLAMP:
                 if (s1 && s2 && s3) {
