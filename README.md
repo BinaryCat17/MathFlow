@@ -43,15 +43,15 @@ MathFlow comes with a CLI tool `mf-runner` that can compile JSON graphs and exec
 
 **Run a test graph:**
 ```bash
-./out/build/x64-debug-linux/mf-runner assets/graphs/simple_math.json
+./out/build/x64-debug-linux/mf-runner assets/graphs/demo_inventory.json
 ```
 
 **Output:**
 ```
-MathFlow Tensor Runner. Loading: assets/graphs/simple_math.json
-Program: 5 tensors, 2 insts
+MathFlow Tensor Runner. Loading: assets/graphs/demo_inventory.json
+Program: 12 tensors, 6 insts
 ...
-  [4] Shape: [3] F32: {10.00, 14.00, 18.00}
+  [11] Shape: [5] F32: {0.00, 1200.00, 1440.00, 0.00, 12000.00}
 ```
 
 ## Documentation

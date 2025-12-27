@@ -408,17 +408,21 @@ static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_
             break;
 
         case MF_NODE_SELECT:
-            if (s2 && s3) {
+            if (s2) {
                 mf_tensor* t = &s2->out_shape;
-                mf_tensor* f = &s3->out_shape;
-                bool t_s = (t->size == 1);
-                bool f_s = (f->size == 1);
+                mf_tensor* f = s3 ? &s3->out_shape : NULL;
 
-                if (!t_s && !f_s && !mf_tensor_same_shape(t, f)) {
-                    printf("Error: Select shape mismatch in node '%s'. True/False branches must have same shape or be broadcastable.\n", node->id);
-                    return false;
+                if (f) {
+                    bool t_s = (t->size == 1);
+                    bool f_s = (f->size == 1);
+                    if (!t_s && !f_s && !mf_tensor_same_shape(t, f)) {
+                         printf("Error: Select shape mismatch in node '%s'.\n", node->id);
+                         return false;
+                    }
+                    *out = t_s ? *f : *t;
+                } else {
+                    *out = *t;
                 }
-                *out = t_s ? *f : *t; // Result shape follows the vector input
             }
             break;
             
@@ -547,31 +551,22 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 break;
             
             case MF_NODE_SELECT: 
-                if (s1 && s2 && s3) {
-                    // Node inputs: 0=Cond, 1=True, 2=False
-                    // Opcode: CMOV_TRUE dest = True if Cond
-                    // Opcode: CMOV_FALSE dest = False if !Cond
-                    
-                    // 1. Initialize Dest with False Value? 
-                    // No, CMOV writes if condition met.
-                    // We need to write both cases.
-                    
-                    // Inst 1: Dest = WHERE_TRUE(Cond, TrueVal)  (Writes valid slots, others undef/garbage)
-                    // Inst 2: Dest = WHERE_FALSE(Cond, FalseVal) (Writes the rest)
-                    // BUT: This assumes Dest preserves values between instructions.
-                    // VM must ensure this.
+                if (s1 && s2) {
+                    // Node inputs: 0=Cond, 1=True, 2=False (Optional)
                     
                     inst->opcode = MF_OP_WHERE_TRUE;
                     inst->src1_idx = s1->out_reg_idx; // Cond
                     inst->src2_idx = s2->out_reg_idx; // TrueVal
                     instr_count++;
                     
-                    inst = &instrs[instr_count];
-                    inst->opcode = MF_OP_WHERE_FALSE;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx; // Cond
-                    inst->src2_idx = s3->out_reg_idx; // FalseVal
-                    instr_count++;
+                    if (s3) {
+                        inst = &instrs[instr_count];
+                        inst->opcode = MF_OP_WHERE_FALSE;
+                        inst->dest_idx = node->out_reg_idx;
+                        inst->src1_idx = s1->out_reg_idx; // Cond
+                        inst->src2_idx = s3->out_reg_idx; // FalseVal
+                        instr_count++;
+                    }
                 }
                 break;
 

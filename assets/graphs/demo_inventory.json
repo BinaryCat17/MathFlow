@@ -1,0 +1,59 @@
+{
+  "nodes": [
+    { 
+      "id": "prices", 
+      "type": "Input", 
+      "data": { "value": [100.0, 500.0, 1200.0, 50.0, 2000.0] } 
+    },
+    { 
+      "id": "quantities", 
+      "type": "Input", 
+      "data": { "value": [10.0, 2.0, 1.0, 100.0, 5.0] } 
+    },
+    { 
+      "id": "categories", 
+      "type": "Input", 
+      "data": { "value": ["Food", "Electronics", "Electronics", "Food", "Electronics"] } 
+    },
+    { 
+      "id": "tax_rate", 
+      "type": "Input", 
+      "data": { "value": 1.2 } 
+    },
+    { 
+      "id": "target_cat", 
+      "type": "Input", 
+      "data": { "value": "Electronics" } 
+    },
+    { 
+      "id": "threshold", 
+      "type": "Input", 
+      "data": { "value": 1000.0 } 
+    },
+    { "id": "calc_total", "type": "Mul" },
+    { "id": "calc_tax", "type": "Mul" },
+    { "id": "check_cat", "type": "Equal" },
+    { "id": "check_price", "type": "Greater" },
+    { "id": "filter_logic", "type": "And" },
+    { "id": "final_select", "type": "Select" }
+  ],
+  "links": [
+    { "src": "prices", "src_port": 0, "dst": "calc_total", "dst_port": 0 },
+    { "src": "quantities", "src_port": 0, "dst": "calc_total", "dst_port": 1 },
+
+    { "src": "calc_total", "src_port": 0, "dst": "calc_tax", "dst_port": 0 },
+    { "src": "tax_rate", "src_port": 0, "dst": "calc_tax", "dst_port": 1 },
+
+    { "src": "categories", "src_port": 0, "dst": "check_cat", "dst_port": 0 },
+    { "src": "target_cat", "src_port": 0, "dst": "check_cat", "dst_port": 1 },
+
+    { "src": "calc_tax", "src_port": 0, "dst": "check_price", "dst_port": 0 },
+    { "src": "threshold", "src_port": 0, "dst": "check_price", "dst_port": 1 },
+
+    { "src": "check_cat", "src_port": 0, "dst": "filter_logic", "dst_port": 0 },
+    { "src": "check_price", "src_port": 0, "dst": "filter_logic", "dst_port": 1 },
+
+    { "src": "filter_logic", "src_port": 0, "dst": "final_select", "dst_port": 0 },
+    { "src": "calc_tax", "src_port": 0, "dst": "final_select", "dst_port": 1 }
+  ]
+}
