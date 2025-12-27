@@ -16,21 +16,27 @@
 
 ---
 
-## Phase 7.5: Architecture Hardening (Refactoring)
+## Phase 7.5: Architecture Hardening (Refactoring) [COMPLETED]
 **Objective:** Strengthen the codebase before building the Visualizer. Ensure strict interfaces and clean code structure.
 
-- [ ] **IO Symbol Table:**
-    - **Issue:** Host accessing tensors by raw index is fragile.
-    - **Goal:** Implement Named Inputs/Outputs mechanism.
-    - **Compiler:** Persist a map `{"Name": RegisterID}` in the `.bin` file header/section.
-    - **VM:** Add `mf_vm_find_register(vm, "name")` API.
-- [ ] **Compiler Modularization:**
-    - **Issue:** `mf_compiler.c` is becoming a "God Object".
-    - **Action:** Split into:
-        - `mf_json_parser.c`: Raw JSON -> IR.
-        - `mf_semantics.c`: Shape Inference, Type Checking.
-        - `mf_codegen.c`: IR -> Bytecode, Topo Sort.
-        - `mf_compiler.c`: High-level pipeline driver.
+- [x] **IO Symbol Table:**
+    - [x] Implemented `mf_bin_symbol` in ISA.
+    - [x] Compiler populates Symbol Table.
+    - [x] VM loads Symbol Table and provides `mf_vm_find_register(vm, name)`.
+- [x] **Compiler Modularization:**
+    - [x] Split `mf_compiler.c` into `mf_json_parser.c`, `mf_semantics.c`, `mf_codegen.c`.
+
+---
+
+потом можно будет это перевести на GPU шейдеры?
+
+## Phase 7.8: GLSL Math Extension (Shader Ops)
+**Objective:** Add high-level math operations essential for graphics and SDF, preventing graph explosion.
+
+- [ ] **Opcodes:** Add `Mix` (Lerp), `Step`, `SmoothStep`, `Dot`, `Length`.
+- [ ] **Implementation:** Add kernels to `ops_core`.
+- [ ] **Compiler:** Add support for these nodes.
+- [ ] **Why:** Without `Length` and `Mix`, calculating a simple circle requires 5-10 low-level nodes, making graphs unreadable and slow.
 
 ---
 
