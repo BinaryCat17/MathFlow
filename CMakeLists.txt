@@ -38,6 +38,7 @@ target_link_libraries(mf_compiler PUBLIC mf_vm cjson) # Needs VM for column type
 # 4. Backend: CPU
 add_library(mf_backend_cpu STATIC
     modules/backend_cpu/src/mf_backend_cpu.c
+    modules/backend_cpu/src/ops/mf_ops_core.c
 )
 target_include_directories(mf_backend_cpu PUBLIC
     modules/backend_cpu/include

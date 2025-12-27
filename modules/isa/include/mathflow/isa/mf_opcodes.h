@@ -1,60 +1,72 @@
 #ifndef MF_OPCODES_H
 #define MF_OPCODES_H
 
+// MathFlow Instruction Set Architecture
+// Opcode Ranges:
+// 0    - 255 : Core Math (Basic Arithmetic, Logic, Comparison)
+// 256  - 511 : Array Ops (Layout, Ranges, Transformations)
+// 512  - 767 : Random / Noise
+// 768  - 1023: Reserved (UI / String / Etc)
+
+#define MF_OP_LIMIT 1024
+
 typedef enum {
     MF_OP_NOOP = 0,
     
-    // --- Arithmetic (Element-wise) ---
-    // Works on Scalars, Vectors, and Tensors (via Broadcasting)
-    MF_OP_ADD,      // C = A + B
-    MF_OP_SUB,      // C = A - B
-    MF_OP_MUL,      // C = A * B (Hadamard product)
-    MF_OP_DIV,      // C = A / B
+    // --- Core Math (0 - 255) ---
+    MF_OP_CORE_BEGIN = 0,
+
+    // Arithmetic
+    MF_OP_ADD = 1,
+    MF_OP_SUB = 2,
+    MF_OP_MUL = 3,
+    MF_OP_DIV = 4,
     
-    // --- Math Functions ---
-    MF_OP_MIN,
-    MF_OP_MAX,
-    MF_OP_ABS,
-    MF_OP_CLAMP,    // Requires 3 inputs? Min/Max. Implemented as Max(Min(x, max), min)? 
-                    // Or separate instruction if we stick to 2 inputs.
-                    // Let's use generic Min/Max composition for Clamp.
+    // Math Functions
+    MF_OP_MIN = 10,
+    MF_OP_MAX = 11,
+    MF_OP_ABS = 12,
+    MF_OP_CLAMP = 13,
     
-    MF_OP_FLOOR,
-    MF_OP_CEIL,
-    MF_OP_SIN,
-    MF_OP_COS,
-    MF_OP_ATAN2,
-    MF_OP_SQRT,
-    MF_OP_POW,
+    MF_OP_FLOOR = 20,
+    MF_OP_CEIL = 21,
+    MF_OP_SIN = 22,
+    MF_OP_COS = 23,
+    MF_OP_ATAN2 = 24,
+    MF_OP_SQRT = 25,
+    MF_OP_POW = 26,
 
-    // --- Linear Algebra ---
-    MF_OP_MATMUL,   // Dot Product, Matrix-Vector, Matrix-Matrix
-    MF_OP_TRANSPOSE,
-    MF_OP_INVERSE,
-    MF_OP_NORMALIZE,
+    // Linear Algebra
+    MF_OP_MATMUL = 40,
+    MF_OP_TRANSPOSE = 41,
+    MF_OP_INVERSE = 42,
+    MF_OP_NORMALIZE = 43,
 
-    // --- Comparison (Element-wise -> Bool Tensor) ---
-    MF_OP_LESS,
-    MF_OP_GREATER,
-    MF_OP_EQUAL,
-    MF_OP_NEQUAL,
-    MF_OP_LEQUAL,
-    MF_OP_GEQUAL,
+    // Comparison
+    MF_OP_LESS = 60,
+    MF_OP_GREATER = 61,
+    MF_OP_EQUAL = 62,
+    MF_OP_NEQUAL = 63,
+    MF_OP_LEQUAL = 64,
+    MF_OP_GEQUAL = 65,
 
-    // --- Logic (Bool Tensor -> Bool Tensor) ---
-    MF_OP_AND,
-    MF_OP_OR,
-    MF_OP_XOR,
-    MF_OP_NOT,
+    // Logic
+    MF_OP_AND = 80,
+    MF_OP_OR = 81,
+    MF_OP_XOR = 82,
+    MF_OP_NOT = 83,
 
-    // --- Selection / Control Flow ---
-    // Conditional Move: 
-    // WHERE_TRUE:  Dest[i] = Src2[i] if Src1[i] is true
-    // WHERE_FALSE: Dest[i] = Src2[i] if Src1[i] is false
-    MF_OP_WHERE_TRUE,
-    MF_OP_WHERE_FALSE,
+    // Control Flow / Selection
+    MF_OP_WHERE_TRUE = 100,
+    MF_OP_WHERE_FALSE = 101,
 
-    MF_OP_COUNT
+    MF_OP_CORE_END = 255,
+
+    // --- Array Ops (256 - 511) ---
+    MF_OP_ARRAY_BEGIN = 256,
+    // (To be filled by ops_array module)
+    MF_OP_ARRAY_END = 511,
+
 } mf_opcode;
 
 #endif // MF_OPCODES_H

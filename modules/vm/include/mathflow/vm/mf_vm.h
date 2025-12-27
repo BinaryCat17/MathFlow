@@ -26,7 +26,7 @@ typedef void (*mf_op_func)(mf_vm* vm, u16 dest, u16 src1, u16 src2);
 typedef void (*mf_hook_map)(mf_vm* vm, mf_tensor* tensor, mf_access_mode mode);
 
 typedef struct {
-    mf_op_func op_table[MF_OP_COUNT];
+    mf_op_func op_table[MF_OP_LIMIT];
     mf_hook_map on_map;
 } mf_backend_dispatch_table;
 

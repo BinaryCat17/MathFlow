@@ -1,88 +1,84 @@
-# MathFlow Roadmap: The Tensor Era
+# MathFlow Roadmap v2: The Tensor UI Engine
 
-**Goal:** Transform MathFlow from a fixed-register VM into a **Generalized Tensor Compute Engine**.
-This shift unifies scalar, vector, matrix, and array operations under a single mathematical abstraction, enabling support for arbitrary data dimensions (ML-style), dynamic tables (Dataframes), and batch processing.
+**Vision:** To build a modular, high-performance data processing engine where UI is just another mathematical function of the state. The Core remains pure and portable, while capabilities are extended via Modules and Host Applications.
 
-> **Philosophy:** Functionality first, optimization later. We prioritize code simplicity and maintainability.
-
----
-
-## Phase 1: The Tensor Foundation (Completed)
-**Objective:** Define the universal data structure and memory model.
-
-- [x] **Unified Type System:** Implemented `mf_tensor` struct and `mf_dtype`.
-- [x] **Universal ISA:** Defined generic opcodes (`OP_ADD`, `OP_MUL`, `OP_MATMUL`).
-- [x] **Compiler Update:** Rewrote compiler to parse JSON into `mf_tensor` programs.
-- [x] **Generic Backend:** Implemented C-based kernel with broadcasting support for Add/Mul.
-- [x] **Tensor Runner:** Updated `mf-runner` to execute and visualize tensor graphs.
+> **Philosophy:** Core is Math. UI is Data. The Graph defines *What* to draw, the Host defines *How* to draw it.
 
 ---
 
-## Phase 2: Compiler & Toolchain
-**Objective:** Update the toolchain to understand tensors and clean up legacy debt.
+## Phase 5: Modular Architecture (The Foundation)
+**Objective:** Decouple specific operations from the Core VM to ensure scalability and portability.
 
-### 2.1. Shape Inference Pass (Completed)
-The compiler must predict tensor shapes to validate the graph before execution.
-- [x] **Static Analysis:** Propagate shapes from Inputs through the graph.
-- [x] **Validation:** Error out on shape mismatches (e.g., trying to dot-product incompatible dimensions).
+- [ ] **Opcode Ranges:** Refactor `isa/mf_opcodes.h` to use fixed ranges (e.g., Core: 0-255, Array: 256-511).
+- [ ] **Dispatch Table Refactor:** Replace the rigid `struct` in `mf_backend_dispatch_table` with a flat array `mf_op_func operations[MF_OP_LIMIT]`.
+- [ ] **Backend Utils:** Extract generic helper functions (Broadcasting logic, Shape resolution, Iterator macros) from `backend_cpu` into a shared header (e.g., `mf_backend_utils.h`) so new Ops modules can reuse them easily.
+- [ ] **Ops Registration:** Implement registration functions for modules (e.g., `mf_ops_core_register(table)`).
+- [ ] **Module Split:** Move math implementations from `backend_cpu` to `modules/ops_core`.
 
-### 2.2. JSON Format Cleanup (Refactoring) (Completed)
-- [x] **Deprecation:** Remove support for legacy types like `InputVec3`, `AddFloat`.
-- [x] **Standardization:** Enforce generic names (`Input`, `Add`, `Mul`) in the compiler.
-- [x] **Enforce String IDs:** Transition all IDs to strings (e.g., `"id": "1"`) to unify the format.
-- [x] **Asset Update:** Convert all existing `.json` tests to the new format.
+## Phase 6: Array Operations Module (The Layout Engine)
+**Objective:** Implement mathematical primitives required for layout calculations (Stacking, Grids) without introducing UI concepts into Core.
+
+- [ ] **New Module:** `modules/ops_array` (Instruction Set Extension).
+    - *Note:* Renamed from `backend_array`. Backends define *execution* (CPU/GPU), Ops modules define *functionality*.
+- [ ] **Opcode: Range (Iota):** Generates sequences `[0, 1, 2, ... N]`. Essential for iterating over items.
+- [ ] **Opcode: CumSum (Prefix Scan):** Calculates cumulative sum.
+    - Input: `Heights [10, 20, 10]`
+    - Output: `Y_Positions [0, 10, 30]`
+    - Critical for stacking UI elements dynamically.
+- [ ] **Opcode: Filter/Compress:** (Optional) Selects elements based on a mask, changing the tensor size.
+
+## Phase 7: The UI Host (Raylib Integration)
+**Objective:** Create a visual runtime environment that drives the graph.
+
+- [ ] **New App:** `apps/mf-ui-host` (linked with Raylib).
+- [ ] **Input Protocol:**
+    - Host injects: `ScreenSize`, `MousePos`, `MouseDown`, `Time`.
+- [ ] **Draw List Protocol:**
+    - Host reads specific Output Tensor: `DrawCommands` `[N, 8]`.
+    - Format: `{Type, X, Y, W, H, R, G, B}`.
+- [ ] **Renderer Implementation:**
+    - Map `Type=1` to `DrawRectangle`.
+    - Map `Type=2` to `DrawCircle`.
+    - Map `Type=3` to `DrawText`.
+
+## Phase 8: Resource Management (Assets)
+**Objective:** Allow the graph to reference external assets (Fonts, Icons) purely by ID.
+
+- [ ] **Resource Table:** Host maintains a map `ID -> Texture/Font`.
+- [ ] **Text Measurement:** Host provides a "TextSize" tensor or helper, so the graph can calculate layout for text labels.
+- [ ] **Texture Atlas:** Support UV coordinates in Draw List.
+
+## Phase 9: Scalability (Graph Composition)
+**Objective:** Enable reuse of graph logic (Prefabs/Macros) to avoid spaghetti code.
+
+- [ ] **Sub-Graph Node:** Implement `Call("path/to/button.json")` node type.
+- [ ] **Compiler Inlining:** Compiler recursively loads sub-graphs, prefixes their node IDs (to ensure uniqueness), and merges them into the main execution list.
+- [ ] **Interface Definition:** JSON schema to define "Public Inputs" and "Public Outputs" of a sub-graph.
+
+## Phase 10: State Management (Feedback Loops)
+**Objective:** Enable UI components to remember state (e.g., "Is Pressed", "Scroll Position").
+
+- [ ] **Memory Node:** A node that outputs its value from the *previous* frame.
+- [ ] **Cycle Detection:** Update Compiler's Topological Sort to handle cycles by breaking them at `Memory` nodes.
+- [ ] **Persistent Memory:** Ensure `Memory` nodes are allocated in the Heap (not Frame Arena) and preserved between `mf_vm_exec` calls.
+
+## Phase 11: Advanced Strings (Formatting)
+**Objective:** Display dynamic data (e.g., "Health: 100") without string manipulation in the Core.
+
+- [ ] **Format Protocol:** Graph outputs a struct `{FormatStringID, Value}`.
+- [ ] **Host Formatting:** Host resolves the ID to a format string (e.g., "Score: %d") and applies the value before rendering.
 
 ---
 
-## Phase 3: High-Level Data & Strings (Completed)
-**Objective:** Support non-numerical business logic (Strings, IDs, Categories) using mathematical primitives.
+## Completed Phases (Archive)
 
-### 3.1. Dictionary Encoding (String Interop)
-Treat strings as mathematical entities for performance.
-- [x] **Global String Pool:** A central storage for unique string characters (`Blob`). (Implemented as FNV1a Hash)
-- [x] **Tokenization:** Strings entering the system (Inputs) are hashed and converted to `I32` (Indices).
-- [x] **String Tensor:** A tensor of type `I32` that represents a list of strings.
-- [x] **Debug View:** The Runner/Debugger resolves `I32` -> `String` only for display purposes. (Implemented I32 view)
+### Phase 1-3: Tensor Foundation & Basic Types (Completed)
+- Unified `mf_tensor` struct.
+- String hashing and storage.
+- Basic math operations.
 
-### 3.2. Dataframe Operations
-Enable database-like logic.
-- [x] **Structs as Tensors:** Represent a "Product" `{Price, Name}` not as a C-struct, but as a collection of synchronized tensors (Columnar Store / SoA).
-- [x] **Selection/Masking:** Implement `OP_WHERE` (Tensor masking) to filter data (e.g., `Select * From Products Where Price > 100`).
-
----
-
-## Phase 4: Dynamic Execution & Memory Management
-**Objective:** Handle variable workloads (dynamic batch sizes) and manage memory efficiently without system `malloc` in the hot loop.
-
-### 4.1. Memory Allocator System
-Implement a robust memory subsystem to replace raw `malloc`/`free` and simple Arenas.
-- [x] **Allocator Interface:** Define `mf_allocator` interface (Alloc, Free, Realloc).
-- [x] **Linear Allocator:** Enhance the existing Arena for "Frame Temporary" memory (reset every frame).
-- [x] **Heap Allocator:** Implement a General Purpose Allocator (e.g., Free List or Buddy System) capable of managing a fixed memory block for persistent but dynamic tensors.
-- [ ] **Memory Stats:** Tracking usage, peak memory, and fragmentation.
-
-### 4.2. Dynamic Tensors
-Allow tensors to change shape during runtime.
-- [x] **Capacity Tracking:** Add `capacity` field to `mf_tensor` to distinguish between allocated size and used size.
-- [x] **Resize API:** Implement `mf_tensor_resize(ctx, tensor, new_shape)` which handles re-allocation and data preservation.
-- [x] **Growth Strategy:** Implement geometric growth (e.g., 1.5x) to minimize allocation frequency.
-
-### 4.3. Runtime Shape Resolution
-Operations must adapt to input data changes.
-- [x] **Runtime Inference:** Update Opcodes (Backend) to calculate output shapes based on actual input shapes, not just compile-time constants.
-- [x] **Broadcasting:** Update kernels to handle dynamic broadcasting (e.g., `Vec3` + `BatchVec3`).
-
-### 4.4. Validation
-- [x] **Resize Test:** A graph that accumulates data, forcing buffer growth. (Verified via mf-runner dynamic test)
-- [ ] **OOM Handling:** Graceful error handling when the pre-allocated memory block is exhausted.
-
----
-
-## Summary of Changes
-| Feature | Old MathFlow | **Tensor MathFlow** |
-| :--- | :--- | :--- |
-| **Data Type** | `f32`, `vec3`, `mat4` | `Tensor<DType, Shape>` |
-| **Opcodes** | `ADD_VEC3`, `MUL_MAT4` | `ADD`, `MATMUL` (Generic) |
-| **Logic** | Single Item (Scalar) | Batch / Array Processing |
-| **Strings** | Not Supported | Dictionary Encoded (I32) |
-| **Memory** | Fixed Columns | Dynamic Buffer Pool |
+### Phase 4: Dynamic Execution (Completed)
+- **Memory:** Dual-Allocator system (Arena + Heap).
+- **Dynamics:** `mf_vm_resize_tensor` and `capacity` tracking.
+- **Runtime:** Broadcasting and Shape Inference in CPU backend.
+- **Validation:** Inventory Demo (Broadcasting + Masking).
