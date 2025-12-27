@@ -6,22 +6,13 @@
 
 ---
 
-## Phase 5: Modular Architecture (The Foundation)
-**Objective:** Decouple specific operations from the Core VM to ensure scalability and portability.
-
-- [ ] **Opcode Ranges:** Refactor `isa/mf_opcodes.h` to use fixed ranges (e.g., Core: 0-255, Array: 256-511).
-- [ ] **Dispatch Table Refactor:** Replace the rigid `struct` in `mf_backend_dispatch_table` with a flat array `mf_op_func operations[MF_OP_LIMIT]`.
-- [ ] **Backend Utils:** Extract generic helper functions (Broadcasting logic, Shape resolution, Iterator macros) from `backend_cpu` into a shared header (e.g., `mf_backend_utils.h`) so new Ops modules can reuse them easily.
-- [ ] **Ops Registration:** Implement registration functions for modules (e.g., `mf_ops_core_register(table)`).
-- [ ] **Module Split:** Move math implementations from `backend_cpu` to `modules/ops_core`.
-
 ## Phase 6: Array Operations Module (The Layout Engine)
 **Objective:** Implement mathematical primitives required for layout calculations (Stacking, Grids) without introducing UI concepts into Core.
 
-- [ ] **New Module:** `modules/ops_array` (Instruction Set Extension).
+- [x] **New Module:** `modules/ops_array` (Instruction Set Extension).
     - *Note:* Renamed from `backend_array`. Backends define *execution* (CPU/GPU), Ops modules define *functionality*.
-- [ ] **Opcode: Range (Iota):** Generates sequences `[0, 1, 2, ... N]`. Essential for iterating over items.
-- [ ] **Opcode: CumSum (Prefix Scan):** Calculates cumulative sum.
+- [x] **Opcode: Range (Iota):** Generates sequences `[0, 1, 2, ... N]`. Essential for iterating over items.
+- [x] **Opcode: CumSum (Prefix Scan):** Calculates cumulative sum.
     - Input: `Heights [10, 20, 10]`
     - Output: `Y_Positions [0, 10, 30]`
     - Critical for stacking UI elements dynamically.
@@ -82,3 +73,10 @@
 - **Dynamics:** `mf_vm_resize_tensor` and `capacity` tracking.
 - **Runtime:** Broadcasting and Shape Inference in CPU backend.
 - **Validation:** Inventory Demo (Broadcasting + Masking).
+
+### Phase 5: Modular Architecture (Completed)
+- [x] **Opcode Ranges:** Refactor `isa/mf_opcodes.h` to use fixed ranges (e.g., Core: 0-255, Array: 256-511).
+- [x] **Dispatch Table Refactor:** Replace the rigid `struct` in `mf_backend_dispatch_table` with a flat array `mf_op_func operations[MF_OP_LIMIT]`.
+- [x] **Backend Utils:** Extract generic helper functions (Broadcasting logic, Shape resolution, Iterator macros) from `backend_cpu` into a shared header (e.g., `mf_backend_utils.h`) so new Ops modules can reuse them easily.
+- [x] **Ops Registration:** Implement registration functions for modules (e.g., `mf_ops_core_register(table)`).
+- [x] **Module Split:** Move math implementations from `backend_cpu` to `modules/ops_core`.
