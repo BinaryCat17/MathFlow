@@ -497,6 +497,8 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             
             case MF_NODE_MIN: inst->opcode = MF_OP_MIN; instr_count++; break;
             case MF_NODE_MAX: inst->opcode = MF_OP_MAX; instr_count++; break;
+            case MF_NODE_ABS: inst->opcode = MF_OP_ABS; instr_count++; break;
+            case MF_NODE_SQRT: inst->opcode = MF_OP_SQRT; instr_count++; break;
             case MF_NODE_SIN: inst->opcode = MF_OP_SIN; instr_count++; break;
             case MF_NODE_COS: inst->opcode = MF_OP_COS; instr_count++; break;
             
@@ -507,10 +509,14 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_FLOOR: inst->opcode = MF_OP_FLOOR; instr_count++; break;
             case MF_NODE_CEIL: inst->opcode = MF_OP_CEIL; instr_count++; break;
             case MF_NODE_ATAN2: inst->opcode = MF_OP_ATAN2; instr_count++; break;
+            case MF_NODE_POW: inst->opcode = MF_OP_POW; instr_count++; break;
             
             case MF_NODE_GREATER: inst->opcode = MF_OP_GREATER; instr_count++; break;
             case MF_NODE_LESS: inst->opcode = MF_OP_LESS; instr_count++; break;
             case MF_NODE_EQUAL: inst->opcode = MF_OP_EQUAL; instr_count++; break;
+            case MF_NODE_NEQUAL: inst->opcode = MF_OP_NEQUAL; instr_count++; break;
+            case MF_NODE_LEQUAL: inst->opcode = MF_OP_LEQUAL; instr_count++; break;
+            case MF_NODE_GEQUAL: inst->opcode = MF_OP_GEQUAL; instr_count++; break;
             
             case MF_NODE_AND: inst->opcode = MF_OP_AND; instr_count++; break;
             case MF_NODE_OR: inst->opcode = MF_OP_OR; instr_count++; break;
