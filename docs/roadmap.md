@@ -26,11 +26,11 @@ The compiler must predict tensor shapes to validate the graph before execution.
 - [ ] **Static Analysis:** Propagate shapes from Inputs through the graph.
 - [ ] **Validation:** Error out on shape mismatches (e.g., trying to dot-product incompatible dimensions).
 
-### 2.2. JSON Format Cleanup (Refactoring)
-- [ ] **Deprecation:** Remove support for legacy types like `InputVec3`, `AddFloat`.
-- [ ] **Standardization:** Enforce generic names (`Input`, `Add`, `Mul`) in the compiler.
-- [ ] **Enforce String IDs:** Transition all IDs to strings (e.g., `"id": "1"`) to unify the format.
-- [ ] **Asset Update:** Convert all existing `.json` tests to the new format.
+### 2.2. JSON Format Cleanup (Refactoring) (Completed)
+- [x] **Deprecation:** Remove support for legacy types like `InputVec3`, `AddFloat`.
+- [x] **Standardization:** Enforce generic names (`Input`, `Add`, `Mul`) in the compiler.
+- [x] **Enforce String IDs:** Transition all IDs to strings (e.g., `"id": "1"`) to unify the format.
+- [x] **Asset Update:** Convert all existing `.json` tests to the new format.
 
 ---
 
