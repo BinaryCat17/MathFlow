@@ -52,6 +52,87 @@ static void op_max(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
+// --- Kernel: GLSL Math ---
+
+// Step(edge, x) -> 1.0 if x >= edge, else 0.0
+static void op_step(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* edge = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* x = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    if (!dst || !edge || !x) return;
+    
+    if (!mf_utils_resolve_binary_shape(vm, dst, edge, x)) return;
+    // Output is F32 (0.0 or 1.0)
+    dst->dtype = MF_DTYPE_F32;
+    
+    f32* de = (f32*)edge->data; f32* dx = (f32*)x->data; f32* dd = (f32*)dst->data;
+    bool e_s = (edge->size == 1); bool x_s = (x->size == 1);
+    
+    for(size_t i=0; i<dst->size; ++i) {
+        f32 e_val = e_s ? de[0] : de[i];
+        f32 x_val = x_s ? dx[0] : dx[i];
+        dd[i] = (x_val >= e_val) ? 1.0f : 0.0f;
+    }
+}
+
+// Dot(a, b) -> Sum(a*b) along last axis
+static void op_dot(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    if (!dst || !a || !b) return;
+    
+    if (a->size != b->size) return; // Strict size check for now
+
+    // Determine output shape: A without last dim
+    int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
+    
+    // Resize dst (copies shape from A, but truncated)
+    if (!mf_vm_resize_tensor(vm, dst, a->shape, out_ndim)) return;
+    dst->dtype = MF_DTYPE_F32;
+
+    f32* A = (f32*)a->data; 
+    f32* B = (f32*)b->data; 
+    f32* D = (f32*)dst->data;
+    
+    size_t dim = (a->ndim <= 1) ? a->size : a->shape[a->ndim-1];
+    size_t batch = a->size / dim;
+    
+    for (size_t i = 0; i < batch; ++i) {
+        float sum = 0.0f;
+        for (size_t k = 0; k < dim; ++k) {
+            sum += A[i*dim + k] * B[i*dim + k];
+        }
+        D[i] = sum;
+    }
+}
+
+// Length(a) -> Sqrt(Dot(a, a))
+static void op_length(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    if (!dst || !a) return;
+
+    int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
+    if (!mf_vm_resize_tensor(vm, dst, a->shape, out_ndim)) return;
+    dst->dtype = MF_DTYPE_F32;
+
+    f32* A = (f32*)a->data; 
+    f32* D = (f32*)dst->data;
+    
+    size_t dim = (a->ndim <= 1) ? a->size : a->shape[a->ndim-1];
+    size_t batch = a->size / dim;
+    
+    for (size_t i = 0; i < batch; ++i) {
+        float sum = 0.0f;
+        for (size_t k = 0; k < dim; ++k) {
+            float val = A[i*dim + k];
+            sum += val * val;
+        }
+        D[i] = sqrtf(sum);
+    }
+}
+
 // --- Kernel: Comparison ---
 MF_KERNEL_COMPARE(less, <)
 MF_KERNEL_COMPARE(greater, >)
@@ -173,6 +254,11 @@ void mf_ops_core_register(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_SIN] = op_sin; table->op_table[MF_OP_COS] = op_cos; table->op_table[MF_OP_FLOOR] = op_floor; table->op_table[MF_OP_CEIL] = op_ceil;
     table->op_table[MF_OP_ABS] = op_abs; table->op_table[MF_OP_SQRT] = op_sqrt; table->op_table[MF_OP_ATAN2] = op_atan2; table->op_table[MF_OP_POW] = op_pow;
     table->op_table[MF_OP_MIN] = op_min; table->op_table[MF_OP_MAX] = op_max;
+    // GLSL Math
+    table->op_table[MF_OP_STEP] = op_step;
+    table->op_table[MF_OP_DOT] = op_dot;
+    table->op_table[MF_OP_LENGTH] = op_length;
+
     // Comparison
     table->op_table[MF_OP_LESS] = op_less; table->op_table[MF_OP_GREATER] = op_greater; table->op_table[MF_OP_EQUAL] = op_equal;
     table->op_table[MF_OP_NEQUAL] = op_nequal; table->op_table[MF_OP_LEQUAL] = op_lequal; table->op_table[MF_OP_GEQUAL] = op_gequal;

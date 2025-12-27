@@ -27,6 +27,9 @@ typedef enum {
     MF_OP_MAX = 11,
     MF_OP_ABS = 12,
     MF_OP_CLAMP = 13,
+    // MF_OP_MIX decomposed
+    MF_OP_STEP = 15,
+    // MF_OP_SMOOTHSTEP not supported yet
     
     MF_OP_FLOOR = 20,
     MF_OP_CEIL = 21,
@@ -41,6 +44,8 @@ typedef enum {
     MF_OP_TRANSPOSE = 41,
     MF_OP_INVERSE = 42,
     MF_OP_NORMALIZE = 43,
+    MF_OP_DOT = 44,
+    MF_OP_LENGTH = 45,
 
     // Comparison
     MF_OP_LESS = 60,

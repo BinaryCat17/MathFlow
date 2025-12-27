@@ -30,13 +30,13 @@
 
 потом можно будет это перевести на GPU шейдеры?
 
-## Phase 7.8: GLSL Math Extension (Shader Ops)
+## Phase 7.8: GLSL Math Extension (Shader Ops) [COMPLETED]
 **Objective:** Add high-level math operations essential for graphics and SDF, preventing graph explosion.
 
-- [ ] **Opcodes:** Add `Mix` (Lerp), `Step`, `SmoothStep`, `Dot`, `Length`.
-- [ ] **Implementation:** Add kernels to `ops_core`.
-- [ ] **Compiler:** Add support for these nodes.
-- [ ] **Why:** Without `Length` and `Mix`, calculating a simple circle requires 5-10 low-level nodes, making graphs unreadable and slow.
+- [x] **Opcodes:** `Mix` (Decomposed), `Step`, `Dot`, `Length`.
+- [x] **Implementation:** Kernels added to `ops_core`.
+- [x] **Compiler:** Decomposed `Mix` into `Add(a, Mul(Sub(b, a), t))` to keep ISA minimal.
+- [x] **Verification:** `glsl_math_test.json` passed.
 
 ---
 

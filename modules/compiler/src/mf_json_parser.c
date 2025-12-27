@@ -29,11 +29,15 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"Sin", MF_NODE_SIN},
     {"Cos", MF_NODE_COS},
     {"Atan2", MF_NODE_ATAN2},
+    {"Mix", MF_NODE_MIX},
+    {"Step", MF_NODE_STEP},
     
     // --- Matrix ---
     {"MatMul", MF_NODE_MATMUL},
     {"Transpose", MF_NODE_TRANSPOSE},
     {"Inverse", MF_NODE_INVERSE},
+    {"Dot", MF_NODE_DOT},
+    {"Length", MF_NODE_LENGTH},
     
     // --- Comparison ---
     {"Greater", MF_NODE_GREATER},

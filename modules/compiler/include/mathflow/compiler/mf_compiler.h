@@ -32,12 +32,16 @@ typedef enum {
     MF_NODE_ATAN2,
     MF_NODE_SQRT,
     MF_NODE_POW,
+    MF_NODE_MIX,
+    MF_NODE_STEP,
 
     // Matrix
     MF_NODE_MATMUL,
     MF_NODE_TRANSPOSE,
     MF_NODE_INVERSE,
     MF_NODE_NORMALIZE,
+    MF_NODE_DOT,
+    MF_NODE_LENGTH,
 
     // Comparison
     MF_NODE_LESS,

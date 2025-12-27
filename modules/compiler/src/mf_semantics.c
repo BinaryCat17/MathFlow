@@ -22,7 +22,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
     switch (node->type) {
         case MF_NODE_ADD: case MF_NODE_SUB: case MF_NODE_MUL: case MF_NODE_DIV:
         case MF_NODE_MIN: case MF_NODE_MAX: case MF_NODE_ATAN2: case MF_NODE_POW:
-        case MF_NODE_CLAMP:
+        case MF_NODE_STEP:
         {
             if (s1 && s2) {
                 mf_tensor* a = &s1->out_shape;
@@ -42,11 +42,65 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             }
         } break;
 
+        case MF_NODE_MIX: case MF_NODE_CLAMP:
+        {
+             if (s1 && s2 && s3) {
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                mf_tensor* c = &s3->out_shape;
+                
+                // Find the non-scalar shape (if any)
+                mf_tensor* shape = a;
+                if (a->size == 1) shape = b;
+                if (shape->size == 1) shape = c;
+                
+                // Verify all non-scalars match 'shape'
+                if (a->size > 1 && !mf_tensor_same_shape(a, shape)) return false;
+                if (b->size > 1 && !mf_tensor_same_shape(b, shape)) return false;
+                if (c->size > 1 && !mf_tensor_same_shape(c, shape)) return false;
+
+                *out = *shape;
+             }
+        } break;
+
+        case MF_NODE_DOT:
+        {
+            if (s1 && s2) {
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                // Assume last dim match
+                out->dtype = MF_DTYPE_F32;
+                if (a->ndim <= 1) {
+                    out->ndim = 0;
+                    out->size = 1;
+                } else {
+                    out->ndim = a->ndim - 1;
+                    for(int i=0; i<out->ndim; ++i) out->shape[i] = a->shape[i];
+                    out->size = a->size / a->shape[a->ndim-1];
+                }
+            }
+        } break;
+
         case MF_NODE_SIN: case MF_NODE_COS: case MF_NODE_ABS: case MF_NODE_SQRT:
-        case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT:
+        case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT: case MF_NODE_LENGTH:
         {
             // Unary: Copy shape from first input
-            if (s1) *out = s1->out_shape;
+            if (s1) {
+                 if (node->type == MF_NODE_LENGTH) {
+                     mf_tensor* a = &s1->out_shape;
+                     out->dtype = MF_DTYPE_F32;
+                     if (a->ndim <= 1) {
+                         out->ndim = 0;
+                         out->size = 1;
+                     } else {
+                         out->ndim = a->ndim - 1;
+                         for(int i=0; i<out->ndim; ++i) out->shape[i] = a->shape[i];
+                         out->size = a->size / a->shape[a->ndim-1];
+                     }
+                 } else {
+                     *out = s1->out_shape;
+                 }
+            }
         } break;
 
         case MF_NODE_LESS: case MF_NODE_GREATER: case MF_NODE_EQUAL:

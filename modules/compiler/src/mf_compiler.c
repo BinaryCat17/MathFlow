@@ -138,6 +138,40 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 instr_count++; 
                 break;
 
+            case MF_NODE_STEP: inst->opcode = MF_OP_STEP; instr_count++; break;
+            case MF_NODE_DOT: inst->opcode = MF_OP_DOT; instr_count++; break;
+            case MF_NODE_LENGTH: inst->opcode = MF_OP_LENGTH; instr_count++; break;
+
+            case MF_NODE_MIX:
+                if (s1 && s2 && s3) {
+                    // Mix(a, b, t) = a + (b - a) * t
+                    // s1=a, s2=b, s3=t
+                    
+                    // 1. Dest = Sub(b, a)
+                    inst->opcode = MF_OP_SUB;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s2->out_reg_idx;
+                    inst->src2_idx = s1->out_reg_idx;
+                    instr_count++;
+                    
+                    // 2. Dest = Mul(Dest, t)
+                    inst = &instrs[instr_count];
+                    inst->opcode = MF_OP_MUL;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = node->out_reg_idx;
+                    inst->src2_idx = s3->out_reg_idx;
+                    instr_count++;
+
+                    // 3. Dest = Add(Dest, a)
+                    inst = &instrs[instr_count];
+                    inst->opcode = MF_OP_ADD;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = node->out_reg_idx;
+                    inst->src2_idx = s1->out_reg_idx;
+                    instr_count++;
+                }
+                break;
+
             case MF_NODE_CLAMP:
                 if (s1 && s2 && s3) {
                     // Clamp(Val, Min, Max)
