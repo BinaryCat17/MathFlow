@@ -29,7 +29,7 @@ typedef enum {
     MF_OP_CLAMP = 13,
     // MF_OP_MIX decomposed
     MF_OP_STEP = 15,
-    // MF_OP_SMOOTHSTEP not supported yet
+    MF_OP_SMOOTHSTEP = 16,
     
     MF_OP_FLOOR = 20,
     MF_OP_CEIL = 21,
@@ -46,6 +46,7 @@ typedef enum {
     MF_OP_NORMALIZE = 43,
     MF_OP_DOT = 44,
     MF_OP_LENGTH = 45,
+    MF_OP_JOIN = 46, // Join two tensors into last dim: [..., 2]
 
     // Comparison
     MF_OP_LESS = 60,

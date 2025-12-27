@@ -34,6 +34,7 @@ typedef enum {
     MF_NODE_POW,
     MF_NODE_MIX,
     MF_NODE_STEP,
+    MF_NODE_SMOOTHSTEP,
 
     // Matrix
     MF_NODE_MATMUL,
@@ -42,6 +43,7 @@ typedef enum {
     MF_NODE_NORMALIZE,
     MF_NODE_DOT,
     MF_NODE_LENGTH,
+    MF_NODE_JOIN, // Join/Pack
 
     // Comparison
     MF_NODE_LESS,

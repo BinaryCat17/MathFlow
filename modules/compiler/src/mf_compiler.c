@@ -141,6 +141,15 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_STEP: inst->opcode = MF_OP_STEP; instr_count++; break;
             case MF_NODE_DOT: inst->opcode = MF_OP_DOT; instr_count++; break;
             case MF_NODE_LENGTH: inst->opcode = MF_OP_LENGTH; instr_count++; break;
+            case MF_NODE_JOIN: inst->opcode = MF_OP_JOIN; instr_count++; break;
+            
+            case MF_NODE_SMOOTHSTEP:
+                inst->opcode = MF_OP_SMOOTHSTEP;
+                // s1 is Val, s2 is Edges
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+                instr_count++;
+                break;
 
             case MF_NODE_MIX:
                 if (s1 && s2 && s3) {

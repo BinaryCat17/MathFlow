@@ -165,7 +165,9 @@ int main(int argc, char** argv) {
     // Find Inputs
     u16 reg_time = mf_vm_find_register(vm, "u_Time");
     u16 reg_res = mf_vm_find_register(vm, "u_Resolution");
+    u16 reg_aspect = mf_vm_find_register(vm, "u_Aspect"); // Scalar F32
     u16 reg_mouse = mf_vm_find_register(vm, "u_Mouse");
+    u16 reg_coord = mf_vm_find_register(vm, "u_FragCoord"); // [H, W, 2]
     u16 reg_color = mf_vm_find_register(vm, "out_Color");
 
     if (reg_color == 0xFFFF) {
@@ -176,13 +178,34 @@ int main(int argc, char** argv) {
     // Set Resolution Once
     mf_tensor* t_res = mf_vm_map_tensor(vm, reg_res, MF_ACCESS_WRITE);
     if (t_res) {
-        // Assume graph expects [2] F32
-        // We might need to resize it if it's not initialized
-        // Ideally, graph has "Input" with data, so shape is already [2]
         f32* d = (f32*)t_res->data;
         if (d && t_res->size >= 2) {
             d[0] = (f32)WINDOW_WIDTH;
             d[1] = (f32)WINDOW_HEIGHT;
+        }
+    }
+    
+    // Set Aspect Ratio
+    mf_tensor* t_aspect = mf_vm_map_tensor(vm, reg_aspect, MF_ACCESS_WRITE);
+    if (t_aspect) {
+        f32* d = (f32*)t_aspect->data;
+        if (d) *d = (f32)WINDOW_WIDTH / (f32)WINDOW_HEIGHT;
+    }
+    
+    // Set u_FragCoord Once (Static Grid)
+    mf_tensor* t_coord = mf_vm_map_tensor(vm, reg_coord, MF_ACCESS_WRITE);
+    if (t_coord) {
+        int dims[3] = { WINDOW_HEIGHT, WINDOW_WIDTH, 2 };
+        t_coord->dtype = MF_DTYPE_F32;
+        if (mf_vm_resize_tensor(vm, t_coord, dims, 3)) {
+             f32* d = (f32*)t_coord->data;
+             for (int y = 0; y < WINDOW_HEIGHT; ++y) {
+                 for (int x = 0; x < WINDOW_WIDTH; ++x) {
+                     size_t idx = (y * WINDOW_WIDTH + x) * 2;
+                     d[idx + 0] = (f32)x + 0.5f; // Center of pixel
+                     d[idx + 1] = (f32)y + 0.5f;
+                 }
+             }
         }
     }
 
@@ -210,12 +233,10 @@ int main(int argc, char** argv) {
 
         // Mouse
         mf_tensor* t_mouse = mf_vm_map_tensor(vm, reg_mouse, MF_ACCESS_WRITE);
-        if (t_mouse && t_mouse->size >= 4) {
+        if (t_mouse && t_mouse->size >= 2) {
              f32* d = (f32*)t_mouse->data;
              d[0] = (f32)mx;
              d[1] = (f32)my;
-             d[2] = (buttons & SDL_BUTTON(1)) ? 1.0f : 0.0f;
-             d[3] = (buttons & SDL_BUTTON(3)) ? 1.0f : 0.0f;
         }
 
         // Execute

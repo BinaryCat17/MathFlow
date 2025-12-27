@@ -40,36 +40,39 @@
 
 ---
 
-## Phase 8: The Visualizer (SDL2 Host) [COMPLETED]
+## Phase 8: The Visualizer (SDL2 Host)
 **Objective:** Create a runtime environment capable of displaying the MathFlow output buffer as an image.
 
-- [x] **Dependencies:** Add `SDL2` to `vcpkg.json`.
-- [x] **New App:** `apps/mf-window`.
-- [x] **Input Protocol:**
+- [ ] **Dependencies:** Add `SDL2` to `vcpkg.json`.
+- [ ] **New App:** `apps/mf-window`.
+- [ ] **Input Protocol:**
     - Host injects Tensors via Name (using `mf_vm_find_register`):
         - `u_Time` (Scalar F32)
         - `u_Resolution` (Vec2 F32)
         - `u_Mouse` (Vec4 F32: x, y, click_left, click_right)
-- [x] **Output Protocol:**
+- [ ] **Output Protocol:**
     - Host expects a single Output Tensor:
-        - `out_Color` (Shape: `[Height, Width, 4]`, Type: `F32`).
-- [x] **Render Loop:**
-    - Lock Texture -> `mf_vm_exec` -> Copy/Convert Tensor Data to Texture -> Unlock -> Present.
-- [x] **Broadcasting Support:** Visualizer handles scalar/vector outputs by filling the screen.
+        - `out_Color` (Shape: `[Height, Width, 4]`, Type: `U8` or `F32`).
+- [ ] **Render Loop:**
+    - Lock Texture -> `mf_vm_exec` -> Copy Tensor Data to Texture -> Unlock -> Present.
 
 ## Phase 9: Pixel Math (SDF UI)
-**Objective:** Implement "Rendering" using only math nodes. Prove we can draw a button without a "DrawRect" function.
+**Objective:** Implement "Rendering" using only math nodes. Prove we can draw a button with Anti-Aliasing without a "DrawRect" function.
 
+- [ ] **Missing Kernels (Math):**
+    - [ ] Implement `MF_OP_CLAMP` (already in ISA, missing in Backend).
+    - [ ] Add and Implement `MF_OP_SMOOTHSTEP` (Critical for Anti-Aliasing).
+- [ ] **Structural Opcodes:**
+    - [ ] Add `MF_OP_JOIN` (Pack): To combine `X` (Shape: `[W]`) and `Y` (Shape: `[H]`) broadcasts into a `Vec2` (Shape: `[H, W, 2]`). This is required for `Length` and `Dot` to work on coordinates.
 - [ ] **Coordinate Generation:**
-    - Create a sub-graph/macro that generates normalized UV coordinates for the grid using `Range` + Broadcasting.
-    - `X = Range(0, W) / W`, `Y = Range(0, H) / H`.
+    - [ ] Implement **node sequence** (manual node chain) that generates UVs: `uv = (coord / res) * 2.0 - 1.0`.
+    - [ ] Handle **Aspect Ratio** correction: `uv.x *= res.x / res.y`.
 - [ ] **SDF Primitives:**
-    - Implement `Circle(uv, center, radius)` -> Distance.
-    - Implement `Box(uv, center, size)` -> Distance.
-- [ ] **Composition (Mixing):**
-    - Implement `Mix(colorA, colorB, mask)` using `Select` or `Lerp` logic.
-    - Combine multiple shapes using `Min` (Union) and `Max` (Intersection) operations on distance fields.
-- [ ] **Demo:** `sdf_button.json`. A circle that changes color when `length(uv - mouse) < radius`.
+    - [ ] `Circle`: `length(uv) - r`.
+    - [ ] `Box`: `length(max(abs(uv) - size, 0.0))`.
+- [ ] **Rendering:**
+    - [ ] `Mix`: Use `SmoothStep` for soft edges (AA). `color = mix(bg, fg, smoothstep(edge, edge-blur, dist))`.
+- [ ] **Demo:** `sdf_button.json`. A circle that behaves like a button (hover state, AA edges).
 
 ## Phase 10: Scalability (Sub-Graphs)
 **Objective:** Enable reuse of graph logic (Prefabs/Macros) to construct complex UIs from primitives.

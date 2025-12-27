@@ -42,7 +42,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             }
         } break;
 
-        case MF_NODE_MIX: case MF_NODE_CLAMP:
+        case MF_NODE_MIX: case MF_NODE_CLAMP: 
         {
              if (s1 && s2 && s3) {
                 mf_tensor* a = &s1->out_shape;
@@ -61,6 +61,38 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
 
                 *out = *shape;
              }
+        } break;
+        
+        case MF_NODE_SMOOTHSTEP:
+        {
+            if (s1 && s2) {
+                // s1: Value, s2: Edges [..., 2]
+                *out = s1->out_shape;
+                // We rely on runtime checks for s2 shape compatibility
+            }
+        } break;
+
+        case MF_NODE_JOIN:
+        {
+            if (s1 && s2) {
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                // For MVP, require strict match or scalar broadcast
+                if (a->size == b->size) {
+                    *out = *a;
+                } else if (a->size == 1) {
+                    *out = *b;
+                } else if (b->size == 1) {
+                    *out = *a;
+                } else {
+                     return false;
+                }
+                
+                // Add Dimension
+                out->shape[out->ndim] = 2;
+                out->ndim += 1;
+                out->size *= 2;
+            }
         } break;
 
         case MF_NODE_DOT:

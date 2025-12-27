@@ -1,0 +1,77 @@
+{
+  "nodes": [
+    { "id": "u_Resolution", "type": "Input", "data": { "value": [800.0, 600.0] } },
+    { "id": "u_Mouse", "type": "Input", "data": { "value": [0.0, 0.0] } },
+    { "id": "u_FragCoord", "type": "Input", "data": { "value": [0.0, 0.0] } },
+    { "id": "u_Aspect", "type": "Input", "data": { "value": 1.33 } },
+    
+    { "id": "const_05", "type": "Input", "data": { "value": 0.5 } },
+    { "id": "const_1", "type": "Input", "data": { "value": 1.0 } },
+    { "id": "const_radius", "type": "Input", "data": { "value": 0.2 } },
+    
+    { "id": "bg_color", "type": "Input", "data": { "value": [0.1, 0.1, 0.1, 1.0] } },
+    { "id": "fg_color", "type": "Input", "data": { "value": [1.0, 0.4, 0.0, 1.0] } },
+
+    { "id": "aspect_vec", "type": "Join" }, 
+
+    { "id": "uv_norm", "type": "Div" },
+    { "id": "uv_centered", "type": "Sub" },
+    { "id": "uv", "type": "Mul" }, 
+
+    { "id": "m_norm", "type": "Div" },
+    { "id": "m_centered", "type": "Sub" },
+    { "id": "m_uv", "type": "Mul" },
+
+    { "id": "diff", "type": "Sub" }, 
+    { "id": "dist", "type": "Length" },
+    { "id": "sdf", "type": "Sub" }, 
+
+    { "id": "edge0", "type": "Input", "data": { "value": 0.0 } },
+    { "id": "edge1", "type": "Input", "data": { "value": -0.01 } },
+    { "id": "aa_edges", "type": "Join" },
+    
+    { "id": "alpha", "type": "SmoothStep" },
+    
+    { "id": "out_Color", "type": "Mix" }
+  ],
+  "links": [
+    { "src": "u_Aspect", "src_port": 0, "dst": "aspect_vec", "dst_port": 0 },
+    { "src": "const_1", "src_port": 0, "dst": "aspect_vec", "dst_port": 1 },
+
+    { "src": "u_FragCoord", "src_port": 0, "dst": "uv_norm", "dst_port": 0 },
+    { "src": "u_Resolution", "src_port": 0, "dst": "uv_norm", "dst_port": 1 },
+    
+    { "src": "uv_norm", "src_port": 0, "dst": "uv_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "uv_centered", "dst_port": 1 },
+    
+    { "src": "uv_centered", "src_port": 0, "dst": "uv", "dst_port": 0 },
+    { "src": "aspect_vec", "src_port": 0, "dst": "uv", "dst_port": 1 },
+
+    { "src": "u_Mouse", "src_port": 0, "dst": "m_norm", "dst_port": 0 },
+    { "src": "u_Resolution", "src_port": 0, "dst": "m_norm", "dst_port": 1 },
+    
+    { "src": "m_norm", "src_port": 0, "dst": "m_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "m_centered", "dst_port": 1 },
+    
+    { "src": "m_centered", "src_port": 0, "dst": "m_uv", "dst_port": 0 },
+    { "src": "aspect_vec", "src_port": 0, "dst": "m_uv", "dst_port": 1 },
+
+    { "src": "uv", "src_port": 0, "dst": "diff", "dst_port": 0 },
+    { "src": "m_uv", "src_port": 0, "dst": "diff", "dst_port": 1 },
+    
+    { "src": "diff", "src_port": 0, "dst": "dist", "dst_port": 0 },
+    
+    { "src": "dist", "src_port": 0, "dst": "sdf", "dst_port": 0 },
+    { "src": "const_radius", "src_port": 0, "dst": "sdf", "dst_port": 1 },
+
+    { "src": "edge0", "src_port": 0, "dst": "aa_edges", "dst_port": 0 },
+    { "src": "edge1", "src_port": 0, "dst": "aa_edges", "dst_port": 1 },
+    
+    { "src": "sdf", "src_port": 0, "dst": "alpha", "dst_port": 0 },
+    { "src": "aa_edges", "src_port": 0, "dst": "alpha", "dst_port": 1 },
+    
+    { "src": "bg_color", "src_port": 0, "dst": "out_Color", "dst_port": 0 },
+    { "src": "fg_color", "src_port": 0, "dst": "out_Color", "dst_port": 1 },
+    { "src": "alpha", "src_port": 0, "dst": "out_Color", "dst_port": 2 }
+  ]
+}

@@ -31,6 +31,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"Atan2", MF_NODE_ATAN2},
     {"Mix", MF_NODE_MIX},
     {"Step", MF_NODE_STEP},
+    {"SmoothStep", MF_NODE_SMOOTHSTEP},
     
     // --- Matrix ---
     {"MatMul", MF_NODE_MATMUL},
@@ -38,6 +39,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"Inverse", MF_NODE_INVERSE},
     {"Dot", MF_NODE_DOT},
     {"Length", MF_NODE_LENGTH},
+    {"Join", MF_NODE_JOIN}, // Pack
     
     // --- Comparison ---
     {"Greater", MF_NODE_GREATER},
