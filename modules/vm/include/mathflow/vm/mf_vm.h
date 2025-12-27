@@ -44,16 +44,19 @@ typedef struct mf_vm_t {
     u32 _register_count;
 } mf_vm;
 
-// Load a program into the VM
-void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena);
-
-// Load a program from file
+// Helper to load binary from disk
 mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
 
-// Execute
+// Load program into VM memory (allocates registers)
+void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena);
+
+// Execute program
 void mf_vm_exec(mf_vm* vm);
 
-// --- Accessor API ---
+// Cleanup dynamic memory (tensors allocated by backend)
+void mf_vm_shutdown(mf_vm* vm);
+
+// --- Accessors ---
 // Returns a pointer to the live tensor in the VM.
 // The backend can then read shape/data.
 mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode);

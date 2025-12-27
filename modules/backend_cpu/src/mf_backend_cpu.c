@@ -13,7 +13,9 @@ static void ensure_shape(mf_tensor* dst, const mf_tensor* src_shape) {
     }
 
     if (!dst->data || !same_shape) {
-        if (dst->data) free(dst->data);
+        if (dst->data && (dst->flags & MF_TENSOR_OWNS_DATA)) {
+            free(dst->data);
+        }
         
         dst->dtype = src_shape->dtype;
         dst->ndim = src_shape->ndim;
@@ -21,6 +23,7 @@ static void ensure_shape(mf_tensor* dst, const mf_tensor* src_shape) {
         dst->size = src_shape->size;
         
         dst->data = malloc(dst->size * mf_dtype_size(dst->dtype));
+        dst->flags |= MF_TENSOR_OWNS_DATA; // Mark as dynamic
     }
 }
 

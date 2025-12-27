@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
+#include "mf_base.h"
 
 // Max dimensions supported (Rank)
 #define MF_MAX_DIMS 8
@@ -40,7 +41,12 @@ typedef struct {
     
     // Total elements count (cached product of shape)
     size_t size; 
+
+    // Flags
+    u32 flags;
 } mf_tensor;
+
+#define MF_TENSOR_OWNS_DATA 1
 
 // --- Helper Functions (Inline) ---
 

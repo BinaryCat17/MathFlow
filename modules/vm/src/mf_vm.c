@@ -45,7 +45,7 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
     // Tensor Descriptors
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
     
-    // Read descriptors one by one
+    // Read descriptors
     for (u32 i = 0; i < head->tensor_count; ++i) {
         mf_bin_tensor_desc* desc = (mf_bin_tensor_desc*)(data + offset);
         offset += sizeof(mf_bin_tensor_desc);
@@ -54,39 +54,29 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
         t->dtype = (mf_dtype)desc->dtype;
         t->ndim = desc->ndim;
         memcpy(t->shape, desc->shape, sizeof(i32) * MF_MAX_DIMS);
+        t->flags = 0; // Reset flags from binary
         
-        // Data follows immediately?
-        // Wait, in my save format, I wrote: 
-        // [All Descs] then [All Data]
-        // So I need to skip 'data' reading here, just set properties.
-        
-        // Calculate size for later
         t->size = 1;
         for(int k=0; k<t->ndim; ++k) t->size *= t->shape[k];
         if (t->ndim == 0) t->size = 1; // Scalar
     }
 
     // Read Data Blob
-    // We need to re-iterate because the file format has all descs then all data.
+    // Reset offset to iterate again (lazy approach)
+    // Actually, we can just calculate pointers.
+    // Let's assume binary layout: [Header][Code][Descs][DataBlock]
+    // The previous loop advanced 'offset' past all descriptors.
+    // So 'offset' is now at the start of DataBlock.
+    
     for (u32 i = 0; i < head->tensor_count; ++i) {
         mf_tensor* t = &prog->tensors[i];
         
-        // Check if constant (how? I didn't store is_constant in mf_tensor, only in file desc)
-        // Oops. I need to know if I should read data.
-        // Let's assume: if file has data, we read it.
-        // In file format: I wrote raw bytes only if is_constant=1.
-        // But here I lost the 'is_constant' flag after reading desc.
-        // I should have stored it or peeked back.
+        // We need to know if it has data.
+        // We can peek back at the descriptor struct in the raw buffer?
+        // Or assume: if it's an Input node (constant), it has data.
+        // But here we lost the 'is_constant' info. 
+        // Let's re-read the descriptor from the buffer to check 'is_constant'.
         
-        // Let's peek back at the descriptor in the file buffer?
-        // offset is now at the start of Data Blob? No.
-        // The loop above advanced offset past all descriptors.
-        
-        // To fix this cleanly, let's look at the file buffer structure again.
-        // [Header] [Code] [Desc 0] [Desc 1] ... [Data 0] [Data 1] ...
-        
-        // So I need a second pass or store temporary info.
-        // Let's re-calculate the pointer to the descriptor for this tensor.
         size_t desc_offset = sizeof(mf_bin_header) + 
                              sizeof(mf_instruction) * head->instruction_count + 
                              sizeof(mf_bin_tensor_desc) * i;
@@ -122,10 +112,10 @@ void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena) {
         const mf_tensor* src = &prog->tensors[i];
         
         *dst = *src; // Copy metadata
+        dst->flags = 0; // Clear flags (Arena owns memory if any)
         
         if (src->data) {
             // Constant: Deep copy data to new VM memory
-            // (Actually, we can share if read-only, but let's copy to be safe/mutable)
             size_t bytes = mf_dtype_size(src->dtype) * src->size;
             void* mem = MF_ARENA_PUSH(arena, u8, bytes);
             memcpy(mem, src->data, bytes);
@@ -146,6 +136,19 @@ void mf_vm_exec(mf_vm* vm) {
         mf_instruction inst = vm->_code[i];
         if (vm->backend->op_table[inst.opcode]) {
             vm->backend->op_table[inst.opcode](vm, inst.dest_idx, inst.src1_idx, inst.src2_idx);
+        }
+    }
+}
+
+void mf_vm_shutdown(mf_vm* vm) {
+    if (!vm->_registers) return;
+    
+    for (u32 i = 0; i < vm->_register_count; ++i) {
+        mf_tensor* t = &vm->_registers[i];
+        if (t->data && (t->flags & MF_TENSOR_OWNS_DATA)) {
+            free(t->data);
+            t->data = NULL;
+            t->flags &= ~MF_TENSOR_OWNS_DATA;
         }
     }
 }

@@ -121,6 +121,9 @@ int main(int argc, char** argv) {
         print_tensor(i, t);
     }
 
+    // 6. Cleanup
+    mf_vm_shutdown(&vm);
+
     free(buffer);
     return 0;
 }

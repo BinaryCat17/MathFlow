@@ -291,6 +291,108 @@ static void visit_node(sort_ctx* ctx, u32 node_idx) {
     ctx->sorted_nodes[ctx->count++] = &ctx->ir->nodes[node_idx];
 }
 
+static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node* s3) {
+    mf_tensor* out = &node->out_shape;
+    memset(out, 0, sizeof(mf_tensor));
+
+    switch (node->type) {
+        case MF_NODE_ADD: case MF_NODE_SUB: case MF_NODE_MUL: case MF_NODE_DIV:
+        case MF_NODE_MIN: case MF_NODE_MAX: case MF_NODE_ATAN2: case MF_NODE_POW:
+        case MF_NODE_CLAMP:
+        {
+            if (s1 && s2) {
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                
+                // Validation: Both must be same shape or one must be scalar
+                bool a_scal = (a->size == 1);
+                bool b_scal = (b->size == 1);
+                
+                if (!a_scal && !b_scal && !mf_tensor_same_shape(a, b)) {
+                    printf("Error: Shape mismatch in node '%s'. Input shapes: ", node->id);
+                    printf("[%d] vs [%d]\n", a->shape[0], b->shape[0]);
+                    return false;
+                }
+
+                *out = a_scal ? *b : *a;
+            }
+        } break;
+
+        case MF_NODE_SIN: case MF_NODE_COS: case MF_NODE_ABS: case MF_NODE_SQRT:
+        case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT:
+        {
+            // Unary: Copy shape from first input
+            if (s1) *out = s1->out_shape;
+        } break;
+
+        case MF_NODE_LESS: case MF_NODE_GREATER: case MF_NODE_EQUAL:
+        case MF_NODE_AND: case MF_NODE_OR:
+        {
+            // Comparison/Logic: Shape from larger input, but DType is U8
+            if (s1 && s2) {
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                *out = (a->size >= b->size) ? *a : *b;
+                out->dtype = MF_DTYPE_U8;
+            }
+        } break;
+
+        case MF_NODE_MATMUL:
+            if (s1 && s2) {
+                // A: [M, K], B: [K, N] -> C: [M, N]
+                mf_tensor* a = &s1->out_shape;
+                mf_tensor* b = &s2->out_shape;
+                if (a->ndim == 2 && b->ndim == 2) {
+                    if (a->shape[1] != b->shape[0]) {
+                        printf("Error: MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.\n", node->id, a->shape[1], b->shape[0]);
+                        return false;
+                    }
+                    out->dtype = a->dtype;
+                    out->ndim = 2;
+                    out->shape[0] = a->shape[0];
+                    out->shape[1] = b->shape[1];
+                    out->size = out->shape[0] * out->shape[1];
+                } else {
+                    // Fallback
+                    if (a->size != b->size) {
+                        printf("Error: MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.\n", node->id, a->size, b->size);
+                        return false;
+                    }
+                    *out = *a; 
+                }
+            }
+            break;
+
+        case MF_NODE_TRANSPOSE:
+            if (s1) {
+                *out = s1->out_shape;
+                if (out->ndim == 2) {
+                    int32_t tmp = out->shape[0];
+                    out->shape[0] = out->shape[1];
+                    out->shape[1] = tmp;
+                }
+            }
+            break;
+
+        case MF_NODE_SELECT:
+            if (s2 && s3) {
+                if (!mf_tensor_same_shape(&s2->out_shape, &s3->out_shape)) {
+                    printf("Error: Select shape mismatch in node '%s'. True/False branches must have same shape.\n", node->id);
+                    return false;
+                }
+                *out = s2->out_shape; // Shape of TrueVal
+            }
+            break;
+            
+        case MF_NODE_INVERSE:
+            if (s1) *out = s1->out_shape;
+            break;
+
+        default: break;
+    }
+    return true;
+}
+
 // --- Compilation ---
 
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
@@ -335,105 +437,13 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             *t_desc = node->constant; 
             node->out_shape = node->constant;
         } else {
-            // --- Shape Inference ---
-            mf_tensor* out = &node->out_shape;
-            memset(out, 0, sizeof(mf_tensor));
-
-            switch (node->type) {
-                case MF_NODE_ADD: case MF_NODE_SUB: case MF_NODE_MUL: case MF_NODE_DIV:
-                case MF_NODE_MIN: case MF_NODE_MAX: case MF_NODE_ATAN2: case MF_NODE_POW:
-                case MF_NODE_CLAMP:
-                {
-                    if (s1 && s2) {
-                        mf_tensor* a = &s1->out_shape;
-                        mf_tensor* b = &s2->out_shape;
-                        
-                        // Validation: Both must be same shape or one must be scalar
-                        bool a_scal = (a->size == 1);
-                        bool b_scal = (b->size == 1);
-                        
-                        if (!a_scal && !b_scal && !mf_tensor_same_shape(a, b)) {
-                            printf("Error: Shape mismatch in node '%s'. Input shapes: ", node->id);
-                            printf("[%d] vs [%d]\n", a->shape[0], b->shape[0]);
-                            return NULL; // Fail compilation
-                        }
-
-                        *out = a_scal ? *b : *a;
-                    }
-                } break;
-
-                case MF_NODE_SIN: case MF_NODE_COS: case MF_NODE_ABS: case MF_NODE_SQRT:
-                case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT:
-                {
-                    // Unary: Copy shape from first input
-                    if (s1) *out = s1->out_shape;
-                } break;
-
-                case MF_NODE_LESS: case MF_NODE_GREATER: case MF_NODE_EQUAL:
-                case MF_NODE_AND: case MF_NODE_OR:
-                {
-                    // Comparison/Logic: Shape from larger input, but DType is U8
-                    if (s1 && s2) {
-                        mf_tensor* a = &s1->out_shape;
-                        mf_tensor* b = &s2->out_shape;
-                        *out = (a->size >= b->size) ? *a : *b;
-                        out->dtype = MF_DTYPE_U8;
-                    }
-                } break;
-
-                case MF_NODE_MATMUL:
-                    if (s1 && s2) {
-                        // A: [M, K], B: [K, N] -> C: [M, N]
-                        mf_tensor* a = &s1->out_shape;
-                        mf_tensor* b = &s2->out_shape;
-                        if (a->ndim == 2 && b->ndim == 2) {
-                            if (a->shape[1] != b->shape[0]) {
-                                printf("Error: MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.\n", node->id, a->shape[1], b->shape[0]);
-                                return NULL;
-                            }
-                            out->dtype = a->dtype;
-                            out->ndim = 2;
-                            out->shape[0] = a->shape[0];
-                            out->shape[1] = b->shape[1];
-                            out->size = out->shape[0] * out->shape[1];
-                        } else {
-                            // Fallback for square matrices/vectors in current tests
-                            if (a->size != b->size) {
-                                printf("Error: MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.\n", node->id, a->size, b->size);
-                                return NULL;
-                            }
-                            *out = *a; 
-                        }
-                    }
-                    break;
-
-                case MF_NODE_TRANSPOSE:
-                    if (s1) {
-                        *out = s1->out_shape;
-                        if (out->ndim == 2) {
-                            int32_t tmp = out->shape[0];
-                            out->shape[0] = out->shape[1];
-                            out->shape[1] = tmp;
-                        }
-                    }
-                    break;
-
-                case MF_NODE_SELECT:
-                    if (s2 && s3) {
-                        if (!mf_tensor_same_shape(&s2->out_shape, &s3->out_shape)) {
-                            printf("Error: Select shape mismatch in node '%s'. True/False branches must have same shape.\n", node->id);
-                            return NULL;
-                        }
-                        *out = s2->out_shape; // Shape of TrueVal
-                    }
-                    break;
-
-                default: break;
+            // Logic Node
+            if (!mf_infer_shape(node, s1, s2, s3)) {
+                return NULL; // Validation failed
             }
 
             // Write predicted shape to program tensor descriptor
-            // Data remains NULL for logic nodes (VM will allocate it)
-            *t_desc = *out;
+            *t_desc = node->out_shape;
             t_desc->data = NULL; 
         }
 
