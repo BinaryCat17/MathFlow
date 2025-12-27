@@ -29,6 +29,9 @@ target_link_libraries(mf_vm PUBLIC mf_isa)
 # 3. Compiler (Host Tool)
 add_library(mf_compiler STATIC
     modules/compiler/src/mf_compiler.c
+    modules/compiler/src/mf_json_parser.c
+    modules/compiler/src/mf_semantics.c
+    modules/compiler/src/mf_codegen.c
 )
 target_include_directories(mf_compiler PUBLIC
     modules/compiler/include

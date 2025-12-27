@@ -6,7 +6,15 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 4        // Bump for Tensor Era
+#define MF_BINARY_VERSION 5        // Symbol Table support
+
+#define MF_MAX_SYMBOL_NAME 64
+
+// Map Name -> Register Index
+typedef struct {
+    char name[MF_MAX_SYMBOL_NAME];
+    uint32_t register_idx;
+} mf_bin_symbol;
 
 // Metadata for a single tensor in the binary file
 // Followed immediately by shape data? No, fixed max dims.
@@ -32,8 +40,9 @@ typedef struct {
     
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
+    u32 symbol_count;      // Number of named I/O entries
     
-    u32 reserved[8];       
+    u32 reserved[7];       
 } mf_bin_header;
 
 // In-memory representation
@@ -46,6 +55,8 @@ typedef struct {
     // NOTE: 'data' pointers here point to the Program's Constant Data Block.
     // When VM loads this, it clones these tensors into its own memory pool.
     mf_tensor* tensors; 
+    
+    mf_bin_symbol* symbols;
 } mf_program;
 
 #endif // MF_PROGRAM_H

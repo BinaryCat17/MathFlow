@@ -48,6 +48,11 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
     memcpy(prog->code, data + offset, sizeof(mf_instruction) * head->instruction_count);
     offset += sizeof(mf_instruction) * head->instruction_count;
 
+    // Symbol Table
+    prog->symbols = MF_ARENA_PUSH(arena, mf_bin_symbol, head->symbol_count);
+    memcpy(prog->symbols, data + offset, sizeof(mf_bin_symbol) * head->symbol_count);
+    offset += sizeof(mf_bin_symbol) * head->symbol_count;
+
     // Tensor Descriptors
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
     
@@ -71,7 +76,9 @@ mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena) {
 
     // Read Data Blob
     // Reset offset to iterate again to find constants data
-    size_t desc_start_offset = sizeof(mf_bin_header) + sizeof(mf_instruction) * head->instruction_count;
+    size_t desc_start_offset = sizeof(mf_bin_header) + 
+                               sizeof(mf_instruction) * head->instruction_count +
+                               sizeof(mf_bin_symbol) * head->symbol_count;
     
     // Data starts after all descriptors
     size_t data_start_offset = desc_start_offset + sizeof(mf_bin_tensor_desc) * head->tensor_count;
@@ -106,9 +113,16 @@ void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena) {
     vm->_code = prog->code;
     vm->_code_count = prog->meta.instruction_count;
     vm->_register_count = prog->meta.tensor_count;
+    vm->_symbol_count = prog->meta.symbol_count;
     
     // Allocate Registers (Tensors) in Arena (Metadata only)
     vm->_registers = MF_ARENA_PUSH(arena, mf_tensor, vm->_register_count);
+
+    // Copy Symbols
+    if (vm->_symbol_count > 0) {
+        vm->_symbols = MF_ARENA_PUSH(arena, mf_bin_symbol, vm->_symbol_count);
+        memcpy(vm->_symbols, prog->symbols, sizeof(mf_bin_symbol) * vm->_symbol_count);
+    }
     
     // Copy initial state
     for (u32 i = 0; i < vm->_register_count; ++i) {
@@ -180,6 +194,15 @@ mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode) {
         vm->backend->on_map(vm, t, mode);
     }
     return t;
+}
+
+int32_t mf_vm_find_register(mf_vm* vm, const char* name) {
+    for (u32 i = 0; i < vm->_symbol_count; ++i) {
+        if (strcmp(vm->_symbols[i].name, name) == 0) {
+            return (int32_t)vm->_symbols[i].register_idx;
+        }
+    }
+    return -1;
 }
 
 bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {

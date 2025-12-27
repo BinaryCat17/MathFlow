@@ -27,13 +27,14 @@ static const char* get_filename_ext(const char *filename) {
     return dot + 1;
 }
 
-static void print_tensor(u32 idx, mf_tensor* t) {
+static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     if (!t || !t->data) {
-        printf("  [%u]: (Empty)\n", idx);
+        printf("  [%u]%s: (Empty)\n", idx, name ? name : "");
         return;
     }
     
     printf("  [%u] ", idx);
+    if (name) printf("'%s' ", name);
     
     // Print Shape
     printf("Shape: [");
@@ -144,10 +145,20 @@ int main(int argc, char** argv) {
              printf("Frame %d:\n", f);
              for(u32 i=0; i<vm._register_count; ++i) {
                 mf_tensor* t = &vm._registers[i];
+                
+                // Find name
+                const char* name = NULL;
+                for (u32 s = 0; s < vm._symbol_count; ++s) {
+                    if (vm._symbols[s].register_idx == i) {
+                        name = vm._symbols[s].name;
+                        break;
+                    }
+                }
+
                 // Heuristic to find 'interesting' tensors (non-constant inputs)
                 // For now just dump everything for small graphs
                 if (prog->meta.tensor_count < 20) {
-                    print_tensor(i, t);
+                    print_tensor(i, name, t);
                 }
              }
         }
@@ -157,7 +168,15 @@ int main(int argc, char** argv) {
     printf("\n--- Execution Finished ---\n");
     for(u32 i=0; i<vm._register_count; ++i) {
         mf_tensor* t = mf_vm_map_tensor(&vm, i, MF_ACCESS_READ);
-        print_tensor(i, t);
+
+        const char* name = NULL;
+        for (u32 s = 0; s < vm._symbol_count; ++s) {
+            if (vm._symbols[s].register_idx == i) {
+                name = vm._symbols[s].name;
+                break;
+            }
+        }
+        print_tensor(i, name, t);
     }
 
     // 6. Cleanup

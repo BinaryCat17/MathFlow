@@ -46,6 +46,9 @@ struct mf_vm {
     mf_tensor* _registers;
     size_t _register_count;
 
+    mf_bin_symbol* _symbols;
+    size_t _symbol_count;
+
     // Execution Context
     mf_backend_dispatch_table* backend;
     
@@ -76,6 +79,10 @@ void mf_vm_shutdown(mf_vm* vm);
 // Returns a pointer to the live tensor in the VM.
 // The backend can then read shape/data.
 mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode);
+
+// Named access: Returns register index or -1 if not found.
+int32_t mf_vm_find_register(mf_vm* vm, const char* name);
+
 bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
 
 #endif // MF_VM_H
