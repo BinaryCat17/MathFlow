@@ -404,11 +404,16 @@ static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_
 
         case MF_NODE_SELECT:
             if (s2 && s3) {
-                if (!mf_tensor_same_shape(&s2->out_shape, &s3->out_shape)) {
-                    printf("Error: Select shape mismatch in node '%s'. True/False branches must have same shape.\n", node->id);
+                mf_tensor* t = &s2->out_shape;
+                mf_tensor* f = &s3->out_shape;
+                bool t_s = (t->size == 1);
+                bool f_s = (f->size == 1);
+
+                if (!t_s && !f_s && !mf_tensor_same_shape(t, f)) {
+                    printf("Error: Select shape mismatch in node '%s'. True/False branches must have same shape or be broadcastable.\n", node->id);
                     return false;
                 }
-                *out = s2->out_shape; // Shape of TrueVal
+                *out = t_s ? *f : *t; // Result shape follows the vector input
             }
             break;
             

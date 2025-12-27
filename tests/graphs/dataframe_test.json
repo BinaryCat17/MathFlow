@@ -1,0 +1,19 @@
+{
+  "nodes": [
+    { "id": "names", "type": "Input", "data": { "value": ["Apple", "Banana", "Cherry", "Apple"] } },
+    { "id": "prices", "type": "Input", "data": { "value": [1.5, 0.8, 2.0, 1.2] } },
+    { "id": "query", "type": "Input", "data": { "value": "Apple" } },
+    { "id": "zero", "type": "Input", "data": { "value": 0.0 } },
+    
+    { "id": "mask", "type": "Equal" },
+    { "id": "filtered_prices", "type": "Select" }
+  ],
+  "links": [
+    { "src": "names", "src_port": 0, "dst": "mask", "dst_port": 0 },
+    { "src": "query", "src_port": 0, "dst": "mask", "dst_port": 1 },
+    
+    { "src": "mask", "src_port": 0, "dst": "filtered_prices", "dst_port": 0 },
+    { "src": "prices", "src_port": 0, "dst": "filtered_prices", "dst_port": 1 },
+    { "src": "zero", "src_port": 0, "dst": "filtered_prices", "dst_port": 2 }
+  ]
+}

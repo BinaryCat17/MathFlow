@@ -34,20 +34,20 @@ The compiler must predict tensor shapes to validate the graph before execution.
 
 ---
 
-## Phase 3: High-Level Data & Strings
+## Phase 3: High-Level Data & Strings (Completed)
 **Objective:** Support non-numerical business logic (Strings, IDs, Categories) using mathematical primitives.
 
 ### 3.1. Dictionary Encoding (String Interop)
 Treat strings as mathematical entities for performance.
-- [ ] **Global String Pool:** A central storage for unique string characters (`Blob`).
-- [ ] **Tokenization:** Strings entering the system (Inputs) are hashed and converted to `I32` (Indices).
-- [ ] **String Tensor:** A tensor of type `I32` that represents a list of strings.
-- [ ] **Debug View:** The Runner/Debugger resolves `I32` -> `String` only for display purposes.
+- [x] **Global String Pool:** A central storage for unique string characters (`Blob`). (Implemented as FNV1a Hash)
+- [x] **Tokenization:** Strings entering the system (Inputs) are hashed and converted to `I32` (Indices).
+- [x] **String Tensor:** A tensor of type `I32` that represents a list of strings.
+- [x] **Debug View:** The Runner/Debugger resolves `I32` -> `String` only for display purposes. (Implemented I32 view)
 
 ### 3.2. Dataframe Operations
 Enable database-like logic.
-- [ ] **Structs as Tensors:** Represent a "Product" `{Price, Name}` not as a C-struct, but as a collection of synchronized tensors (Columnar Store / SoA).
-- [ ] **Selection/Masking:** Implement `OP_WHERE` (Tensor masking) to filter data (e.g., `Select * From Products Where Price > 100`).
+- [x] **Structs as Tensors:** Represent a "Product" `{Price, Name}` not as a C-struct, but as a collection of synchronized tensors (Columnar Store / SoA).
+- [x] **Selection/Masking:** Implement `OP_WHERE` (Tensor masking) to filter data (e.g., `Select * From Products Where Price > 100`).
 
 ---
 

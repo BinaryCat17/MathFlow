@@ -138,28 +138,51 @@ static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
-    ensure_shape(dst, val); // Assume initialized to val size
+    if (!dst || !cond || !val) return;
     
+    // Determine target shape (broadcast) but keep Value type
+    mf_tensor shape = (val->size >= cond->size) ? *val : *cond;
+    shape.dtype = val->dtype;
+    ensure_shape(dst, &shape);
+
     u8* c = (u8*)cond->data;
     u8* v = (u8*)val->data;
     u8* d = (u8*)dst->data;
     size_t es = mf_dtype_size(val->dtype);
+    
     bool c_scal = (cond->size == 1);
-    for(size_t i=0; i<dst->size; ++i) if (c[c_scal ? 0 : i]) memcpy(d + i*es, v + i*es, es);
+    bool v_scal = (val->size == 1);
+    
+    for(size_t i=0; i<dst->size; ++i) {
+        if (c[c_scal ? 0 : i]) {
+            memcpy(d + i*es, v + (v_scal ? 0 : i*es), es);
+        }
+    }
 }
 
 static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
-    ensure_shape(dst, val);
+    if (!dst || !cond || !val) return;
+
+    mf_tensor shape = (val->size >= cond->size) ? *val : *cond;
+    shape.dtype = val->dtype;
+    ensure_shape(dst, &shape);
     
     u8* c = (u8*)cond->data;
     u8* v = (u8*)val->data;
     u8* d = (u8*)dst->data;
     size_t es = mf_dtype_size(val->dtype);
+    
     bool c_scal = (cond->size == 1);
-    for(size_t i=0; i<dst->size; ++i) if (!c[c_scal ? 0 : i]) memcpy(d + i*es, v + i*es, es);
+    bool v_scal = (val->size == 1);
+    
+    for(size_t i=0; i<dst->size; ++i) {
+        if (!c[c_scal ? 0 : i]) {
+             memcpy(d + i*es, v + (v_scal ? 0 : i*es), es);
+        }
+    }
 }
 
 // --- Kernel: Matrix ---
