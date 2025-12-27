@@ -73,12 +73,12 @@
     - [x] `Mix`: Use `SmoothStep` for soft edges (AA).
 - [x] **Demo:** `sdf_button.json`. A circle that behaves like a button (hover state, AA edges).
 
-## Phase 10: Scalability (Sub-Graphs)
+## Phase 10: Scalability (Sub-Graphs) [COMPLETED]
 **Objective:** Enable reuse of graph logic (Prefabs/Macros) to construct complex UIs from primitives.
 
-- [ ] **Sub-Graph Node:** Implement `Call("path/to/circle.json")` logic in Compiler.
-- [ ] **Compiler Inlining:** Recursively load and inline sub-graphs, prefixing IDs to avoid collisions.
-- [ ] **Interface Definition:** Schema for defining Inputs/Outputs of a sub-graph module.
+- [x] **Sub-Graph Node:** Implement `Call("path/to/circle.json")` logic in Compiler.
+- [x] **Compiler Inlining:** Recursively load and inline sub-graphs, prefixing IDs to avoid collisions.
+- [x] **Interface Definition:** Schema for defining Inputs/Outputs of a sub-graph module (`ExportInput`, `ExportOutput`).
 
 ## Phase 11: Performance (Parallel CPU)
 **Objective:** Software rendering 800x600 pixels on a single thread might be slow (480k pixels * N nodes). We need parallelism.

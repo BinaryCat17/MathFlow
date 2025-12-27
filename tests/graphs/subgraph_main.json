@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    { "id": "c1", "type": "Input", "data": { "value": 10.0 } },
+    { "id": "c2", "type": "Input", "data": { "value": 20.0 } },
+    { "id": "sub_call", "type": "Call", "data": { "path": "tests/graphs/subgraph_child.json" } },
+    { "id": "final", "type": "ExportOutput", "data": { "index": 0 } }
+  ],
+  "links": [
+    { "src": "c1", "src_port": 0, "dst": "sub_call", "dst_port": 0 },
+    { "src": "c2", "src_port": 0, "dst": "sub_call", "dst_port": 1 },
+    { "src": "sub_call", "src_port": 0, "dst": "final", "dst_port": 0 }
+  ]
+}

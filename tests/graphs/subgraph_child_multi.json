@@ -1,0 +1,18 @@
+{
+  "nodes": [
+    { "id": "in_a", "type": "ExportInput", "data": { "index": 0 } },
+    { "id": "in_b", "type": "ExportInput", "data": { "index": 1 } },
+    { "id": "sum", "type": "Add" },
+    { "id": "diff", "type": "Sub" },
+    { "id": "out_sum", "type": "ExportOutput", "data": { "index": 0 } },
+    { "id": "out_diff", "type": "ExportOutput", "data": { "index": 1 } }
+  ],
+  "links": [
+    { "src": "in_a", "src_port": 0, "dst": "sum", "dst_port": 0 },
+    { "src": "in_b", "src_port": 0, "dst": "sum", "dst_port": 1 },
+    { "src": "in_a", "src_port": 0, "dst": "diff", "dst_port": 0 },
+    { "src": "in_b", "src_port": 0, "dst": "diff", "dst_port": 1 },
+    { "src": "sum", "src_port": 0, "dst": "out_sum", "dst_port": 0 },
+    { "src": "diff", "src_port": 0, "dst": "out_diff", "dst_port": 0 }
+  ]
+}

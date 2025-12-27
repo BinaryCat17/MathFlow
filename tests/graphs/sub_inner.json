@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    { "id": "in", "type": "ExportInput", "data": { "index": 0 } },
+    { "id": "const2", "type": "Input", "data": { "value": 2.0 } },
+    { "id": "mul", "type": "Mul" },
+    { "id": "out", "type": "ExportOutput", "data": { "index": 0 } }
+  ],
+  "links": [
+    { "src": "in", "src_port": 0, "dst": "mul", "dst_port": 0 },
+    { "src": "const2", "src_port": 0, "dst": "mul", "dst_port": 1 },
+    { "src": "mul", "src_port": 0, "dst": "out", "dst_port": 0 }
+  ]
+}

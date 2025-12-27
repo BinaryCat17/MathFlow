@@ -115,6 +115,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
 
         case MF_NODE_SIN: case MF_NODE_COS: case MF_NODE_ABS: case MF_NODE_SQRT:
         case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT: case MF_NODE_LENGTH:
+        case MF_NODE_EXPORT_INPUT: case MF_NODE_EXPORT_OUTPUT:
         {
             // Unary: Copy shape from first input
             if (s1) {

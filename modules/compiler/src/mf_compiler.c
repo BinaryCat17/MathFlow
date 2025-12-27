@@ -92,6 +92,16 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
                 // No instruction, just data
                 break;
             
+            case MF_NODE_EXPORT_INPUT:
+            case MF_NODE_EXPORT_OUTPUT:
+                // Relay nodes act as Copy
+                inst->opcode = MF_OP_COPY;
+                inst->dest_idx = node->out_reg_idx;
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = 0;
+                instr_count++;
+                break;
+
             case MF_NODE_MEMORY:
                 // Memory nodes do not generate compute instructions in the main pass.
                 // Their update (State Transition) is handled in the "Append Memory Updates" pass below.

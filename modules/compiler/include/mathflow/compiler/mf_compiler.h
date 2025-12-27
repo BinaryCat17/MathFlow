@@ -70,6 +70,11 @@ typedef enum {
     // State
     MF_NODE_MEMORY,
 
+    // Sub-Graph
+    MF_NODE_CALL,         // Call("path/to/graph.json")
+    MF_NODE_EXPORT_INPUT, // Defines an Input Port for the SubGraph
+    MF_NODE_EXPORT_OUTPUT,// Defines an Output Port for the SubGraph
+
     MF_NODE_COUNT
 } mf_node_type;
 
@@ -79,6 +84,9 @@ typedef struct {
     
     // Constant Data (valid if type == MF_NODE_INPUT)
     mf_tensor constant; 
+
+    // Sub-Graph Data
+    const char* sub_graph_path; // For MF_NODE_CALL
 
     // Compiler Generated info
     u16 out_reg_idx;    // Index in the global Tensor Pool
