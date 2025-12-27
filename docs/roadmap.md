@@ -59,20 +59,19 @@
 ## Phase 9: Pixel Math (SDF UI)
 **Objective:** Implement "Rendering" using only math nodes. Prove we can draw a button with Anti-Aliasing without a "DrawRect" function.
 
-- [ ] **Missing Kernels (Math):**
-    - [ ] Implement `MF_OP_CLAMP` (already in ISA, missing in Backend).
-    - [ ] Add and Implement `MF_OP_SMOOTHSTEP` (Critical for Anti-Aliasing).
-- [ ] **Structural Opcodes:**
-    - [ ] Add `MF_OP_JOIN` (Pack): To combine `X` (Shape: `[W]`) and `Y` (Shape: `[H]`) broadcasts into a `Vec2` (Shape: `[H, W, 2]`). This is required for `Length` and `Dot` to work on coordinates.
-- [ ] **Coordinate Generation:**
-    - [ ] Implement **node sequence** (manual node chain) that generates UVs: `uv = (coord / res) * 2.0 - 1.0`.
-    - [ ] Handle **Aspect Ratio** correction: `uv.x *= res.x / res.y`.
-- [ ] **SDF Primitives:**
-    - [ ] `Circle`: `length(uv) - r`.
-    - [ ] `Box`: `length(max(abs(uv) - size, 0.0))`.
-- [ ] **Rendering:**
-    - [ ] `Mix`: Use `SmoothStep` for soft edges (AA). `color = mix(bg, fg, smoothstep(edge, edge-blur, dist))`.
-- [ ] **Demo:** `sdf_button.json`. A circle that behaves like a button (hover state, AA edges).
+- [x] **Missing Kernels (Math):**
+    - [x] Implement `MF_OP_CLAMP` (via Compiler Decomposition).
+    - [x] Add and Implement `MF_OP_SMOOTHSTEP` (Critical for Anti-Aliasing).
+- [x] **Structural Opcodes:**
+    - [x] Add `MF_OP_JOIN` (Pack): To combine `X` (Shape: `[W]`) and `Y` (Shape: `[H]`) broadcasts into a `Vec2` (Shape: `[H, W, 2]`).
+- [x] **Coordinate Generation:**
+    - [x] Implement **node sequence** (manual node chain) that generates UVs.
+    - [x] Handle **Aspect Ratio** correction (Host injects `u_Aspect`).
+- [x] **SDF Primitives:**
+    - [x] `Circle`: `length(uv) - r`.
+- [x] **Rendering:**
+    - [x] `Mix`: Use `SmoothStep` for soft edges (AA).
+- [x] **Demo:** `sdf_button.json`. A circle that behaves like a button (hover state, AA edges).
 
 ## Phase 10: Scalability (Sub-Graphs)
 **Objective:** Enable reuse of graph logic (Prefabs/Macros) to construct complex UIs from primitives.
