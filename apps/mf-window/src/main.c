@@ -243,6 +243,9 @@ int main(int argc, char** argv) {
     SDL_DestroyWindow(window);
     SDL_Quit();
     
-    // mf_arena_destroy(arena); // (If implemented)
+    mf_vm_shutdown(vm);
+    free(arena_mem);
+    free(heap_mem);
+
     return 0;
 }
