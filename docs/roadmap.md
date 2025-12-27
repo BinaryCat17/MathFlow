@@ -14,28 +14,19 @@
 - [ ] **Persistent Heap:** Ensure `Memory` nodes allocate in a persistent heap area that survives `mf_vm_exec` resets.
 - [ ] **Test:** Create a `counter.json` graph (Count = Count + 1) to verify state retention.
 
-## Phase 8: The UI Host (Raylib Integration)
-**Objective:** Create a visual runtime environment capable of rendering rich interfaces (Graphs, Node Editors).
-
-- [ ] **New App:** `apps/mf-ui-host` (linked with Raylib).
-- [ ] **Input Protocol:**
-    - Host injects: `ScreenSize`, `MousePos`, `MouseDown` (Left/Right), `Time`, `ScrollDelta`.
-- [ ] **Extended Draw Protocol:**
-    - Host reads Output Tensor: `DrawCommands` `[N, 12]` (Expanded size to fit Bezier params).
-    - **Primitives:**
-        - `Rect`: `{Type=1, X, Y, W, H, Color, ...}`
-        - `Circle`: `{Type=2, CX, CY, Radius, Color, ...}`
-        - `Text`: `{Type=3, X, Y, Size, Color, ...}`
-    - **Vector / Structural:**
-        - `Bezier Cubic`: `{Type=4, X1, Y1, C1X, C1Y, C2X, C2Y, X2, Y2, Thick, Color}`. Essential for drawing node connections.
-        - `Scissor (Clip):` `{Type=5, X, Y, W, H}`. Essential for Scroll Areas / Windows.
-
-## Phase 9: Resource Management (Assets)
-**Objective:** Allow the graph to reference external assets (Fonts, Icons) purely by ID.
+## Phase 8: Resource Management & Font Engine
+**Objective:** Bridge the gap between external assets (Files) and the Core's mathematical nature. The Core needs to know *dimensions* of assets without loading them.
 
 - [ ] **Resource Table:** Host maintains a map `ID -> Texture/Font`.
-- [ ] **Text Measurement:** Host provides a "TextSize" tensor or helper, so the graph can calculate layout for text labels.
-- [ ] **Texture Atlas:** Support UV coordinates in Draw List.
+- [ ] **Font Metrics Injection:** Host loads a font, calculates glyph widths, and injects a `FontMetrics` tensor (e.g., `[ASCII_Count]`) into the VM.
+- [ ] **Texture Atlas Protocol:** Support UV coordinates in the `Unified Shape` protocol to render specific regions of a texture (essential for Glyph rendering and Icons).
+
+## Phase 9: The Text System
+**Objective:** Full string manipulation and layout calculation within the graph.
+
+- [ ] **String Ops:** `Concat`, `Substr`, `Length` nodes working on U8 tensors.
+- [ ] **Formatting:** Nodes to convert Numbers to Strings (`ToString`).
+- [ ] **MeasureText Node:** A pure math node. Inputs: `String`, `FontMetrics`. Output: `[Width, Height]`. Calculates text size by summing glyph advances from the metrics tensor.
 
 ## Phase 10: Scalability (Graph Composition)
 **Objective:** Enable reuse of graph logic (Prefabs/Macros) to avoid spaghetti code.
@@ -44,11 +35,24 @@
 - [ ] **Compiler Inlining:** Compiler recursively loads sub-graphs, prefixes their node IDs (to ensure uniqueness), and merges them into the main execution list.
 - [ ] **Interface Definition:** JSON schema to define "Public Inputs" and "Public Outputs" of a sub-graph.
 
-## Phase 11: Advanced Strings (Formatting)
-**Objective:** Display dynamic data (e.g., "Health: 100") without string manipulation in the Core.
+## Phase 11: The Vector UI Host (Raylib Integration)
+**Objective:** Create a visual runtime environment capable of rendering rich, resolution-independent interfaces.
 
-- [ ] **Format Protocol:** Graph outputs a struct `{FormatStringID, Value}`.
-- [ ] **Host Formatting:** Host resolves the ID to a format string (e.g., "Score: %d") and applies the value before rendering.
+- [ ] **New App:** `apps/mf-ui-host` (linked with Raylib).
+- [ ] **Input Protocol:**
+    - Host injects: `ScreenSize`, `MousePos`, `MouseDown` (Left/Right), `Time`, `ScrollDelta`.
+- [ ] **Vector UI Protocol (SDF-Ready):**
+    - Host reads Output Tensor: `DrawCommands` `[N, 16]` (Unified wide format).
+    - **Unified Shape (Type=1):**
+        - Can represent Rects, Circles, Rounded Buttons, Shadows.
+        - Data: `X, Y, W, H, R, G, B, A, CornerRadius, BorderThick, BorderColor(Packed), Softness(Blur)`.
+    - **Bezier Curve (Type=2):**
+        - For node connections.
+        - Data: `P1_X, P1_Y, C1_X, C1_Y, C2_X, C2_Y, P2_X, P2_Y, Thick, Color(Packed)`.
+    - **Text (Type=3):**
+        - Data: `X, Y, Size, FontID, Color(Packed)`.
+    - **Clip/Scissor (Type=4):**
+        - Data: `X, Y, W, H`.
 
 ---
 
