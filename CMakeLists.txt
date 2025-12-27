@@ -75,5 +75,8 @@ target_link_libraries(mf-runner PRIVATE
     mf_backend_cpu
 )
 
+# Window Visualizer
+add_subdirectory(apps/mf-window)
+
 # --- Installation (TODO: Update for new structure if needed) ---
 # For now, we just build.

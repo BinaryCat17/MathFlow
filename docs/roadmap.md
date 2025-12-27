@@ -40,21 +40,22 @@
 
 ---
 
-## Phase 8: The Visualizer (SDL2 Host)
+## Phase 8: The Visualizer (SDL2 Host) [COMPLETED]
 **Objective:** Create a runtime environment capable of displaying the MathFlow output buffer as an image.
 
-- [ ] **Dependencies:** Add `SDL2` to `vcpkg.json`.
-- [ ] **New App:** `apps/mf-window`.
-- [ ] **Input Protocol:**
+- [x] **Dependencies:** Add `SDL2` to `vcpkg.json`.
+- [x] **New App:** `apps/mf-window`.
+- [x] **Input Protocol:**
     - Host injects Tensors via Name (using `mf_vm_find_register`):
         - `u_Time` (Scalar F32)
         - `u_Resolution` (Vec2 F32)
         - `u_Mouse` (Vec4 F32: x, y, click_left, click_right)
-- [ ] **Output Protocol:**
+- [x] **Output Protocol:**
     - Host expects a single Output Tensor:
-        - `out_Color` (Shape: `[Height, Width, 4]`, Type: `U8` or `F32`).
-- [ ] **Render Loop:**
-    - Lock Texture -> `mf_vm_exec` -> Copy Tensor Data to Texture -> Unlock -> Present.
+        - `out_Color` (Shape: `[Height, Width, 4]`, Type: `F32`).
+- [x] **Render Loop:**
+    - Lock Texture -> `mf_vm_exec` -> Copy/Convert Tensor Data to Texture -> Unlock -> Present.
+- [x] **Broadcasting Support:** Visualizer handles scalar/vector outputs by filling the screen.
 
 ## Phase 9: Pixel Math (SDF UI)
 **Objective:** Implement "Rendering" using only math nodes. Prove we can draw a button without a "DrawRect" function.
