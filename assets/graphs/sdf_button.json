@@ -1,26 +1,38 @@
 {
   "nodes": [
-    { "id": "u_Resolution", "type": "Input", "data": { "value": [800.0, 600.0] } },
-    { "id": "u_Mouse", "type": "Input", "data": { "value": [0.0, 0.0] } },
-    { "id": "u_FragCoord", "type": "Input", "data": { "value": [0.0, 0.0] } },
+    { "id": "u_ResX", "type": "Input", "data": { "value": 800.0 } },
+    { "id": "u_ResY", "type": "Input", "data": { "value": 600.0 } },
+    { "id": "u_MouseX", "type": "Input", "data": { "value": 400.0 } },
+    { "id": "u_MouseY", "type": "Input", "data": { "value": 300.0 } },
+    { "id": "u_FragX", "type": "Input", "data": { "value": 1000.0 } },
+    { "id": "u_FragY", "type": "Input", "data": { "value": 0.0 } },
     { "id": "u_Aspect", "type": "Input", "data": { "value": 1.33 } },
     
     { "id": "const_05", "type": "Input", "data": { "value": 0.5 } },
     { "id": "const_1", "type": "Input", "data": { "value": 1.0 } },
-    { "id": "const_radius", "type": "Input", "data": { "value": 0.2 } },
+    { "id": "const_2", "type": "Input", "data": { "value": 2.0 } },
+    { "id": "const_radius", "type": "Input", "data": { "value": 0.3 } },
     
-    { "id": "bg_color", "type": "Input", "data": { "value": [0.1, 0.1, 0.1, 1.0] } },
-    { "id": "fg_color", "type": "Input", "data": { "value": [1.0, 0.4, 0.0, 1.0] } },
+    { "id": "bg_color", "type": "Input", "data": { "value": 0.5 } },
+    { "id": "fg_color", "type": "Input", "data": { "value": 1.0 } },
 
-    { "id": "aspect_vec", "type": "Join" }, 
+    { "id": "x_norm", "type": "Div" },
+    { "id": "x_centered", "type": "Sub" },
+    { "id": "x_uv", "type": "Mul" },
 
-    { "id": "uv_norm", "type": "Div" },
-    { "id": "uv_centered", "type": "Sub" },
-    { "id": "uv", "type": "Mul" }, 
+    { "id": "y_norm", "type": "Div" },
+    { "id": "y_centered", "type": "Sub" },
 
-    { "id": "m_norm", "type": "Div" },
-    { "id": "m_centered", "type": "Sub" },
-    { "id": "m_uv", "type": "Mul" },
+    { "id": "uv", "type": "Join" },
+
+    { "id": "mx_norm", "type": "Div" },
+    { "id": "mx_centered", "type": "Sub" },
+    { "id": "mx_uv", "type": "Mul" },
+
+    { "id": "my_norm", "type": "Div" },
+    { "id": "my_centered", "type": "Sub" },
+
+    { "id": "muv", "type": "Join" },
 
     { "id": "diff", "type": "Sub" }, 
     { "id": "dist", "type": "Length" },
@@ -30,35 +42,44 @@
     { "id": "edge1", "type": "Input", "data": { "value": -0.01 } },
     { "id": "aa_edges", "type": "Join" },
     
-    { "id": "alpha", "type": "SmoothStep" },
+    { "id": "out_Color", "type": "SmoothStep" }
     
-    { "id": "out_Color", "type": "Mix" }
+
   ],
   "links": [
-    { "src": "u_Aspect", "src_port": 0, "dst": "aspect_vec", "dst_port": 0 },
-    { "src": "const_1", "src_port": 0, "dst": "aspect_vec", "dst_port": 1 },
+    
+    { "src": "u_FragX", "src_port": 0, "dst": "x_norm", "dst_port": 0 },
+    { "src": "u_ResX", "src_port": 0, "dst": "x_norm", "dst_port": 1 },
+    { "src": "x_norm", "src_port": 0, "dst": "x_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "x_centered", "dst_port": 1 },
+    { "src": "x_centered", "src_port": 0, "dst": "x_uv", "dst_port": 0 },
+    { "src": "u_Aspect", "src_port": 0, "dst": "x_uv", "dst_port": 1 },
 
-    { "src": "u_FragCoord", "src_port": 0, "dst": "uv_norm", "dst_port": 0 },
-    { "src": "u_Resolution", "src_port": 0, "dst": "uv_norm", "dst_port": 1 },
-    
-    { "src": "uv_norm", "src_port": 0, "dst": "uv_centered", "dst_port": 0 },
-    { "src": "const_05", "src_port": 0, "dst": "uv_centered", "dst_port": 1 },
-    
-    { "src": "uv_centered", "src_port": 0, "dst": "uv", "dst_port": 0 },
-    { "src": "aspect_vec", "src_port": 0, "dst": "uv", "dst_port": 1 },
+    { "src": "u_FragY", "src_port": 0, "dst": "y_norm", "dst_port": 0 },
+    { "src": "u_ResY", "src_port": 0, "dst": "y_norm", "dst_port": 1 },
+    { "src": "y_norm", "src_port": 0, "dst": "y_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "y_centered", "dst_port": 1 },
 
-    { "src": "u_Mouse", "src_port": 0, "dst": "m_norm", "dst_port": 0 },
-    { "src": "u_Resolution", "src_port": 0, "dst": "m_norm", "dst_port": 1 },
-    
-    { "src": "m_norm", "src_port": 0, "dst": "m_centered", "dst_port": 0 },
-    { "src": "const_05", "src_port": 0, "dst": "m_centered", "dst_port": 1 },
-    
-    { "src": "m_centered", "src_port": 0, "dst": "m_uv", "dst_port": 0 },
-    { "src": "aspect_vec", "src_port": 0, "dst": "m_uv", "dst_port": 1 },
+    { "src": "x_uv", "src_port": 0, "dst": "uv", "dst_port": 0 },
+    { "src": "y_centered", "src_port": 0, "dst": "uv", "dst_port": 1 },
+
+    { "src": "u_MouseX", "src_port": 0, "dst": "mx_norm", "dst_port": 0 },
+    { "src": "u_ResX", "src_port": 0, "dst": "mx_norm", "dst_port": 1 },
+    { "src": "mx_norm", "src_port": 0, "dst": "mx_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "mx_centered", "dst_port": 1 },
+    { "src": "mx_centered", "src_port": 0, "dst": "mx_uv", "dst_port": 0 },
+    { "src": "u_Aspect", "src_port": 0, "dst": "mx_uv", "dst_port": 1 },
+
+    { "src": "u_MouseY", "src_port": 0, "dst": "my_norm", "dst_port": 0 },
+    { "src": "u_ResY", "src_port": 0, "dst": "my_norm", "dst_port": 1 },
+    { "src": "my_norm", "src_port": 0, "dst": "my_centered", "dst_port": 0 },
+    { "src": "const_05", "src_port": 0, "dst": "my_centered", "dst_port": 1 },
+
+    { "src": "mx_uv", "src_port": 0, "dst": "muv", "dst_port": 0 },
+    { "src": "my_centered", "src_port": 0, "dst": "muv", "dst_port": 1 },
 
     { "src": "uv", "src_port": 0, "dst": "diff", "dst_port": 0 },
-    { "src": "m_uv", "src_port": 0, "dst": "diff", "dst_port": 1 },
-    
+    { "src": "muv", "src_port": 0, "dst": "diff", "dst_port": 1 },
     { "src": "diff", "src_port": 0, "dst": "dist", "dst_port": 0 },
     
     { "src": "dist", "src_port": 0, "dst": "sdf", "dst_port": 0 },
@@ -67,11 +88,7 @@
     { "src": "edge0", "src_port": 0, "dst": "aa_edges", "dst_port": 0 },
     { "src": "edge1", "src_port": 0, "dst": "aa_edges", "dst_port": 1 },
     
-    { "src": "sdf", "src_port": 0, "dst": "alpha", "dst_port": 0 },
-    { "src": "aa_edges", "src_port": 0, "dst": "alpha", "dst_port": 1 },
-    
-    { "src": "bg_color", "src_port": 0, "dst": "out_Color", "dst_port": 0 },
-    { "src": "fg_color", "src_port": 0, "dst": "out_Color", "dst_port": 1 },
-    { "src": "alpha", "src_port": 0, "dst": "out_Color", "dst_port": 2 }
+    { "src": "sdf", "src_port": 0, "dst": "out_Color", "dst_port": 0 },
+    { "src": "aa_edges", "src_port": 0, "dst": "out_Color", "dst_port": 1 }
   ]
 }

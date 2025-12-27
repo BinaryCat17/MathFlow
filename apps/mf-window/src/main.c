@@ -71,8 +71,6 @@ void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int tex_w, in
          return;
     }
     
-    if (channels < 3) return; // Need at least RGB for full buffer copy
-
     // Case 2: Full Buffer
     // Determine min bounds to avoid overflow
     int w = (t_w < tex_w) ? t_w : tex_w;
@@ -83,15 +81,28 @@ void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int tex_w, in
         for (int x = 0; x < w; ++x) {
             int idx = (y * w + x) * channels;
             
-            // F32 [0..1] -> U8 [0..255]
-            // SDL Texture is typically ABGR or ARGB on little endian
-            // Let's assume ABGR8888 for now
+            float r, g, b, a;
             
-            float r = src[idx + 0];
-            float g = src[idx + 1];
-            float b = src[idx + 2];
-            float a = (channels > 3) ? src[idx + 3] : 1.0f;
+            if (channels == 1) {
+                // Grayscale
+                float val = src[idx];
+                r = g = b = val;
+                a = 1.0f;
+            } else if (channels >= 3) {
+                r = src[idx + 0];
+                g = src[idx + 1];
+                b = src[idx + 2];
+                a = (channels > 3) ? src[idx + 3] : 1.0f;
+            } else {
+                continue; // Skip weird 2-channel for now
+            }
             
+            // Clamp
+            if (r < 0) r = 0; if (r > 1) r = 1;
+            if (g < 0) g = 0; if (g > 1) g = 1;
+            if (b < 0) b = 0; if (b > 1) b = 1;
+            if (a < 0) a = 0; if (a > 1) a = 1;
+
             row[x * 4 + 0] = (u8)(r * 255.0f); // R
             row[x * 4 + 1] = (u8)(g * 255.0f); // G
             row[x * 4 + 2] = (u8)(b * 255.0f); // B
@@ -120,7 +131,7 @@ int main(int argc, char** argv) {
     
     // Texture for pixel buffer
     SDL_Texture* texture = SDL_CreateTexture(renderer, 
-        SDL_PIXELFORMAT_ABGR8888, SDL_TEXTUREACCESS_STREAMING, 
+        SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, 
         WINDOW_WIDTH, WINDOW_HEIGHT);
 
     // 2. Setup MathFlow VM
@@ -165,9 +176,14 @@ int main(int argc, char** argv) {
     // Find Inputs
     u16 reg_time = mf_vm_find_register(vm, "u_Time");
     u16 reg_res = mf_vm_find_register(vm, "u_Resolution");
+    u16 reg_resx = mf_vm_find_register(vm, "u_ResX");
+    u16 reg_resy = mf_vm_find_register(vm, "u_ResY");
     u16 reg_aspect = mf_vm_find_register(vm, "u_Aspect"); // Scalar F32
     u16 reg_mouse = mf_vm_find_register(vm, "u_Mouse");
-    u16 reg_coord = mf_vm_find_register(vm, "u_FragCoord"); // [H, W, 2]
+    u16 reg_mousex = mf_vm_find_register(vm, "u_MouseX");
+    u16 reg_mousey = mf_vm_find_register(vm, "u_MouseY");
+    u16 reg_fragx = mf_vm_find_register(vm, "u_FragX"); // [H, W]
+    u16 reg_fragy = mf_vm_find_register(vm, "u_FragY"); // [H, W]
     u16 reg_color = mf_vm_find_register(vm, "out_Color");
 
     if (reg_color == 0xFFFF) {
@@ -184,6 +200,12 @@ int main(int argc, char** argv) {
             d[1] = (f32)WINDOW_HEIGHT;
         }
     }
+
+    mf_tensor* t_rx = mf_vm_map_tensor(vm, reg_resx, MF_ACCESS_WRITE);
+    if (t_rx) *((f32*)t_rx->data) = (f32)WINDOW_WIDTH;
+
+    mf_tensor* t_ry = mf_vm_map_tensor(vm, reg_resy, MF_ACCESS_WRITE);
+    if (t_ry) *((f32*)t_ry->data) = (f32)WINDOW_HEIGHT;
     
     // Set Aspect Ratio
     mf_tensor* t_aspect = mf_vm_map_tensor(vm, reg_aspect, MF_ACCESS_WRITE);
@@ -192,27 +214,38 @@ int main(int argc, char** argv) {
         if (d) *d = (f32)WINDOW_WIDTH / (f32)WINDOW_HEIGHT;
     }
     
-    // Set u_FragCoord Once (Static Grid)
-    mf_tensor* t_coord = mf_vm_map_tensor(vm, reg_coord, MF_ACCESS_WRITE);
-    if (t_coord) {
-        int dims[3] = { WINDOW_HEIGHT, WINDOW_WIDTH, 2 };
-        t_coord->dtype = MF_DTYPE_F32;
-        if (mf_vm_resize_tensor(vm, t_coord, dims, 3)) {
-             f32* d = (f32*)t_coord->data;
-             for (int y = 0; y < WINDOW_HEIGHT; ++y) {
-                 for (int x = 0; x < WINDOW_WIDTH; ++x) {
-                     size_t idx = (y * WINDOW_WIDTH + x) * 2;
-                     d[idx + 0] = (f32)x + 0.5f; // Center of pixel
-                     d[idx + 1] = (f32)y + 0.5f;
-                 }
+    // Set u_FragX / u_FragY Once (Static Grids)
+    int dims[2] = { WINDOW_HEIGHT, WINDOW_WIDTH };
+    
+    mf_tensor* t_x = mf_vm_map_tensor(vm, reg_fragx, MF_ACCESS_WRITE);
+    if (t_x && mf_vm_resize_tensor(vm, t_x, dims, 2)) {
+         printf("Resized u_FragX to [600, 800]. Filling...\n");
+         f32* d = (f32*)t_x->data;
+         for (int y = 0; y < WINDOW_HEIGHT; ++y) {
+             for (int x = 0; x < WINDOW_WIDTH; ++x) {
+                 d[y * WINDOW_WIDTH + x] = (f32)x + 0.5f;
              }
-        }
+         }
+         printf("u_FragX[0] = %f, u_FragX[end] = %f\n", d[0], d[WINDOW_HEIGHT*WINDOW_WIDTH - 1]);
+    } else {
+        printf("Failed to resize u_FragX!\n");
+    }
+
+    mf_tensor* t_y = mf_vm_map_tensor(vm, reg_fragy, MF_ACCESS_WRITE);
+    if (t_y && mf_vm_resize_tensor(vm, t_y, dims, 2)) {
+         f32* d = (f32*)t_y->data;
+         for (int y = 0; y < WINDOW_HEIGHT; ++y) {
+             for (int x = 0; x < WINDOW_WIDTH; ++x) {
+                 d[y * WINDOW_WIDTH + x] = (f32)y + 0.5f;
+             }
+         }
     }
 
     // 3. Main Loop
     bool running = true;
     SDL_Event event;
     u32 start_time = SDL_GetTicks();
+    int frame_count = 0;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -239,8 +272,18 @@ int main(int argc, char** argv) {
              d[1] = (f32)my;
         }
 
+        mf_tensor* t_mx = mf_vm_map_tensor(vm, reg_mousex, MF_ACCESS_WRITE);
+        if (t_mx) *((f32*)t_mx->data) = (f32)mx;
+
+        mf_tensor* t_my = mf_vm_map_tensor(vm, reg_mousey, MF_ACCESS_WRITE);
+        if (t_my) *((f32*)t_my->data) = (f32)my;
+
         // Execute
         mf_vm_exec(vm);
+        if (vm->error != MF_ERROR_NONE) {
+            printf("VM Error: %d\n", vm->error);
+            running = false;
+        }
 
         // Render
         void* pixels;
@@ -254,8 +297,26 @@ int main(int argc, char** argv) {
         
         SDL_UnlockTexture(texture);
         
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
+        
         SDL_RenderCopy(renderer, texture, NULL, NULL);
+        
+        // Auto-Screenshot (Frame 30)
+        frame_count++;
+        static bool screenshot_taken = false;
+        if (!screenshot_taken && frame_count > 30 && out) {
+            SDL_Surface* ss = SDL_CreateRGBSurfaceWithFormat(0, WINDOW_WIDTH, WINDOW_HEIGHT, 32, SDL_PIXELFORMAT_RGBA32);
+            if (ss) {
+                if (SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_RGBA32, ss->pixels, ss->pitch) == 0) {
+                    SDL_SaveBMP(ss, "logs/debug_frame.bmp");
+                    printf("Screenshot saved to logs/debug_frame.bmp (Frame %d)\n", frame_count);
+                }
+                SDL_FreeSurface(ss);
+            }
+            screenshot_taken = true;
+        }
+
         SDL_RenderPresent(renderer);
     }
 

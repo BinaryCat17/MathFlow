@@ -39,11 +39,16 @@
 
 ## Usage
 
-MathFlow comes with a CLI tool `mf-runner` that can compile JSON graphs and execute them using the CPU backend.
+MathFlow comes with a CLI tool `mf-runner` for text output and `mf-window` for real-time visual output (SDL2).
 
-**Run a test graph:**
+**Run a test graph (CLI):**
 ```bash
 ./out/build/x64-debug-linux/mf-runner assets/graphs/demo_inventory.json
+```
+
+**Run a Pixel Math demo (Visual):**
+```bash
+./out/build/x64-debug-linux/apps/mf-window/mf-window assets/graphs/sdf_button.json
 ```
 
 **Output:**

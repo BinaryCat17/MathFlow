@@ -31,9 +31,9 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return; \
-    bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
+    size_t sz_a = a->size; size_t sz_b = b->size; \
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
+    for(size_t i=0; i<dst->size; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
 }
 
 // Helper for function-based binary ops (C = func(A, B))
@@ -44,9 +44,9 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return; \
-    bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
+    size_t sz_a = a->size; size_t sz_b = b->size; \
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC((a_s ? da[0] : da[i]), (b_s ? db[0] : db[i])); \
+    for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC(da[i % sz_a], db[i % sz_b]); \
 }
 
 // Helper for unary ops (C = func(A))
@@ -69,13 +69,13 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     if (!dst || !a || !b) return; \
     dst->dtype = MF_DTYPE_U8; /* Force Bool Output */ \
     if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return; \
-    bool a_s = (a->size == 1); bool b_s = (b->size == 1); u8* dd = (u8*)dst->data; \
+    size_t sz_a = a->size; size_t sz_b = b->size; u8* dd = (u8*)dst->data; \
     if (a->dtype == MF_DTYPE_F32) { \
         f32* da = (f32*)a->data; f32* db = (f32*)b->data; \
-        for(size_t i=0; i<dst->size; ++i) dd[i] = ((a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i])) ? 1 : 0; \
+        for(size_t i=0; i<dst->size; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
     } else if (a->dtype == MF_DTYPE_I32) { \
         int32_t* da = (int32_t*)a->data; int32_t* db = (int32_t*)b->data; \
-        for(size_t i=0; i<dst->size; ++i) dd[i] = ((a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i])) ? 1 : 0; \
+        for(size_t i=0; i<dst->size; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
     } \
 }
 
@@ -89,8 +89,8 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     dst->dtype = MF_DTYPE_U8; \
     if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return; \
     u8* da = (u8*)a->data; u8* db = (u8*)b->data; u8* dd = (u8*)dst->data; \
-    bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
+    size_t sz_a = a->size; size_t sz_b = b->size; \
+    for(size_t i=0; i<dst->size; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
 }
 
 #endif // MF_VM_UTILS_H
