@@ -1,10 +1,13 @@
 # MathFlow Architecture
 
-MathFlow is a high-performance, modular data processing engine designed around Data-Oriented Design principles. It separates the definition of computation (Graph/Bytecode) from its execution (Backend).
+MathFlow is a high-performance, **Data-Oriented** computation engine. It treats everything — from physics to UI layout — as mathematical operations on arrays (tensors).
+
+> **Core Philosophy:** "The Graph is a Shader."
+> Whether running on CPU (Interpreter) or GPU (Transpiled), the logic is pure math. The Host Application provides the Canvas and Inputs; the Graph calculates the State and Pixels.
 
 ## 1. System Overview
 
-The project is structured as a **Monorepo** containing several decoupled modules.
+The project is structured as a **Monorepo** with strict decoupling between Definition (ISA), Translation (Compiler), and Execution (VM/Backend).
 
 ```mermaid
 flowchart TD
@@ -14,43 +17,41 @@ flowchart TD
 
     %% Module: Compiler
     subgraph "Module: Compiler"
-        Compiler[mf_compiler]
+        Parser[JSON Parser]
+        Semantics[Semantics & Inference]
+        CodeGen[CodeGen & Optimizer]
     end
 
     %% Module: Core VM
     subgraph "Module: Core VM"
         Loader[Program Loader]
         VM[Virtual Machine]
+        Table[Symbol Table]
         Memory[("Memory Subsystem\n(Arena + Heap)")]
-        API["Accessor API"]
     end
 
     %% Backends
-    subgraph "Module: Backends"
+    subgraph "Module: Backends & Ops"
         Interface[Dispatch Interface]
-        CPU[CPU Implementation]
-        GPU[GPU Implementation]
-        
-        Interface -.-> CPU
-        Interface -.-> GPU
+        CPU[CPU Backend]
+        OpsCore[Ops: Core Math]
+        OpsArray[Ops: Array Utils]
     end
 
     %% Flow
-    JSON --> Compiler
-    
-    Compiler --> BIN
+    JSON --> Parser --> Semantics --> CodeGen --> BIN
     
     BIN -.-> Loader
     Loader --> Memory
+    Loader --> Table
     Loader --> VM
     
     VM --> Memory
-    VM --> Interface
+    VM <--> Interface
     
-    %% Memory Access via API
-    CPU -.-> API
-    GPU -.-> API
-    API --> Memory
+    Interface -.-> CPU
+    CPU -.-> OpsCore
+    CPU -.-> OpsArray
 ```
 
 ---
@@ -59,71 +60,63 @@ flowchart TD
 
 ### 2.1. ISA (`modules/isa`)
 *   **Role:** The "Contract". Defines the Instruction Set Architecture.
-*   **Content:** Header-only definitions of Opcodes (`MF_OP_ADD`), Instruction Formats (`mf_instruction`), and Basic Types (`mf_tensor`).
-*   **Dependencies:** None.
+*   **Content:** Header-only definitions of Opcodes (`MF_OP_ADD`, `MF_OP_COPY`), Instruction Formats, and Binary Header structures.
+*   **Versioning:** Includes a versioned binary format to ensure backward compatibility.
 
 ### 2.2. Virtual Machine (`modules/vm`)
 *   **Role:** The Orchestrator & Memory Owner.
-*   **Responsibility:**
-    *   **Loader:** Reads `mf_program` asset.
-    *   **Memory Management:** Manages dual-allocator system (Arena for static data, Heap for dynamic tensors).
-    *   **Init:** Instantiates registers (tensors) from program descriptors.
-    *   **Execution Strategy:** Delegates execution to a Backend via `mf_backend_dispatch_table`.
-    *   **Dynamic Resizing:** Handles `mf_vm_resize_tensor` requests from backend to support variable workloads.
-*   **Dependencies:** `isa`.
+*   **Key Responsibilities:**
+    *   **Symbol Table:** Maps human-readable names (`"u_Time"`) to Register Indices (`5`), enabling a robust Host API.
+    *   **Memory Management:** Manages the Dual-Allocator system (Arena + Heap).
+    *   **State Management:** Handles `Memory` nodes and Frame lifecycle (resetting transient data, persisting state).
+    *   **Execution:** Iterates over the instruction list and delegates to the Backend via the Dispatch Table.
 
 ### 2.3. Compiler (`modules/compiler`)
 *   **Role:** The Translator (Offline Tool).
-*   **Responsibility:**
-    *   Parses human-readable JSON graphs.
-    *   Performs Topological Sorting (Dependency Resolution).
-    *   Allocates Registers (Indices).
-    *   Performs static Shape Inference where possible.
-    *   **Output:** Generates a self-contained `mf_program` (Bytecode + Data Section). Does NOT interact with VM memory directly.
-*   **Dependencies:** `isa`, `cJSON`.
+*   **Structure:**
+    *   `mf_json_parser`: Converts JSON to Intermediate Representation (IR).
+    *   `mf_semantics`: Performs Shape Inference and Type Checking.
+    *   `mf_codegen`: Topological Sort (Cycle Breaking for State nodes), Register Allocation, and Bytecode generation.
+*   **Output:** A self-contained `.bin` file containing Code, Constants, and the Symbol Table.
 
 ### 2.4. Backend: CPU (`modules/backend_cpu`)
-*   **Role:** Reference Implementation.
-*   **Responsibility:** Provides C11 implementations for all mathematical operations defined in the ISA.
-*   **Runtime Resolution:** Calculates output shapes based on input shapes (broadcasting) and requests VM to resize destination buffers.
-*   **Abstraction:** Uses `mf_vm_map_tensor` to access data. Does NOT manage memory directly (no `malloc`).
-*   **Mode:** Immediate Execution (Interpreter).
+*   **Role:** Reference Implementation (Software Renderer).
+*   **Responsibility:** Initializes the Dispatch Table with CPU implementations.
+*   **Capabilities:** Supports dynamic broadcasting and reshaping. Used for validation and software rendering.
+
+### 2.5. Operations Libraries (`modules/ops_*`)
+These modules contain the actual mathematical kernels. They are decoupled from the VM to allow easy reuse or replacement.
+*   **`modules/ops_core`:** Basic arithmetic (`Add`, `Mul`), Trigonometry (`Sin`, `Atan2`), Logic (`And`, `Select`), and Matrix ops (`MatMul`).
+*   **`modules/ops_array`:** Array manipulation kernels (`Range`, `CumSum`, `Compress`).
 
 ---
 
-## 3. Memory Model
+## 3. The "Pixel Engine" Concept
 
-MathFlow uses a **Unified Tensor Memory Model** backed by a custom allocator system. This ensures predictable memory usage and avoids system `malloc` calls during the "Hot Loop".
+MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader.
 
-### 3.1. Dual-Allocator System
-The VM distinguishes between two types of memory:
-1.  **Arena (Static/Frame):** Used for the Program structure, Instruction buffer, and Tensor Metadata. Fast linear allocation, reset at the end of lifecycle.
-2.  **Heap (Dynamic):** A custom Free-List allocator used for Tensor Data buffers. Supports `realloc` and `free`. Crucial for handling dynamic batch sizes (e.g., varying number of particles or entities per frame).
+### 3.1. I/O Protocol (Symbol Table)
+Instead of relying on fragile indices, the Host Application interacts with the VM using Named Registers:
+1.  **Host Initialization:** `time_reg = mf_vm_find_register(vm, "u_Time")`.
+2.  **Per-Frame:** Write value to `time_reg`.
+3.  **Execution:** `mf_vm_exec(vm)`.
+4.  **Readback:** Read from `mf_vm_find_register(vm, "out_Color")`.
 
-### 3.2. Dynamic Tensors
-Tensors in MathFlow are dynamic containers.
-*   **Capacity:** Tensors track their allocated size (`capacity_bytes`).
-*   **Resize:** If an operation requires a larger output buffer (e.g., broadcasting a scalar to a vector), the VM reallocates the buffer via the Heap allocator.
-*   **Zero-Copy Views:** (Planned) Future support for tensors that point to external memory without ownership.
-
-### 3.3. Backend Synchronization (Planned)
-The VM acts as a mediator between the User and the Device (GPU).
-*   **Hooks:** When `mf_vm_map_*` is called, the active Backend is notified.
-*   **Lazy Sync:** The Backend can trigger a transfer (CPU <-> GPU) only when data is actually accessed.
+### 3.2. State Management
+To support interactive UI (toggles, animations) without external logic, MathFlow implements internal state:
+*   **`MF_NODE_MEMORY`:** Acts as a "delay" line. Outputs the value from the *previous* frame.
+*   **Cycle Breaking:** The compiler treats Memory nodes as inputs (Roots) for the current frame to resolve dependency cycles.
+*   **`MF_OP_COPY`:** At the end of the frame, the VM executes hidden copy instructions to update Memory nodes with new values for the next frame.
 
 ---
 
-## 4. Data Flow & I/O
+## 4. Memory Model
 
-MathFlow uses a **Declarative I/O Model**. The VM does not perform side effects (drawing, audio, networking) during execution. Instead, it transforms input data into output data.
+### 4.1. Dual-Allocator
+1.  **Arena (Static):** Stores the Program (Code, Symbols) and Tensor Metadata.
+2.  **Heap (Dynamic):** Stores Tensor Data. Supports `realloc` for dynamic resizing (e.g., when window resolution changes).
 
-### 4.1. Input
-External systems (Physics Engine, UI, Network) write raw data directly into the **Input Tensors** of the VM via the Accessor API before execution begins. If data size changes (e.g., more enemies spawned), the external system triggers a resize.
-
-### 4.2. Execution
-The VM runs the graph. The Backend reads Input Tensors and populates Intermediate/Output Tensors using the Dispatch Interface. Shape resolution happens just-in-time.
-
-### 4.3. Output
-After execution finishes, the external system reads the **Output Tensors**.
-*   **Visualizer:** Reads `Pos` and `Color` tensors to render instances.
-*   **Game Logic:** Reads `Health` or `Velocity` tensors to update game state.
+### 4.2. Tensor Ownership
+*   **Constants:** Stored in the Program Binary (Arena).
+*   **Variables:** Allocated in the VM Heap.
+*   **View (Planned):** Support for referencing external memory (e.g., direct write to SDL Surface or GPU Buffer) to minimize copies.
