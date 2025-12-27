@@ -21,10 +21,10 @@ This shift unifies scalar, vector, matrix, and array operations under a single m
 ## Phase 2: Compiler & Toolchain
 **Objective:** Update the toolchain to understand tensors and clean up legacy debt.
 
-### 2.1. Shape Inference Pass
+### 2.1. Shape Inference Pass (Completed)
 The compiler must predict tensor shapes to validate the graph before execution.
-- [ ] **Static Analysis:** Propagate shapes from Inputs through the graph.
-- [ ] **Validation:** Error out on shape mismatches (e.g., trying to dot-product incompatible dimensions).
+- [x] **Static Analysis:** Propagate shapes from Inputs through the graph.
+- [x] **Validation:** Error out on shape mismatches (e.g., trying to dot-product incompatible dimensions).
 
 ### 2.2. JSON Format Cleanup (Refactoring) (Completed)
 - [x] **Deprecation:** Remove support for legacy types like `InputVec3`, `AddFloat`.

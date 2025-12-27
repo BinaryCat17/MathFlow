@@ -1,0 +1,11 @@
+{
+  "nodes": [
+    { "id": "1", "type": "Input", "data": { "value": [1.0, 2.0, 3.0] } },
+    { "id": "2", "type": "Input", "data": { "value": [4.0, 5.0, 6.0, 7.0] } },
+    { "id": "3", "type": "Add" }
+  ],
+  "links": [
+    { "src": "1", "src_port": 0, "dst": "3", "dst_port": 0 },
+    { "src": "2", "src_port": 0, "dst": "3", "dst_port": 1 }
+  ]
+}

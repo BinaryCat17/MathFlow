@@ -68,6 +68,7 @@ typedef struct {
 
     // Compiler Generated info
     u16 out_reg_idx;    // Index in the global Tensor Pool
+    mf_tensor out_shape; // Predicted output shape and dtype
 } mf_ir_node;
 
 typedef struct {
