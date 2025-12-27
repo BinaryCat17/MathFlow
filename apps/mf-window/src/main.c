@@ -156,8 +156,8 @@ int main(int argc, char** argv) {
     mf_program* prog = mf_compile(&ir, &arena);
     if (!prog) { printf("Compilation failed\n"); return 1; }
     
-    // Save program for debug
-    mf_compile_save_program(prog, "debug_out.bin");
+    // Save program for debug (optional)
+    // mf_compile_save_program(prog, "out/debug_out.bin");
 
     // Load Program
     mf_vm_load_program(vm, prog, &arena);
