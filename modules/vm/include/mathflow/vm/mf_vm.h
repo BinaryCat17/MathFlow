@@ -7,7 +7,7 @@
 #include <mathflow/vm/mf_memory.h>
 
 // Forward decl
-struct mf_vm_t;
+typedef struct mf_vm mf_vm;
 
 // --- Enums ---
 
@@ -19,11 +19,11 @@ typedef enum {
 
 // --- Backend Interface ---
 // Universal Op Function
-typedef void (*mf_op_func)(struct mf_vm_t* vm, u16 dest, u16 src1, u16 src2);
+typedef void (*mf_op_func)(mf_vm* vm, u16 dest, u16 src1, u16 src2);
 
 // Hook for sync (e.g. GPU upload/download)
 // Now takes a Tensor pointer
-typedef void (*mf_hook_map)(struct mf_vm_t* vm, mf_tensor* tensor, mf_access_mode mode);
+typedef void (*mf_hook_map)(mf_vm* vm, mf_tensor* tensor, mf_access_mode mode);
 
 typedef struct {
     mf_op_func op_table[MF_OP_COUNT];
@@ -31,20 +31,36 @@ typedef struct {
 } mf_backend_dispatch_table;
 
 // --- VM State ---
-typedef struct mf_vm_t {
-    const mf_backend_dispatch_table* backend;
+typedef enum {
+    MF_ERROR_NONE = 0,
+    MF_ERROR_OOM = 1,          // Out of Memory
+    MF_ERROR_SHAPE_MISMATCH = 2, // Runtime shape check failed
+    MF_ERROR_INVALID_OP = 3    // Unknown opcode
+} mf_vm_error;
 
+struct mf_vm {
+    // Code & Registers
     mf_instruction* _code;
     size_t _code_count;
     
-    // The Tensor Register File
-    // This is an array of tensors.
-    // The *data pointers* inside these tensors point to allocated memory.
-    mf_tensor* _registers; 
-    u32 _register_count;
-} mf_vm;
+    mf_tensor* _registers;
+    size_t _register_count;
+
+    // Execution Context
+    mf_backend_dispatch_table* backend;
+    
+    // Memory Management
+    mf_allocator* allocator; // For dynamic tensor data
+    
+    // State
+    mf_vm_error error;
+    
+    // User Data
+    void* user_data;
+};
 
 // Helper to load binary from disk
+void mf_vm_init(mf_vm* vm, mf_allocator* allocator);
 mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
 
 // Load program into VM memory (allocates registers)
@@ -60,5 +76,6 @@ void mf_vm_shutdown(mf_vm* vm);
 // Returns a pointer to the live tensor in the VM.
 // The backend can then read shape/data.
 mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode);
+bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
 
 #endif // MF_VM_H

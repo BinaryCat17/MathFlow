@@ -136,6 +136,7 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
         t->dtype = MF_DTYPE_F32;
         t->ndim = 0;
         t->size = 1;
+        t->capacity_bytes = sizeof(f32);
         t->data = MF_ARENA_PUSH(arena, f32, 1);
         *((f32*)t->data) = (f32)val->valuedouble;
     } 
@@ -144,6 +145,7 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
         t->dtype = MF_DTYPE_U8;
         t->ndim = 0;
         t->size = 1;
+        t->capacity_bytes = sizeof(u8);
         t->data = MF_ARENA_PUSH(arena, u8, 1);
         *((u8*)t->data) = (u8)(cJSON_IsTrue(val) ? 1 : 0);
     }
@@ -152,6 +154,7 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
         t->dtype = MF_DTYPE_I32;
         t->ndim = 0;
         t->size = 1;
+        t->capacity_bytes = sizeof(int32_t);
         t->data = MF_ARENA_PUSH(arena, int32_t, 1);
         *((int32_t*)t->data) = (int32_t)fnv1a_hash(val->valuestring);
     }
@@ -169,6 +172,7 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
             t->shape[0] = count;
             t->strides[0] = 1;
             t->size = count;
+            t->capacity_bytes = count * sizeof(f32);
             
             f32* data = MF_ARENA_PUSH(arena, f32, count);
             t->data = data;
@@ -186,6 +190,7 @@ static void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
             t->shape[0] = count;
             t->strides[0] = 1;
             t->size = count;
+            t->capacity_bytes = count * sizeof(int32_t);
             
             int32_t* data = MF_ARENA_PUSH(arena, int32_t, count);
             t->data = data;

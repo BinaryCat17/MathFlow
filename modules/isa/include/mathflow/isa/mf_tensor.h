@@ -42,11 +42,15 @@ typedef struct {
     // Total elements count (cached product of shape)
     size_t size; 
 
+    // Allocated size in bytes (for dynamic resizing)
+    size_t capacity_bytes;
+
     // Flags
     u32 flags;
 } mf_tensor;
 
 #define MF_TENSOR_OWNS_DATA 1
+#define MF_TENSOR_DYNAMIC   2  // Can be resized
 
 // --- Helper Functions (Inline) ---
 

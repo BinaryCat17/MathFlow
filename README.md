@@ -48,11 +48,10 @@ MathFlow comes with a CLI tool `mf-runner` that can compile JSON graphs and exec
 
 **Output:**
 ```
-MathFlow Runner. Loading: assets/graphs/simple_math.json
-Graph Parsed: 5 nodes
-Program Loaded: 2 inst
+MathFlow Tensor Runner. Loading: assets/graphs/simple_math.json
+Program: 5 tensors, 2 insts
 ...
-[Vec3 Output]: {10.00, 14.00, 18.00}
+  [4] Shape: [3] F32: {10.00, 14.00, 18.00}
 ```
 
 ## Documentation

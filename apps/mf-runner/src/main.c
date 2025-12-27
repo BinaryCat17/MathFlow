@@ -80,10 +80,17 @@ int main(int argc, char** argv) {
     printf("MathFlow Tensor Runner. Loading: %s\n", path);
 
     // 1. Setup Memory
-    size_t arena_size = MF_MB(16); // Bumped for dynamic allocations
-    void* buffer = malloc(arena_size);
+    // Arena for Program Code & Metadata
+    size_t arena_size = MF_MB(8); 
+    void* arena_buffer = malloc(arena_size);
     mf_arena arena;
-    mf_arena_init(&arena, buffer, arena_size);
+    mf_arena_init(&arena, arena_buffer, arena_size);
+
+    // Heap for Tensor Data (Dynamic)
+    size_t heap_size = MF_MB(64); 
+    void* heap_buffer = malloc(heap_size);
+    mf_heap heap;
+    mf_heap_init(&heap, heap_buffer, heap_size);
 
     mf_program* prog = NULL;
     const char* ext = get_filename_ext(path);
@@ -96,7 +103,7 @@ int main(int argc, char** argv) {
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(json, &ir, &arena)) {
             printf("Error: Failed to parse JSON.\n");
-            free(json); free(buffer); return 1;
+            free(json); free(arena_buffer); free(heap_buffer); return 1;
         }
         
         prog = mf_compile(&ir, &arena);
@@ -107,7 +114,7 @@ int main(int argc, char** argv) {
 
     if (!prog) {
         printf("Error: Failed to generate program.\n");
-        free(buffer); return 1;
+        free(arena_buffer); free(heap_buffer); return 1;
     }
 
     printf("Program: %u tensors, %u insts\n", prog->meta.tensor_count, prog->meta.instruction_count);
@@ -116,8 +123,10 @@ int main(int argc, char** argv) {
     mf_backend_dispatch_table cpu_backend;
     mf_backend_cpu_init(&cpu_backend);
     
-    mf_vm vm = {0};
+    mf_vm vm;
+    mf_vm_init(&vm, (mf_allocator*)&heap);
     vm.backend = &cpu_backend;
+    
     mf_vm_load_program(&vm, prog, &arena);
     
     // 4. Execute
@@ -131,8 +140,12 @@ int main(int argc, char** argv) {
     }
 
     // 6. Cleanup
+    printf("\n[Memory Stats] Used: %zu, Peak: %zu, Allocations: %zu\n", 
+           heap.used_memory, heap.peak_memory, heap.allocation_count);
+
     mf_vm_shutdown(&vm);
 
-    free(buffer);
+    free(arena_buffer);
+    free(heap_buffer);
     return 0;
 }

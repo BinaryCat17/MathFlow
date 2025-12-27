@@ -1,26 +1,29 @@
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/isa/mf_tensor.h>
-#include <stdlib.h>
+#include <mathflow/vm/mf_vm.h> // For mf_vm_resize_tensor
 #include <string.h>
 #include <math.h>
 
-// --- Memory Helper ---
-static void ensure_shape(mf_tensor* dst, const mf_tensor* src_shape) {
-    bool same_shape = (dst->ndim == src_shape->ndim);
-    if (same_shape) {
-        for(int i=0; i<dst->ndim; ++i) if(dst->shape[i] != src_shape->shape[i]) same_shape = false;
-    }
+// --- Helper: Shape Resolution ---
 
-    if (!dst->data || !same_shape) {
-        if (dst->data && (dst->flags & MF_TENSOR_OWNS_DATA)) free(dst->data);
-        dst->dtype = src_shape->dtype;
-        dst->ndim = src_shape->ndim;
-        memcpy(dst->shape, src_shape->shape, sizeof(dst->shape));
-        dst->size = src_shape->size;
-        dst->data = malloc(dst->size * mf_dtype_size(dst->dtype));
-        dst->flags |= MF_TENSOR_OWNS_DATA;
-    }
+// Simple broadcasting rule: Output takes the shape of the larger tensor.
+// True broadcasting (NumPy style) would be more complex, but this fits our current needs.
+static bool resolve_binary_shape(mf_vm* vm, mf_tensor* dst, const mf_tensor* a, const mf_tensor* b) {
+    const mf_tensor* shape_src = (a->size >= b->size) ? a : b;
+    // Inherit dtype from 'a' usually, but here we assume inputs are compatible floats
+    // or the op defines the output type (like compare -> u8).
+    // The caller should set dst->dtype if it differs (e.g. comparison).
+    
+    // Default: output dtype matches A (usually f32)
+    if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
+
+    return mf_vm_resize_tensor(vm, dst, shape_src->shape, shape_src->ndim);
+}
+
+static bool resolve_unary_shape(mf_vm* vm, mf_tensor* dst, const mf_tensor* a) {
+    if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
+    return mf_vm_resize_tensor(vm, dst, a->shape, a->ndim);
 }
 
 // --- Kernel: Binary Math ---
@@ -29,8 +32,8 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
-    if (!a || !b) return; \
-    ensure_shape(dst, (a->size > b->size) ? a : b); \
+    if (!dst || !a || !b) return; \
+    if (!resolve_binary_shape(vm, dst, a, b)) return; \
     bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
     for(size_t i=0; i<dst->size; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
@@ -45,8 +48,8 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
-    if (!a || !b) return; \
-    ensure_shape(dst, (a->size > b->size) ? a : b); \
+    if (!dst || !a || !b) return; \
+    if (!resolve_binary_shape(vm, dst, a, b)) return; \
     bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
     for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC((a_s ? da[0] : da[i]), (b_s ? db[0] : db[i])); \
@@ -59,8 +62,8 @@ OP_KERNEL_BINARY_FUNC(pow, powf)
 static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
-    if (!a) return; \
-    ensure_shape(dst, a); \
+    if (!dst || !a) return; \
+    if (!resolve_unary_shape(vm, dst, a)) return; \
     f32* da = (f32*)a->data; f32* dd = (f32*)dst->data; \
     for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC(da[i]); \
 }
@@ -76,8 +79,8 @@ static void op_min(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
-    if (!a || !b) return;
-    ensure_shape(dst, (a->size > b->size) ? a : b);
+    if (!dst || !a || !b) return;
+    if (!resolve_binary_shape(vm, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
     bool a_s = (a->size == 1); bool b_s = (b->size == 1);
     for(size_t i=0; i<dst->size; ++i) { f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i]; dd[i] = (va < vb) ? va : vb; }
@@ -86,8 +89,8 @@ static void op_max(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
-    if (!a || !b) return;
-    ensure_shape(dst, (a->size > b->size) ? a : b);
+    if (!dst || !a || !b) return;
+    if (!resolve_binary_shape(vm, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
     bool a_s = (a->size == 1); bool b_s = (b->size == 1);
     for(size_t i=0; i<dst->size; ++i) { f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i]; dd[i] = (va > vb) ? va : vb; }
@@ -99,8 +102,9 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
-    if (!a || !b) return; \
-    mf_tensor t_shape = (a->size > b->size) ? *a : *b; t_shape.dtype = MF_DTYPE_U8; ensure_shape(dst, &t_shape); \
+    if (!dst || !a || !b) return; \
+    dst->dtype = MF_DTYPE_U8; /* Force Bool Output */ \
+    if (!resolve_binary_shape(vm, dst, a, b)) return; \
     bool a_s = (a->size == 1); bool b_s = (b->size == 1); u8* dd = (u8*)dst->data; \
     if (a->dtype == MF_DTYPE_F32) { \
         f32* da = (f32*)a->data; f32* db = (f32*)b->data; \
@@ -123,8 +127,9 @@ static void op_##NAME(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ); \
-    if (!a || !b) return; \
-    ensure_shape(dst, (a->size > b->size) ? a : b); \
+    if (!dst || !a || !b) return; \
+    dst->dtype = MF_DTYPE_U8; \
+    if (!resolve_binary_shape(vm, dst, a, b)) return; \
     u8* da = (u8*)a->data; u8* db = (u8*)b->data; u8* dd = (u8*)dst->data; \
     bool a_s = (a->size == 1); bool b_s = (b->size == 1); \
     for(size_t i=0; i<dst->size; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
@@ -134,7 +139,9 @@ OP_KERNEL_LOGIC(or, ||)
 static void op_not(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    if (!a) return; ensure_shape(dst, a);
+    if (!dst || !a) return; 
+    dst->dtype = MF_DTYPE_U8;
+    if (!resolve_unary_shape(vm, dst, a)) return;
     u8* da = (u8*)a->data; u8* dd = (u8*)dst->data;
     for(size_t i=0; i<dst->size; ++i) dd[i] = !da[i];
 }
@@ -145,7 +152,11 @@ static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
     if (!dst || !cond || !val) return;
-    mf_tensor shape = (val->size >= cond->size) ? *val : *cond; shape.dtype = val->dtype; ensure_shape(dst, &shape);
+    
+    // Output shape matches the larger of (cond, val)
+    if (!resolve_binary_shape(vm, dst, cond, val)) return;
+    dst->dtype = val->dtype; // Enforce type
+    
     u8* c = (u8*)cond->data; u8* v = (u8*)val->data; u8* d = (u8*)dst->data; size_t es = mf_dtype_size(val->dtype);
     bool c_s = (cond->size == 1); bool v_s = (val->size == 1);
     for(size_t i=0; i<dst->size; ++i) if (c[c_s ? 0 : i]) memcpy(d + i*es, v + (v_s ? 0 : i*es), es);
@@ -155,7 +166,10 @@ static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
     if (!dst || !cond || !val) return;
-    mf_tensor shape = (val->size >= cond->size) ? *val : *cond; shape.dtype = val->dtype; ensure_shape(dst, &shape);
+
+    if (!resolve_binary_shape(vm, dst, cond, val)) return;
+    dst->dtype = val->dtype;
+
     u8* c = (u8*)cond->data; u8* v = (u8*)val->data; u8* d = (u8*)dst->data; size_t es = mf_dtype_size(val->dtype);
     bool c_s = (cond->size == 1); bool v_s = (val->size == 1);
     for(size_t i=0; i<dst->size; ++i) if (!c[c_s ? 0 : i]) memcpy(d + i*es, v + (v_s ? 0 : i*es), es);
@@ -166,23 +180,43 @@ static void op_matmul(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
-    if (!a || !b) return;
-    int dim = (int)sqrtf((float)a->size); if (dim * dim != a->size) return;
-    mf_tensor shape = *a; ensure_shape(dst, &shape);
+    if (!dst || !a || !b) return;
+    
+    // Validation
+    int dim = (int)sqrtf((float)a->size); 
+    if (dim * dim != a->size) return; // Only square matrices for now
+    
+    dst->dtype = a->dtype;
+    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+
     f32* A = (f32*)a->data; f32* B = (f32*)b->data; f32* C = (f32*)dst->data;
-    for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) { float sum = 0.0f; for (int k = 0; k < dim; k++) sum += A[r * dim + k] * B[k * dim + c]; C[r * dim + c] = sum; }
+    for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) { 
+        float sum = 0.0f; 
+        for (int k = 0; k < dim; k++) sum += A[r * dim + k] * B[k * dim + c]; 
+        C[r * dim + c] = sum; 
+    }
 }
 static void op_transpose(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    if (!a) return; ensure_shape(dst, a);
+    if (!dst || !a) return; 
+    
+    // Transpose works by swapping dims. For 2D square only now.
+    // TODO: Generic transpose
+    dst->dtype = a->dtype;
+    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+    
     int dim = (int)sqrtf((float)a->size); f32* src = (f32*)a->data; f32* out = (f32*)dst->data;
     for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) out[c * dim + r] = src[r * dim + c];
 }
 static void op_inverse(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    ensure_shape(dst, a);
+    if (!dst || !a) return;
+    
+    dst->dtype = a->dtype;
+    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+
     f32* m = (f32*)a->data; f32* out = (f32*)dst->data; int dim = (int)sqrtf((float)a->size);
     if (dim == 3) {
         float det = m[0]*(m[4]*m[8]-m[7]*m[5]) - m[1]*(m[3]*m[8]-m[5]*m[6]) + m[2]*(m[3]*m[7]-m[4]*m[6]); float invDet = 1.0f/det;

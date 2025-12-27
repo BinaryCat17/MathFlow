@@ -51,12 +51,30 @@ Enable database-like logic.
 
 ---
 
-## Phase 4: Dynamic Execution
-**Objective:** Handle variable workloads.
+## Phase 4: Dynamic Execution & Memory Management
+**Objective:** Handle variable workloads (dynamic batch sizes) and manage memory efficiently without system `malloc` in the hot loop.
 
-### 4.1. Dynamic Batching
-- [ ] **Runtime Resizing:** Allow tensors to change size (Dimension `N`) between frames (e.g., adding an item to a shopping cart).
-- [ ] **Memory Reallocation:** Smart handling of growing buffers.
+### 4.1. Memory Allocator System
+Implement a robust memory subsystem to replace raw `malloc`/`free` and simple Arenas.
+- [x] **Allocator Interface:** Define `mf_allocator` interface (Alloc, Free, Realloc).
+- [x] **Linear Allocator:** Enhance the existing Arena for "Frame Temporary" memory (reset every frame).
+- [x] **Heap Allocator:** Implement a General Purpose Allocator (e.g., Free List or Buddy System) capable of managing a fixed memory block for persistent but dynamic tensors.
+- [ ] **Memory Stats:** Tracking usage, peak memory, and fragmentation.
+
+### 4.2. Dynamic Tensors
+Allow tensors to change shape during runtime.
+- [x] **Capacity Tracking:** Add `capacity` field to `mf_tensor` to distinguish between allocated size and used size.
+- [x] **Resize API:** Implement `mf_tensor_resize(ctx, tensor, new_shape)` which handles re-allocation and data preservation.
+- [x] **Growth Strategy:** Implement geometric growth (e.g., 1.5x) to minimize allocation frequency.
+
+### 4.3. Runtime Shape Resolution
+Operations must adapt to input data changes.
+- [x] **Runtime Inference:** Update Opcodes (Backend) to calculate output shapes based on actual input shapes, not just compile-time constants.
+- [x] **Broadcasting:** Update kernels to handle dynamic broadcasting (e.g., `Vec3` + `BatchVec3`).
+
+### 4.4. Validation
+- [x] **Resize Test:** A graph that accumulates data, forcing buffer growth. (Verified via mf-runner dynamic test)
+- [ ] **OOM Handling:** Graceful error handling when the pre-allocated memory block is exhausted.
 
 ---
 
