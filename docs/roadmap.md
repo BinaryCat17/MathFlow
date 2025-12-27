@@ -16,7 +16,7 @@
     - Input: `Heights [10, 20, 10]`
     - Output: `Y_Positions [0, 10, 30]`
     - Critical for stacking UI elements dynamically.
-- [ ] **Opcode: Filter/Compress:** (Optional) Selects elements based on a mask, changing the tensor size.
+- [x] **Opcode: Filter/Compress:** (Optional) Selects elements based on a mask, changing the tensor size.
 
 ## Phase 7: The UI Host (Raylib Integration)
 **Objective:** Create a visual runtime environment that drives the graph.

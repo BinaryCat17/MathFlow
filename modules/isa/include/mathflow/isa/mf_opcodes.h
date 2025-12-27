@@ -70,6 +70,8 @@ typedef enum {
 
     // Algorithms
     MF_OP_CUMSUM = 270, // Output[i] = Sum(Input[0]...Input[i])
+    
+    MF_OP_COMPRESS = 280, // Output = Elements of Input where Mask is true
 
     MF_OP_ARRAY_END = 511,
 

@@ -59,6 +59,7 @@ typedef enum {
     // Array Ops
     MF_NODE_RANGE,
     MF_NODE_CUMSUM,
+    MF_NODE_COMPRESS,
 
     MF_NODE_COUNT
 } mf_node_type;

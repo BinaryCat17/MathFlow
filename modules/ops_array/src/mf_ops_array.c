@@ -56,8 +56,59 @@ static void op_cumsum(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
+// --- Op: Compress (Filter) ---
+// Src1: Data [10, 20, 30]
+// Src2: Mask [1, 0, 1]
+// Dest: [10, 30]
+static void op_compress(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* data = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+    mf_tensor* mask = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+    
+    if (!dst || !data || !mask) return;
+
+    // Validate size (Must match)
+    // TODO: Broadcasting logic? For compress usually 1-to-1.
+    size_t count = (data->size < mask->size) ? data->size : mask->size;
+    
+    // Pass 1: Count True
+    size_t true_count = 0;
+    for(size_t i=0; i<count; ++i) {
+        bool keep = false;
+        if (mask->dtype == MF_DTYPE_U8) keep = ((u8*)mask->data)[i] != 0;
+        else if (mask->dtype == MF_DTYPE_F32) keep = ((f32*)mask->data)[i] > 0.5f; // Threshold
+        else if (mask->dtype == MF_DTYPE_I32) keep = ((int32_t*)mask->data)[i] != 0;
+        
+        if (keep) true_count++;
+    }
+
+    // Resize Dest
+    dst->dtype = data->dtype;
+    int32_t new_shape[] = { (int32_t)true_count };
+    if (!mf_vm_resize_tensor(vm, dst, new_shape, 1)) return;
+
+    // Pass 2: Copy
+    size_t write_idx = 0;
+    size_t elem_size = mf_dtype_size(data->dtype);
+    u8* src_ptr = (u8*)data->data;
+    u8* dst_ptr = (u8*)dst->data;
+
+    for(size_t i=0; i<count; ++i) {
+        bool keep = false;
+        if (mask->dtype == MF_DTYPE_U8) keep = ((u8*)mask->data)[i] != 0;
+        else if (mask->dtype == MF_DTYPE_F32) keep = ((f32*)mask->data)[i] > 0.5f;
+        else if (mask->dtype == MF_DTYPE_I32) keep = ((int32_t*)mask->data)[i] != 0;
+
+        if (keep) {
+            memcpy(dst_ptr + write_idx * elem_size, src_ptr + i * elem_size, elem_size);
+            write_idx++;
+        }
+    }
+}
+
 // --- Registration ---
 void mf_ops_array_register(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_RANGE] = op_range;
     table->op_table[MF_OP_CUMSUM] = op_cumsum;
+    table->op_table[MF_OP_COMPRESS] = op_compress;
 }

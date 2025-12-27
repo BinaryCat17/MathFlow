@@ -54,6 +54,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     // --- Array Ops ---
     {"Range", MF_NODE_RANGE},
     {"CumSum", MF_NODE_CUMSUM},
+    {"Filter", MF_NODE_COMPRESS},
 
     {NULL, MF_NODE_UNKNOWN}
 };
@@ -446,6 +447,16 @@ static bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_
             if (s1) *out = s1->out_shape;
             break;
 
+        case MF_NODE_COMPRESS:
+            if (s1 && s2) {
+                // S1: Data, S2: Mask
+                *out = s1->out_shape;
+                // Shape is dynamic (subset of input)
+                out->shape[0] = 0; 
+                out->size = 0;
+            }
+            break;
+
         default: break;
     }
     return true;
@@ -549,6 +560,12 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             
             case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
             case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
+            case MF_NODE_COMPRESS: 
+                inst->opcode = MF_OP_COMPRESS; 
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+                instr_count++; 
+                break;
 
             case MF_NODE_CLAMP:
                 if (s1 && s2 && s3) {
