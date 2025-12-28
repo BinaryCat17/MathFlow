@@ -101,51 +101,55 @@ graph TD
     classDef layerCore fill:#dec,stroke:#6b8,stroke-width:2px;
     classDef layerBase fill:#edd,stroke:#b66,stroke-width:2px;
 
-    %% Layer 1: Apps
-    subgraph L1 ["Layer 1: The User Experience"]
-        App_GUI["🖼️ mf-window"]:::layerApp
-        App_CLI["⌨️ mf-runner"]:::layerApp
+    %% Layer 1: Apps (Executables)
+    subgraph L1 ["Layer 1: Applications"]
+        App_GUI["mf-window"]:::layerApp
+        App_CLI["mf-runner"]:::layerApp
     end
 
-    %% Layer 2: Host
+    %% Layer 2: Host (Integration Library)
     subgraph L2 ["Layer 2: Host Framework"]
-        HostHeadless["📜 Host Headless"]:::layerHost
-        HostSDL["🔌 Host SDL (GUI)"]:::layerHost
-        Loader["📂 Asset Loader"]:::layerHost
+        Host["Host (Loader, SDL, Headless)"]:::layerHost
     end
 
-    %% Layer 3: Core
+    %% Layer 3: Core (Logic)
     subgraph L3 ["Layer 3: System Core"]
-        Engine["🚂 Engine (Runtime)"]:::layerCore
-        VM["🧠 Virtual Machine"]:::layerCore
-        Compiler["⚙️ Compiler"]:::layerCore
+        Engine["Engine (Orchestrator)"]:::layerCore
+        Compiler["Compiler (JSON->ISA)"]:::layerCore
+        VM["Virtual Machine (Interpreter)"]:::layerCore
     end
 
-    %% Layer 4: Compute
+    %% Layer 4: Compute (Execution)
     subgraph L4 ["Layer 4: Compute Providers"]
-        Backend["🔌 Backend (Thread Pool)"]:::layerBase
-        Ops["💪 Math Kernels (ops)"]:::layerBase
+        Backend["Backend (Thread Pool)"]:::layerBase
+        Ops["Math Kernels (ops)"]:::layerBase
     end
 
-    %% Layer 5: Foundation
+    %% Layer 5: Contracts
     subgraph L5 ["Layer 5: Foundation & Contracts"]
-        Base["🧱 Base (Mem/Threads)"]:::layerBase
-        ISA["📜 ISA (The Contract)"]:::layerBase
+        ISA["ISA (The Contract)"]:::layerBase
+        Base["Base (Memory/Utils)"]:::layerBase
     end
 
-    %% Dependencies
-    App_GUI --> HostSDL
-    App_CLI --> HostHeadless
-    HostSDL --> Loader
-    HostHeadless --> Loader
-    HostSDL --> Engine
-    HostHeadless --> Engine
-    Loader --> Compiler
+    %% Dependencies (Build Time)
+    App_GUI --> Host
+    App_CLI --> Host
+    
+    Host --> Engine
+    Host --> Compiler
+    
     Engine --> VM
+    Engine --> Backend
+    
+    Backend --> VM
+    Backend --> Ops
+    
+    Compiler --> ISA
     VM --> ISA
     Ops --> ISA
-    Engine --> Backend
-    Backend --> Ops
+    
+    %% Base is implicit foundation
+    Base -.-> ISA
 ```
 
 ### 3.1. Engine (`modules/engine`)
