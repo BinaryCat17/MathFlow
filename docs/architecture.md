@@ -7,13 +7,21 @@ MathFlow is a high-performance, **Data-Oriented** computation engine. It treats 
 
 ## 1. System Overview
 
-The project is structured as a **Monorepo** with strict decoupling between Definition (ISA), Translation (Compiler), and Execution (VM/Backend).
+The project is structured as a **Monorepo** with strict decoupling between Definition (ISA), Resource Management (Engine), Translation (Compiler), and Execution (VM/Scheduler).
 
 ```mermaid
 flowchart TD
     %% Assets
     JSON("Graph file .json")
     BIN("Program Binary .bin")
+
+    %% Module: Engine
+    subgraph "Module: Engine (Resource Manager)"
+        Engine[Engine Core]
+        Arena[Arena Allocator]
+        Program[Program Data]
+        Context[Execution Context]
+    end
 
     %% Module: Compiler
     subgraph "Module: Compiler"
@@ -22,12 +30,10 @@ flowchart TD
         CodeGen[CodeGen & Optimizer]
     end
 
-    %% Module: Core VM
-    subgraph "Module: Core VM"
-        Loader[Program Loader]
-        VM[Virtual Machine]
-        Table[Symbol Table]
-        Memory[("Memory Subsystem\n(Arena + Heap)")]
+    %% Execution Strategies
+    subgraph "Execution Strategies"
+        VM[VM (Single-Threaded)]
+        Scheduler[Scheduler (Multi-Threaded)]
     end
 
     %% Backends
@@ -41,13 +47,16 @@ flowchart TD
     %% Flow
     JSON --> Parser --> Semantics --> CodeGen --> BIN
     
-    BIN -.-> Loader
-    Loader --> Memory
-    Loader --> Table
-    Loader --> VM
+    BIN -.-> Engine
+    Engine --> Arena
+    Engine --> Program
+    Engine --> Context
     
-    VM --> Memory
+    Context --> VM
+    Context --> Scheduler
+    
     VM <--> Interface
+    Scheduler <--> Interface
     
     Interface -.-> CPU
     CPU -.-> OpsCore
@@ -58,18 +67,23 @@ flowchart TD
 
 ## 2. Modules
 
+### 2.0. Engine (`modules/engine`)
+*   **Role:** The "Owner". Unified Resource Manager.
+*   **Responsibility:**
+    *   Manages the **Static Lifecycle**: Loads graphs/binaries, allocates the Arena (Program memory), and sets up the Execution Context.
+    *   Acts as the central API for initializing the library, independent of the execution strategy (Single-threaded vs Multi-threaded).
+
 ### 2.1. ISA (`modules/isa`)
 *   **Role:** The "Contract". Defines the Instruction Set Architecture.
 *   **Content:** Header-only definitions of Opcodes (`MF_OP_ADD`, `MF_OP_COPY`), Instruction Formats, and Binary Header structures.
 *   **Versioning:** Includes a versioned binary format to ensure backward compatibility.
 
 ### 2.2. Virtual Machine (`modules/vm`)
-*   **Role:** The Orchestrator & Memory Owner.
+*   **Role:** The "Runner" (Single-Threaded).
 *   **Key Responsibilities:**
-    *   **Symbol Table:** Maps human-readable names (`"u_Time"`) to Register Indices (`5`), enabling a robust Host API.
-    *   **Memory Management:** Manages the Dual-Allocator system (Arena + Heap).
-    *   **State Management:** Handles `Memory` nodes and Frame lifecycle (resetting transient data, persisting state).
-    *   **Execution:** Iterates over the instruction list and delegates to the Backend via the Dispatch Table.
+    *   **Execution State:** Manages the Heap (Variables) and Registers for a single execution context.
+    *   **Stateful:** Good for simple scripts or sequential logic where state persists in the VM instance.
+    *   **Symbol Table Access:** Uses the Engine's context to map names to registers.
 
 ### 2.3. Compiler (`modules/compiler`)
 *   **Role:** The Translator.
@@ -79,15 +93,29 @@ flowchart TD
     *   `mf_codegen`: Topological Sort (Cycle Breaking for State nodes), Register Allocation, and Bytecode generation.
 *   **Expansion Logic:** Sub-graphs are completely flattened during the parsing phase. The VM only sees a single linear list of instructions.
 
-### 2.4. Backend: CPU (`modules/backend_cpu`)
+### 2.4. Scheduler (`modules/scheduler`)
+*   **Role:** The "Job System" (Multi-Threaded).
+*   **Key Responsibilities:**
+    *   **Parallel Execution:** Splits the domain (e.g., screen pixels) into tiles and distributes them across a thread pool.
+    *   **Stateless:** Uses the Engine's immutable Context, but allocates temporary per-thread scratch memory for execution.
+
+### 2.5. Platform (`modules/platform`)
+*   **Role:** OS Abstraction Layer.
+*   **Content:** Unified API for Threads, Mutexes, Condition Variables, and Atomics. Supports Windows (Win32) and Linux (pthreads).
+
+### 2.6. Host (`modules/host`)
+*   **Role:** Application Framework.
+*   **Responsibility:** Provides a high-level wrapper around SDL2 and `mf_engine`. Handles window creation, input polling (Time, Mouse), and the render loop.
+
+### 2.7. Backend: CPU (`modules/backend_cpu`)
 *   **Role:** Reference Implementation (Software Renderer).
 *   **Responsibility:** Initializes the Dispatch Table with CPU implementations.
-*   **Capabilities:** Supports dynamic broadcasting and reshaping. Used for validation and software rendering.
+*   **Capabilities:** Supports dynamic broadcasting and reshaping.
 
-### 2.5. Operations Libraries (`modules/ops_*`)
-These modules contain the actual mathematical kernels. They are decoupled from the VM to allow easy reuse or replacement.
-*   **`modules/ops_core`:** Basic arithmetic (`Add`, `Mul`), Trigonometry (`Sin`, `Atan2`), Logic (`And`, `Select`), Matrix ops (`MatMul`), and **State Relay** (`Copy`).
-*   **`modules/ops_array`:** Array manipulation kernels (`Range`, `CumSum`, `Compress`).
+### 2.8. Operations Libraries (`modules/ops_*`)
+These modules contain the actual mathematical kernels.
+*   **`modules/ops_core`:** Basic arithmetic, Trigonometry, Logic, Matrix ops, and State Relay.
+*   **`modules/ops_array`:** Array manipulation kernels.
 
 ---
 
@@ -105,7 +133,7 @@ A `Call` node references another `.json` file. During compilation, the parser:
 4.  **Flattening:** Merges the expanded node list into the main graph IR.
 
 ### 3.2. Relative Path Resolution
-The compiler supports relative paths within sub-graphs. If `A.json` calls `B.json` and `B.json` calls `C.json`, the path to `C` is resolved relative to the location of `B`, enabling portable component libraries.
+The compiler supports relative paths within sub-graphs. If `A.json` calls `B.json` and `B.json` calls `C.json`, the path to `C` is resolved relative to the location of `B`.
 
 ---
 
@@ -113,28 +141,28 @@ The compiler supports relative paths within sub-graphs. If `A.json` calls `B.jso
 
 MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader.
 
-### 3.1. I/O Protocol (Symbol Table)
-Instead of relying on fragile indices, the Host Application interacts with the VM using Named Registers:
+### 4.1. I/O Protocol (Symbol Table)
+The Host Application interacts with the VM using Named Registers:
 1.  **Host Initialization:** `time_reg = mf_vm_find_register(vm, "u_Time")`.
 2.  **Per-Frame:** Write value to `time_reg`.
-3.  **Execution:** `mf_vm_exec(vm)`.
+3.  **Execution:** `mf_vm_exec(vm)` (or `mf_scheduler_run`).
 4.  **Readback:** Read from `mf_vm_find_register(vm, "out_Color")`.
 
-### 3.2. State Management
-To support interactive UI (toggles, animations) without external logic, MathFlow implements internal state:
+### 4.2. State Management
+To support interactive UI (toggles, animations) without external logic:
 *   **`MF_NODE_MEMORY`:** Acts as a "delay" line. Outputs the value from the *previous* frame.
 *   **Cycle Breaking:** The compiler treats Memory nodes as inputs (Roots) for the current frame to resolve dependency cycles.
-*   **`MF_OP_COPY`:** At the end of the frame, the VM executes hidden copy instructions to update Memory nodes with new values for the next frame.
+*   **`MF_OP_COPY`:** At the end of the frame, the VM executes hidden copy instructions to update Memory nodes.
 
 ---
 
-## 4. Memory Model
+## 5. Memory Model
 
-### 4.1. Dual-Allocator
-1.  **Arena (Static):** Stores the Program (Code, Symbols) and Tensor Metadata.
-2.  **Heap (Dynamic):** Stores Tensor Data. Supports `realloc` for dynamic resizing (e.g., when window resolution changes).
+### 5.1. Dual-Allocator Strategy
+1.  **Arena (Static - Engine Owned):** Stores the Program Code, Constants, Symbol Table, and Tensor Metadata. Allocated once at startup.
+2.  **Heap (Dynamic - VM/Scheduler Owned):** Stores Tensor Data (Variables). Supports `realloc` for dynamic resizing (e.g., resolution change).
 
-### 4.2. Tensor Ownership
+### 5.2. Tensor Ownership
 *   **Constants:** Stored in the Program Binary (Arena).
 *   **Variables:** Allocated in the VM Heap.
-*   **View (Planned):** Support for referencing external memory (e.g., direct write to SDL Surface or GPU Buffer) to minimize copies.
+*   **View (Planned):** Support for referencing external memory (e.g., direct write to SDL Surface or GPU Buffer).
