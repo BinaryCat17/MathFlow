@@ -135,7 +135,25 @@
     - Update `mf_host` to wrap `mf_engine` internal instance.
     - Initialize `mf_scheduler` from `engine->context` for multi-threaded execution.
 
-## Phase 14: UI Widget System
+## Phase 14: Application Manifest & Runtime Adaptation
+**Objective:** Decouple the Host executable from the Application logic. The Graph should act as a self-contained "Cartridge" that defines its own execution requirements via a `config` block. This prevents the "messy host" problem where C-code logic depends on specific graph types.
+
+- [ ] **Step 1: Schema & Compiler Extension:**
+    - Update `mf_json_parser` to parse a generic `config` object.
+    - Supported keys: 
+        - `app_type`: `"shader"` (Parallel/Scheduler) or `"script"` (Sequential/VM).
+        - `window`: `{ "width": 800, "height": 600, "title": "My App" }`.
+- [ ] **Step 2: Binary Format Update (`mf_program`):**
+    - Update `mf_bin_header` or add a metadata section to store this configuration in `.bin` files.
+    - Ensure `mf_engine` exposes this configuration after loading.
+- [ ] **Step 3: Host Intelligence:**
+    - Refactor `mf_host` to read `engine->program->config` *before* initialization.
+    - **Dynamic Setup:** Create window based on config resolution.
+    - **Adaptive Execution:** 
+        - If `app_type == "shader"` -> Init ThreadPool & Scheduler.
+        - If `app_type == "script"` -> Init simple VM Loop (single thread).
+
+## Phase 15: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
 
 ---
