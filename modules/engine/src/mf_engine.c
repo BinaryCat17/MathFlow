@@ -30,19 +30,11 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     }
     mf_heap_init(&engine->heap, engine->heap_buffer, heap_size);
 
-    // 3. Backend
-    mf_backend_cpu_init(&engine->backend);
+    // 3. Backend (Initialized with thread count)
+    int num_threads = desc ? desc->num_threads : 0;
+    mf_backend_cpu_init(&engine->backend, num_threads);
 
-    // 4. Thread Pool
-    mf_thread_pool_desc pool_desc = {
-        .num_threads = desc ? desc->num_threads : 0,
-        .init_fn = mf_backend_cpu_worker_init,
-        .cleanup_fn = mf_backend_cpu_worker_cleanup,
-        .user_data = NULL
-    };
-    engine->pool = mf_thread_pool_create(&pool_desc);
-
-    // 5. VM (Initialize but don't reset until bind)
+    // 4. VM (Initialize but don't reset until bind)
     // Note: VM needs context, which is set in bind.
     // However, vm_init stores the pointers.
     mf_vm_init(&engine->vm, &engine->ctx, (mf_allocator*)&engine->heap);
@@ -54,10 +46,12 @@ void mf_engine_destroy(mf_engine* engine) {
     if (!engine) return;
 
     mf_vm_shutdown(&engine->vm);
-
-    if (engine->pool) {
-        mf_thread_pool_destroy(engine->pool);
+    
+    // Shutdown Backend
+    if (engine->backend.shutdown) {
+        engine->backend.shutdown(engine->backend.state);
     }
+
     if (engine->heap_buffer) free(engine->heap_buffer);
     if (engine->arena_buffer) free(engine->arena_buffer);
     
@@ -102,8 +96,8 @@ void mf_engine_dispatch(
         if (!engine->backend.dispatch) return;
         
         engine->backend.dispatch(
+            engine->backend.state,
             &engine->ctx,
-            engine->pool,
             &engine->vm,
             count_x, count_y
         );

@@ -5,7 +5,6 @@
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/isa/mf_dispatch_table.h>
-#include <mathflow/base/mf_thread_pool.h>
 
 // The concrete implementation of the Engine.
 // Combines Static Resources (Code) and Execution State (Data).
@@ -16,7 +15,6 @@ struct mf_engine {
     mf_program* program;
     mf_backend_dispatch_table backend;
     mf_context ctx;
-    mf_thread_pool* pool;
 
     // Execution State (Single Source of Truth)
     mf_vm vm;

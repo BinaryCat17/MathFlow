@@ -5,19 +5,11 @@
 
 /**
  * @brief Initializes the CPU backend.
- * Fills the dispatch table with CPU-specific kernel pointers and the dispatch function.
+ * Creates an internal thread pool and fills the dispatch table.
+ * 
+ * @param table Pointer to the table to fill.
+ * @param num_threads Number of threads (0 = auto).
  */
-void mf_backend_cpu_init(mf_backend_dispatch_table* table);
-
-/**
- * @brief Worker initialization for CPU threads using VMs.
- * Internal but exposed for mf_engine to setup its thread pool.
- */
-void* mf_backend_cpu_worker_init(int thread_idx, void* user_data);
-
-/**
- * @brief Worker cleanup for CPU threads.
- */
-void mf_backend_cpu_worker_cleanup(void* thread_local_data, void* user_data);
+void mf_backend_cpu_init(mf_backend_dispatch_table* table, int num_threads);
 
 #endif // MF_BACKEND_CPU_H

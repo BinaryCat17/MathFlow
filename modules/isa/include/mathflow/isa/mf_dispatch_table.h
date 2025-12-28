@@ -24,22 +24,30 @@ typedef void (*mf_hook_map)(void* impl, mf_tensor* tensor, mf_access_mode mode);
  * @brief Dispatch function for a backend.
  * Handles the execution of a program over a N-dimensional domain.
  * 
+ * @param backend_state Internal state of the backend (e.g. thread pool).
  * @param ctx Shared program context.
- * @param pool Optional thread pool (for CPU backend).
- * @param main_vm Pointer to the Main VM (Source of Truth) for reading uniforms/state.
+ * @param main_vm Pointer to the Main VM (Source of Truth).
  * @param count_x, count_y Dimensions of the dispatch.
  */
 typedef void (*mf_backend_dispatch_func)(
+    void* backend_state,
     const struct mf_context* ctx,
-    void* pool, 
     const struct mf_vm* main_vm,
     u32 count_x, u32 count_y
 );
 
+// Cleanup function for backend resources
+typedef void (*mf_backend_shutdown_func)(void* backend_state);
+
 typedef struct {
+    // Internal Backend State (Opaque to Engine)
+    void* state;
+
     mf_op_func op_table[MF_OP_LIMIT];
     mf_hook_map on_map;
+    
     mf_backend_dispatch_func dispatch;
+    mf_backend_shutdown_func shutdown;
 } mf_backend_dispatch_table;
 
 #endif // MF_DISPATCH_TABLE_H
