@@ -9,6 +9,8 @@
 
 // --- Internal Structures ---
 
+#define MF_CPU_TILE_SIZE 64
+
 typedef struct {
     mf_thread_pool* pool;
 } mf_backend_cpu_state;
@@ -25,8 +27,10 @@ typedef struct {
 typedef struct {
     const mf_context* ctx;
     const mf_vm* main_vm;
-    u32 count_x;
-    u32 count_y;
+    u32 width;  // Total Screen Width
+    u32 height; // Total Screen Height
+    u32 tiles_x;
+    u32 tiles_y;
 } mf_cpu_parallel_batch;
 
 // --- Worker Lifecycle (Internal) ---
@@ -56,7 +60,7 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 
 // --- Propagation Logic ---
 
-static void propagate_state(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 job_idx) {
+static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 tile_idx) {
     mf_vm* worker_vm = &state->vm;
     const mf_vm* main_vm = batch->main_vm;
     
@@ -68,62 +72,80 @@ static void propagate_state(mf_backend_cpu_worker_state* state, const mf_cpu_par
         mf_tensor* main_t = &main_vm->registers[i];
         mf_tensor* worker_t = &worker_vm->registers[i];
 
-        bool shapes_match = mf_tensor_same_shape(main_t, worker_t);
-
-        if (shapes_match) {
+        // 1. Uniforms / Constants (Scalar or Small Vector)
+        // If shapes match exactly (e.g. Time, MousePos), copy data.
+        if (mf_tensor_same_shape(main_t, worker_t)) {
             size_t size = mf_tensor_size_bytes(main_t);
             if (size > 0 && main_t->data) {
-                // Use temp_arena (as mf_allocator)
+                // Alloc in temp_arena
                 void* data = mf_arena_alloc((mf_allocator*)&state->temp_arena, size);
                 if (data) {
                     memcpy(data, main_t->data, size);
                     worker_t->data = data;
+                    // Don't set OWNS_DATA because temp_arena is auto-reset
+                    worker_t->flags |= MF_TENSOR_DYNAMIC; 
                 }
             }
             continue;
         }
-
-        // Output Slicing
-        bool try_slice_2d = (batch->count_y > 1 && batch->count_x > 1);
-        bool try_slice_1d_y = (batch->count_y > 1 && batch->count_x == 1);
-        bool try_slice_1d_x = (batch->count_y == 1 && batch->count_x > 1);
-
-        if (try_slice_2d && main_t->ndim == worker_t->ndim + 2) {
-            if (main_t->shape[0] == (int32_t)batch->count_y && main_t->shape[1] == (int32_t)batch->count_x) {
-                bool suffix_match = true;
-                for (int d = 0; d < worker_t->ndim; ++d) if (main_t->shape[d+2] != worker_t->shape[d]) suffix_match = false;
-                
-                if (suffix_match && main_t->data) {
-                    size_t elem_size = mf_tensor_size_bytes(worker_t); 
-                    worker_t->data = (u8*)main_t->data + (job_idx * elem_size);
-                }
-            }
-        }
-        else if ((try_slice_1d_y || try_slice_1d_x) && main_t->ndim == worker_t->ndim + 1) {
-            u32 dim_size = try_slice_1d_y ? batch->count_y : batch->count_x;
-            if (main_t->shape[0] == (int32_t)dim_size) {
-                bool suffix_match = true;
-                for (int d = 0; d < worker_t->ndim; ++d) if (main_t->shape[d+1] != worker_t->shape[d]) suffix_match = false;
-
-                if (suffix_match && main_t->data) {
-                    size_t elem_size = mf_tensor_size_bytes(worker_t); 
-                    worker_t->data = (u8*)main_t->data + (job_idx * elem_size);
-                }
-            }
-        }
+        
+        // 2. Tiled Inputs? 
+        // For now, we don't support reading from huge arrays in inputs (Gather).
+        // Phase 17 Step 3 will handle Coordinates via Intrinsics.
     }
 }
 
-static void unbind_external_memory(mf_backend_cpu_worker_state* state) {
-    u8* heap_start = (u8*)state->heap_mem;
-    u8* heap_end = heap_start + state->heap_size;
+static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 tile_x, u32 tile_y, u32 active_w, u32 active_h) {
+    mf_vm* worker_vm = &state->vm;
+    const mf_vm* main_vm = batch->main_vm;
+    
+    if (!main_vm) return;
 
-    for (size_t i = 0; i < state->vm.register_count; ++i) {
-        mf_tensor* t = &state->vm.registers[i];
-        if (t->data) {
-            u8* ptr = (u8*)t->data;
-            if (ptr < heap_start || ptr >= heap_end) {
-                t->data = NULL;
+    for (size_t i = 0; i < worker_vm->register_count; ++i) {
+        if (i >= main_vm->register_count) break;
+        
+        mf_tensor* worker_t = &worker_vm->registers[i];
+        mf_tensor* main_t = &main_vm->registers[i];
+
+        // We assume anything that has data in Worker and matches Main's type is a potential output.
+        // Filter by shape: Main is [H, W, ...], Worker is [Batch, ...] (or [ActiveH, ActiveW, ...])
+        // Due to "Virtual Batching", Worker tensor is likely flattened [Batch, Dims]
+        
+        if (!worker_t->data || !main_t->data) continue;
+        
+        // Check if Main looks like a screen buffer
+        if (main_t->ndim >= 2 && main_t->shape[0] == (int32_t)batch->height && main_t->shape[1] == (int32_t)batch->width) {
+            
+            // Check if Worker computed a tile-sized chunk
+            // Worker shape should be [Batch] or [Batch, Dims]
+            // Or if resolved as 1D: [Batch]
+            
+            size_t batch_size = active_w * active_h;
+            // First dim of worker should match batch_size? 
+            // Ops usually output [Batch, D] or [Batch]
+            
+            int elem_dims = main_t->ndim - 2; // Dims after H, W
+            size_t elem_size = mf_dtype_size(main_t->dtype);
+            for (int d=0; d<elem_dims; ++d) elem_size *= main_t->shape[2+d];
+            
+            // Validate worker size
+            if (worker_t->size < batch_size) continue; 
+            
+            // Copy Tile (Scatter Rows)
+            u8* src_ptr = (u8*)worker_t->data;
+            u8* dst_base = (u8*)main_t->data;
+            
+            size_t main_row_stride = batch->width * elem_size;
+            size_t tile_row_size = active_w * elem_size;
+            
+            for (u32 y = 0; y < active_h; ++y) {
+                u32 global_y = tile_y * MF_CPU_TILE_SIZE + y;
+                u32 global_x = tile_x * MF_CPU_TILE_SIZE; // Start of row
+                
+                u8* dst_row = dst_base + (global_y * main_row_stride) + (global_x * elem_size);
+                u8* src_row = src_ptr + (y * tile_row_size);
+                
+                memcpy(dst_row, src_row, tile_row_size);
             }
         }
     }
@@ -135,21 +157,42 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_backend_cpu_worker_state* state = (mf_backend_cpu_worker_state*)thread_local_data;
     mf_cpu_parallel_batch* batch = (mf_cpu_parallel_batch*)user_data;
     
-    // 1. Reset VM
+    // 1. Calculate Tile Bounds
+    u32 tile_y = job_idx / batch->tiles_x;
+    u32 tile_x = job_idx % batch->tiles_x;
+    
+    u32 start_x = tile_x * MF_CPU_TILE_SIZE;
+    u32 start_y = tile_y * MF_CPU_TILE_SIZE;
+    
+    u32 active_w = MF_CPU_TILE_SIZE;
+    if (start_x + active_w > batch->width) active_w = batch->width - start_x;
+    
+    u32 active_h = MF_CPU_TILE_SIZE;
+    if (start_y + active_h > batch->height) active_h = batch->height - start_y;
+    
+    if (active_w == 0 || active_h == 0) return;
+    
+    u32 batch_size = active_w * active_h;
+
+    // 2. Reset VM
     mf_arena_reset(&state->reg_arena);
     mf_arena_reset(&state->temp_arena); // Reset temp memory for this job
     
     mf_vm_init(&state->vm, batch->ctx, (mf_allocator*)&state->temp_arena);
     mf_vm_reset(&state->vm, &state->reg_arena);
     
-    // 2. Propagate
-    propagate_state(state, batch, job_idx);
+    // 3. Setup Virtual Batching
+    state->vm.batch_size = batch_size;
     
-    // 3. Exec
+    // 4. Propagate Inputs
+    prepare_inputs(state, batch, job_idx);
+    
+    // 5. Exec
     mf_vm_exec(&state->vm);
     
-    // 4. Cleanup
-    unbind_external_memory(state);
+    // 6. Commit Outputs
+    commit_outputs(state, batch, tile_x, tile_y, active_w, active_h);
+    
     mf_vm_shutdown(&state->vm);
 }
 
@@ -162,14 +205,20 @@ static void mf_backend_cpu_dispatch(
     u32 count_x, u32 count_y
 ) {
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
-    u32 total_jobs = count_x * count_y;
+    
+    u32 tiles_x = (count_x + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
+    u32 tiles_y = (count_y + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
+    u32 total_jobs = tiles_x * tiles_y;
+    
     if (total_jobs == 0) return;
 
     mf_cpu_parallel_batch batch = {
         .ctx = ctx,
         .main_vm = main_vm,
-        .count_x = count_x,
-        .count_y = count_y
+        .width = count_x,
+        .height = count_y,
+        .tiles_x = tiles_x,
+        .tiles_y = tiles_y
     };
 
     if (state && state->pool && total_jobs > 1) {
