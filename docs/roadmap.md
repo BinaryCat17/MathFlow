@@ -40,12 +40,14 @@
 - [x] **Step 4: Cleanup:** Remove `target_link_libraries(mf_ops ... mf_vm)` from CMake.
 
 ## Phase 16.6: Runtime Purity (Detach Compiler)
-**Objective:** The `mf_engine` should be a pure Runtime execution environment, capable of running on constrained devices without the overhead of a JSON parser or Compiler. Compilation logic must move up to the Host layer.
+**Objective:** The `mf_engine` should be a pure Runtime execution environment. Compilation logic moves to the Host layer via a new `mf_asset_loader`.
 
-- [ ] **Step 1: Refactor Loading:** Move `mf_engine_load_graph_from_json` logic out of `mf_engine` and into `mf_host` (or a helper utility).
-- [ ] **Step 2: Binary Only:** Ensure `mf_engine` API only accepts `mf_program*` (binary data).
-- [ ] **Step 3: Headless Runtime:** Implement `mf_host_run_headless` (or similar) in `host_core` to encapsulate the execution loop for CLI apps, matching the symmetry of `mf_host_run`.
-- [ ] **Step 4: Build Cleanup:** Remove `target_link_libraries(mf_engine ... mf_compiler)` from CMake.
+- [x] **Step 1: Asset Loader:** Implement `mf_asset_loader` in `modules/host`. It handles file detection:
+    - If `.json`: Invokes `mf_compiler`.
+    - If `.bin`: Loads directly.
+- [x] **Step 2: Refactor Engine:** Remove `mf_engine_load_graph_from_json` from `mf_engine`. The Engine now only accepts `mf_program*`.
+- [x] **Step 3: Headless Runtime:** Implement `mf_host_run_headless` in `host_core` for CLI tools.
+- [x] **Step 4: Build Cleanup:** Remove `target_link_libraries(mf_engine ... mf_compiler)` from CMake.
 
 ## Phase 17: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.

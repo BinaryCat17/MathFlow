@@ -1,4 +1,5 @@
 #include <mathflow/host/mf_host_sdl.h>
+#include <mathflow/host/mf_asset_loader.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/base/mf_platform.h>
@@ -249,7 +250,7 @@ int mf_host_run(const mf_host_desc* desc) {
     mf_engine engine;
     mf_engine_init(&engine, &engine_desc);
 
-    if (!mf_engine_load_graph(&engine, desc->graph_path)) {
+    if (!mf_asset_loader_load(&engine, desc->graph_path)) {
         printf("[Host] Failed to load graph: %s\n", desc->graph_path);
         mf_engine_shutdown(&engine);
         SDL_DestroyWindow(window); SDL_Quit();

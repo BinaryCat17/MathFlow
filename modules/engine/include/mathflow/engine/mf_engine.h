@@ -45,15 +45,13 @@ typedef struct mf_engine {
 } mf_engine;
 
 // Initialize the engine. Allocates the Arena.
-// Does NOT load a graph (use mf_engine_load_graph).
+// Does NOT load a graph.
 void mf_engine_init(mf_engine* engine, const mf_engine_desc* desc);
 
-// Loads a graph from a file.
-// Supports:
-// - .json: Compiles source graph (requires mf_compiler)
-// - .bin:  Loads binary program
-// Returns true on success.
-bool mf_engine_load_graph(mf_engine* engine, const char* path);
+// Binds a loaded program to the engine.
+// Initializes the Execution Context.
+// @param prog Pointer to program data (must be valid for engine lifetime).
+void mf_engine_bind_program(mf_engine* engine, mf_program* prog);
 
 // Shuts down the engine and frees the Arena.
 void mf_engine_shutdown(mf_engine* engine);

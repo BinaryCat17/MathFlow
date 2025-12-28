@@ -11,6 +11,5 @@ target_include_directories(mf_engine
 target_link_libraries(mf_engine 
     PUBLIC 
         MathFlow::vm 
-        MathFlow::compiler 
         MathFlow::backend_cpu
 )
