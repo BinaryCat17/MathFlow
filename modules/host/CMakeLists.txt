@@ -14,17 +14,17 @@ target_link_libraries(mf_host_core PUBLIC cjson)
 
 # --- Host SDL (Window & Input) ---
 if(TARGET SDL2::SDL2)
-    add_library(mf_host STATIC
+    add_library(mf_host_sdl STATIC
         src/mf_host_sdl.c
     )
-    add_library(MathFlow::host_sdl ALIAS mf_host)
+    add_library(MathFlow::host_sdl ALIAS mf_host_sdl)
 
-    target_include_directories(mf_host 
+    target_include_directories(mf_host_sdl 
         PUBLIC include
         PRIVATE src
     )
 
-    target_link_libraries(mf_host 
+    target_link_libraries(mf_host_sdl 
         PUBLIC 
             MathFlow::engine
             MathFlow::host_core
@@ -32,7 +32,7 @@ if(TARGET SDL2::SDL2)
             SDL2::SDL2main
             cjson
     )
-    message(STATUS "Building mf_host (SDL2 found)")
+    message(STATUS "Building mf_host_sdl (SDL2 found)")
 else()
-    message(WARNING "SDL2 not found. mf_host (SDL backend) will not be built. mf_host_core is available.")
+    message(WARNING "SDL2 not found. mf_host_sdl (SDL backend) will not be built. mf_host_core is available.")
 endif()
