@@ -8,10 +8,11 @@
 struct mf_vm;
 struct mf_context;
 
-// --- Dispatch Callbacks ---
-// Used by the Host to inject data (uniforms) or read back results per-invocation.
-typedef void (*mf_vm_job_setup_func)(struct mf_vm* vm, u32 job_idx, void* user_data);
-typedef void (*mf_vm_job_finish_func)(struct mf_vm* vm, u32 job_idx, void* user_data);
+// The Dispatch Table
+// Connects the VM Opcodes to the Kernel Implementations.
+
+// Forward declaration
+struct mf_vm;
 
 // --- Backend Interface ---
 
@@ -25,22 +26,16 @@ typedef void (*mf_hook_map)(void* impl, mf_tensor* tensor, mf_access_mode mode);
  * 
  * @param ctx Shared program context.
  * @param pool Optional thread pool (for CPU backend).
+ * @param main_vm Pointer to the Main VM (Source of Truth) for reading uniforms/state.
  * @param count_x, count_y Dimensions of the dispatch.
- * @param setup_cb Callback before each invocation.
- * @param finish_cb Callback after each invocation.
- * @param user_data Opaque pointer for callbacks.
  */
 typedef void (*mf_backend_dispatch_func)(
     const struct mf_context* ctx,
     void* pool, 
-    u32 count_x, u32 count_y,
-    mf_vm_job_setup_func setup_cb,
-    mf_vm_job_finish_func finish_cb,
-    void* user_data
+    const struct mf_vm* main_vm,
+    u32 count_x, u32 count_y
 );
 
-// The Dispatch Table
-// Connects the VM Opcodes to the Kernel Implementations.
 typedef struct {
     mf_op_func op_table[MF_OP_LIMIT];
     mf_hook_map on_map;

@@ -48,34 +48,17 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog);
 
 // --- Execution ---
 
-// Opaque handle for a job execution context (wraps the underlying worker VM/Kernel)
-typedef void* mf_job_handle;
-
-typedef void (*mf_engine_job_setup_func)(mf_job_handle job, u32 job_idx, void* user_data);
-typedef void (*mf_engine_job_finish_func)(mf_job_handle job, u32 job_idx, void* user_data);
-
 /**
  * @brief Dispatches the current program over a 2D domain.
  * Automatically uses the active backend and thread pool.
  * 
  * If count_x=1 and count_y=1, it runs as a single task (Script Mode).
- * Otherwise, it runs in parallel (Shader Mode).
+ * Otherwise, it runs in parallel (Shader Mode), propagating state from the Main VM.
  */
 void mf_engine_dispatch(
     mf_engine* engine, 
-    u32 count_x, u32 count_y,
-    mf_engine_job_setup_func setup_cb,
-    mf_engine_job_finish_func finish_cb,
-    void* user_data
+    u32 count_x, u32 count_y
 );
-
-// --- Job Utils (Thread-Safe) ---
-
-// Maps a tensor within a job context.
-mf_tensor* mf_job_map_tensor(mf_job_handle job, u16 reg_idx, mf_access_mode mode);
-
-// Resizes a tensor within a job context.
-bool mf_job_resize_tensor(mf_job_handle job, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
 
 // --- State Access (Single Source of Truth) ---
 

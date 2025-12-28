@@ -68,7 +68,7 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     printf("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
         // Dispatch 1x1 = Script Mode (Stateful)
-        mf_engine_dispatch(engine, 1, 1, NULL, NULL, NULL);
+        mf_engine_dispatch(engine, 1, 1);
         
         mf_engine_error err = mf_engine_get_error(engine);
         if (err != MF_ENGINE_ERR_NONE) {

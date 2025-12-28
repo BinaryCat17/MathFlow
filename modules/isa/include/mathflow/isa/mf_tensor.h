@@ -77,4 +77,8 @@ static inline bool mf_tensor_same_shape(const mf_tensor* a, const mf_tensor* b) 
     return true;
 }
 
+static inline size_t mf_tensor_size_bytes(const mf_tensor* t) {
+    return t->size * mf_dtype_size(t->dtype);
+}
+
 #endif // MF_TENSOR_H
