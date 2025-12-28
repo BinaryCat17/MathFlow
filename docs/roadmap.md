@@ -60,7 +60,7 @@
     
     - [ ] **Step 1: Dependency Analysis Pass:** Implement a backward-pass analyzer in the Compiler/Loader. It tags every instruction with a bitmask indicating which Outputs it contributes to.
     - [ ] **Step 2: Selective Execution (Masked VM):** Update `mf_vm_exec` to accept an `execution_mask`. The VM loop skips instructions that don't match the current mask.
-    - [ ] **Step 3: Multi-Domain Dispatch API:** Refactor Engine API to allow requesting specific outputs: `mf_engine_eval(output_name, domain_x, domain_y)`.
+    - [ ] **Step 3: Multi-Domain Dispatch API:** Refactor Engine API to allow requesting specific outputs on specific domains: `mf_engine_eval(output_name, const mf_domain_desc* domain)`. This supports 1D (Audio), 2D (Image), or N-D computation seamlessly.
     - [ ] **Step 4: Sub-Graph Sharing:** Ensure that common logic (e.g., a shared Noise function used by both Audio and Video) is correctly tagged and reusable, avoiding redundant definitions in the IR.
     
     ---
