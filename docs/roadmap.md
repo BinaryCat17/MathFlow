@@ -53,12 +53,19 @@
 - [ ] **Step 3: Unified Dispatch:** Remove the hardcoded `if (1x1)` check in `mf_engine_dispatch`. Move the execution strategy logic into the Backend. The Backend should intelligently handle single-threaded stateful execution vs multi-threaded stateless execution, unifying the architecture.
 - [ ] **Step 4: Auto-Parallelize:** Update Engine logic to select strategy:
     - **Logic:** If `workload_size > threshold` AND (`Graph is Pure` OR `Double Buffering Active`) -> **Parallel**.
-    - **Goal:** The Host simply requests "Run on this domain", and the Engine utilizes available cores efficiently without manual flags.
-
-
----
-
-## Completed Phases (Archive)
+        - **Goal:** The Host simply requests "Run on this domain", and the Engine utilizes available cores efficiently without manual flags.
+    
+    ## Phase 19: Smart VM Optimization (Dependency Masking)
+    **Objective:** Enable a single graph to handle heterogeneous outputs (Image, Audio, Physics) with different execution domains (2D vs 1D) without introducing `OP_KERNEL`. We use **Dependency Masking** to selectively execute only the necessary parts of the bytecode for a specific output.
+    
+    - [ ] **Step 1: Dependency Analysis Pass:** Implement a backward-pass analyzer in the Compiler/Loader. It tags every instruction with a bitmask indicating which Outputs it contributes to.
+    - [ ] **Step 2: Selective Execution (Masked VM):** Update `mf_vm_exec` to accept an `execution_mask`. The VM loop skips instructions that don't match the current mask.
+    - [ ] **Step 3: Multi-Domain Dispatch API:** Refactor Engine API to allow requesting specific outputs: `mf_engine_eval(output_name, domain_x, domain_y)`.
+    - [ ] **Step 4: Sub-Graph Sharing:** Ensure that common logic (e.g., a shared Noise function used by both Audio and Video) is correctly tagged and reusable, avoiding redundant definitions in the IR.
+    
+    ---
+    
+    ## Completed Phases (Archive)
 
 ### Milestone 4: Architecture Cleanup (Phase 16)
 - **Modularization:** Decomposed monolithic build into `base`, `isa`, `vm`, `compiler`, `engine`, `host`, `backend`.
