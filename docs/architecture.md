@@ -144,13 +144,7 @@ graph TD
     Backend --> VM
     Backend --> Ops
     
-    Compiler --> ISA
-    VM --> ISA
-    Ops --> ISA
-    Backend --> ISA
-    Engine --> ISA
-    
-    %% Base is implicit dependency for ALL modules
+    %% Layer 5 (ISA & Base) is the implicit foundation for all modules above.
 ```
 
 ### 3.1. Engine (`modules/engine`)
