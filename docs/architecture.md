@@ -147,6 +147,8 @@ graph TD
     Compiler --> ISA
     VM --> ISA
     Ops --> ISA
+    Backend --> ISA
+    Engine --> ISA
     
     %% Base is implicit dependency for ALL modules
 ```
