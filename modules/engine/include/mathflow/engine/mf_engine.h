@@ -50,4 +50,21 @@ bool mf_engine_load_graph(mf_engine* engine, const char* path);
 // Shuts down the engine and frees the Arena.
 void mf_engine_shutdown(mf_engine* engine);
 
+// --- Instance Management (Optional Helper) ---
+
+// Represents a running instance of a program (VM + Memory)
+typedef struct mf_instance {
+    mf_vm vm;
+    mf_heap heap;
+    void* heap_buffer;
+} mf_instance;
+
+// Creates a new execution instance with its own Heap.
+// This simplifies VM creation, handling memory allocation internally.
+// @param heap_size Size of dynamic memory (Variables). Default: 64MB if 0.
+bool mf_engine_create_instance(mf_engine* engine, mf_instance* out_inst, size_t heap_size);
+
+// Destroys the instance and frees its memory.
+void mf_instance_destroy(mf_instance* inst);
+
 #endif // MF_ENGINE_H

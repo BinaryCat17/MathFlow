@@ -1,9 +1,9 @@
 #ifndef MF_REFS_H
 #define MF_REFS_H
 
-#include <mathflow/isa/mf_base.h>
+#include <mathflow/base/mf_types.h>
 
-// --- Reference Wrappers ---
+// Represents a reference to a tensor value (Scalar or Slice)
 // These structures abstract pointers to data.
 // In the future, they could hold handles, offsets, or debug info.
 

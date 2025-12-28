@@ -1,5 +1,5 @@
 #include <mathflow/scheduler/mf_scheduler.h>
-#include <mathflow/platform/mf_platform.h>
+#include <mathflow/base/mf_platform.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>

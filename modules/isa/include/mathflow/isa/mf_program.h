@@ -1,7 +1,7 @@
 #ifndef MF_PROGRAM_H
 #define MF_PROGRAM_H
 
-#include "mf_base.h"
+#include <mathflow/base/mf_types.h>
 #include "mf_instruction.h"
 #include "mf_tensor.h"
 

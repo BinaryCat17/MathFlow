@@ -1,6 +1,7 @@
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
-#include <mathflow/ops_core/mf_ops_core.h>
-#include <mathflow/ops_array/mf_ops_array.h>
+#include <mathflow/ops/mf_ops_core.h>
+#include <mathflow/ops/mf_ops_array.h>
+#include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
 
 void mf_backend_cpu_init(mf_backend_dispatch_table* table) {

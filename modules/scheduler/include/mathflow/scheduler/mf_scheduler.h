@@ -2,7 +2,7 @@
 #define MF_SCHEDULER_H
 
 #include <mathflow/vm/mf_vm.h>
-#include <mathflow/platform/mf_platform.h>
+#include <mathflow/base/mf_platform.h>
 
 typedef struct mf_scheduler mf_scheduler;
 

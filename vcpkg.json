@@ -1,12 +1,6 @@
 {
   "dependencies": [
     "cjson",
-    {
-      "name": "sdl2",
-      "default-features": false,
-      "features": [
-        "x11"
-      ]
-    }
+    "sdl2"
   ]
 }

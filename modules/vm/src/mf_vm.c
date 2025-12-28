@@ -1,5 +1,5 @@
 #include <mathflow/vm/mf_vm.h>
-#include <mathflow/vm/mf_memory.h>
+#include <mathflow/base/mf_memory.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>

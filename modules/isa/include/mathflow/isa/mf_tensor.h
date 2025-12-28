@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include "mf_base.h"
+#include <mathflow/base/mf_types.h>
 
 // Max dimensions supported (Rank)
 #define MF_MAX_DIMS 8

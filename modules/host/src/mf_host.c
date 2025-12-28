@@ -2,7 +2,7 @@
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/scheduler/mf_scheduler.h>
-#include <mathflow/platform/mf_platform.h>
+#include <mathflow/base/mf_platform.h>
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -219,7 +219,8 @@ int mf_host_run(const mf_host_desc* desc) {
         return 1;
     }
 
-    u32 flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    u32 flags = SDL_WINDOW_SHOWN;
+    if (desc->resizable) flags |= SDL_WINDOW_RESIZABLE;
     if (desc->fullscreen) flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 
     SDL_Window* window = SDL_CreateWindow(
@@ -234,7 +235,10 @@ int mf_host_run(const mf_host_desc* desc) {
         return 1;
     }
 
-    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    u32 render_flags = SDL_RENDERER_ACCELERATED;
+    if (desc->vsync) render_flags |= SDL_RENDERER_PRESENTVSYNC;
+
+    SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, render_flags);
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, desc->width, desc->height);
 
     // --- MathFlow Init ---
@@ -252,12 +256,31 @@ int mf_host_run(const mf_host_desc* desc) {
         return 1;
     }
     
-    // --- Scheduler ---
-    int num_threads = desc->num_threads;
-    if (num_threads <= 0) num_threads = mf_cpu_count();
+    // --- Strategy Setup ---
+    mf_scheduler* scheduler = NULL;
     
-    mf_scheduler* scheduler = mf_scheduler_create(num_threads);
-    printf("[Host] Started with %d threads.\n", num_threads);
+    // Script Mode State
+    mf_vm vm_script;
+    mf_heap heap_script;
+    void* heap_mem = NULL;
+    u8 arena_mem[4096];
+    mf_arena arena_script;
+
+    if (desc->runtime_type == MF_HOST_RUNTIME_SHADER) {
+        int num_threads = desc->num_threads;
+        if (num_threads <= 0) num_threads = mf_cpu_count();
+        scheduler = mf_scheduler_create(num_threads);
+        printf("[Host] Mode: Shader (Parallel), Threads: %d\n", num_threads);
+    } else {
+        printf("[Host] Mode: Script (Single Thread)\n");
+        size_t heap_size = 16 * 1024 * 1024; // 16 MB Heap
+        heap_mem = malloc(heap_size);
+        mf_heap_init(&heap_script, heap_mem, heap_size);
+        mf_arena_init(&arena_script, arena_mem, sizeof(arena_mem));
+        
+        // Init VM once (State persists in Heap)
+        mf_vm_init(&vm_script, &engine.ctx, (mf_allocator*)&heap_script);
+    }
 
     // --- Prepare Job Context (Uniforms) ---
     mf_host_job_ctx job_ctx = {0};
@@ -292,12 +315,13 @@ int mf_host_run(const mf_host_desc* desc) {
     u32 start_time = SDL_GetTicks();
     
     // Tiling
-    int tile_count = num_threads > 4 ? num_threads : 4; 
+    int tile_count = (scheduler) ? (mf_scheduler_get_thread_count(scheduler) > 4 ? mf_scheduler_get_thread_count(scheduler) : 4) : 1; 
     job_ctx.tile_count = tile_count;
-    
-    // Handle Resizing?
-    // For now, if window resizes, we might need to realloc framebuffer/texture.
-    // Simplifying: fixed render resolution, scaled to window.
+
+    // SCRIPT MODE: Init State Once
+    if (!scheduler) {
+        mf_vm_reset(&vm_script, &arena_script);
+    }
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -318,8 +342,37 @@ int mf_host_run(const mf_host_desc* desc) {
         
         job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
         
-        // Execute
-        mf_scheduler_run(scheduler, &engine.ctx, tile_count, host_job_setup, host_job_finish, &job_ctx);
+        if (scheduler) {
+            // SHADER MODE: Parallel
+            mf_scheduler_run(scheduler, &engine.ctx, tile_count, host_job_setup, host_job_finish, &job_ctx);
+        } else {
+            // SCRIPT MODE: Single Threaded, Stateful
+            // Do NOT reset VM here (preserves heap and registers)
+            
+            // Setup Inputs (reuse logic, treat as 1 big tile)
+            job_ctx.tile_height = job_ctx.height; 
+            host_job_setup(&vm_script, 0, &job_ctx);
+            
+            // Execute (includes State Update via COPY)
+            mf_vm_exec(&vm_script);
+            
+            // Read Back
+            host_job_finish(&vm_script, 0, &job_ctx);
+
+            // Print Script Output (Once per ~60 frames)
+            static int frame_counter = 0;
+            if (++frame_counter % 60 == 0) {
+                 mf_tensor* out = mf_vm_map_tensor(&vm_script, job_ctx.r_out, MF_ACCESS_READ);
+                 if (out && out->data) {
+                     printf("[Script Output] ");
+                     int count = out->size > 5 ? 5 : out->size;
+                     f32* d = (f32*)out->data;
+                     for (int i=0; i<count; ++i) printf("%.2f ", d[i]);
+                     if (out->size > 5) printf("...");
+                     printf("\n");
+                 }
+            }
+        }
         
         // Render
         SDL_UpdateTexture(texture, NULL, frame_buffer, job_ctx.width * 4);
@@ -329,7 +382,8 @@ int mf_host_run(const mf_host_desc* desc) {
     
     // --- Cleanup ---
     free(frame_buffer);
-    mf_scheduler_destroy(scheduler);
+    if (scheduler) mf_scheduler_destroy(scheduler);
+    if (heap_mem) free(heap_mem);
     
     mf_engine_shutdown(&engine);
 

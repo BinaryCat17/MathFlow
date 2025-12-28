@@ -70,8 +70,9 @@ flowchart TD
 ### 2.0. Engine (`modules/engine`)
 *   **Role:** The "Owner". Unified Resource Manager.
 *   **Responsibility:**
-    *   Manages the **Static Lifecycle**: Loads graphs/binaries, allocates the Arena (Program memory), and sets up the Execution Context.
-    *   Acts as the central API for initializing the library, independent of the execution strategy (Single-threaded vs Multi-threaded).
+    *   Manages the **Static Lifecycle**: Loads graphs/binaries, allocates the Arena (Program memory).
+    *   **Instance Factory:** Provides API (`mf_engine_create_instance`) to create execution instances (`mf_instance`) which bundle a VM with its own Heap memory.
+    *   Acts as the central API for initializing the library, independent of the execution strategy.
 
 ### 2.1. ISA (`modules/isa`)
 *   **Role:** The "Contract". Defines the Instruction Set Architecture.
@@ -108,7 +109,10 @@ flowchart TD
 
 ### 2.6. Host (`modules/host`)
 *   **Role:** Application Framework.
-*   **Responsibility:** Provides a high-level wrapper around SDL2 and `mf_engine`. Handles window creation, input polling (Time, Mouse), and the render loop.
+*   **Responsibility:** Provides a **Manifest-Driven** runtime.
+    *   Parses `.mfapp` configuration files.
+    *   Initializes `mf_engine` and the appropriate execution strategy (VM vs Scheduler).
+    *   Handles window creation (SDL2), input polling, and the main loop.
 
 ### 2.7. Backend: CPU (`modules/backend_cpu`)
 *   **Role:** Reference Implementation (Software Renderer).
@@ -140,9 +144,9 @@ The compiler supports relative paths within sub-graphs. If `A.json` calls `B.jso
 
 ---
 
-## 4. The "Pixel Engine" Concept
+## 4. The Standard Protocol (Shader Mode)
 
-MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader.
+MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader. This section describes the standard interface used in **Shader Mode**.
 
 ### 4.1. I/O Protocol (Symbol Table)
 The Host Application interacts with the VM using Named Registers:
@@ -169,3 +173,42 @@ To support interactive UI (toggles, animations) without external logic:
 *   **Constants:** Stored in the Program Binary (Arena).
 *   **Variables:** Allocated in the VM Heap.
 *   **View (Planned):** Support for referencing external memory (e.g., direct write to SDL Surface or GPU Buffer).
+
+---
+
+## 6. The Application Layer (Phase 14)
+
+MathFlow separates **Logic Definition** (Graphs) from **Application Configuration** (Manifests). The Host Application (`mf_host`) acts as a generic runtime that is configured by data.
+
+### 6.1. Manifest (`.mfapp`)
+A JSON file that defines *how* to run a graph.
+```json
+{
+    "runtime": {
+        "type": "shader",           // Execution Strategy
+        "entry": "../graphs/ui.json" // Relative path to logic
+    },
+    "window": {
+        "title": "My UI",
+        "width": 800,
+        "height": 600,
+        "vsync": true
+    }
+}
+```
+
+### 6.2. Execution Modes
+The Manifest dictates the runtime strategy:
+
+1.  **Shader Mode (`MF_HOST_RUNTIME_SHADER`):**
+    *   **Goal:** Visuals, UI, Image Processing.
+    *   **Architecture:** Multi-threaded "Job System".
+    *   **Behavior:** The screen is split into tiles. The Graph is executed in parallel for every pixel/tile.
+    *   **State:** Generally stateless per frame (like a Fragment Shader), though `Memory` nodes allow inter-frame persistence (simulated via double-buffering).
+    *   **Host Logic:** Renders to a texture at 60 FPS.
+
+2.  **Script Mode (`MF_HOST_RUNTIME_SCRIPT`):**
+    *   **Goal:** Game Logic, Data Processing, CLI Tools.
+    *   **Architecture:** Single-threaded, Stateful.
+    *   **Behavior:** The Graph runs once per "tick". State persists naturally in the VM Heap.
+    *   **Host Logic:** Runs the loop and prints debug output (`out_Color`) to the console.

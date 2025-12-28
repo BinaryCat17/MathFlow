@@ -16,26 +16,26 @@ target_include_directories(mf_isa INTERFACE
     modules/isa/include
 )
 
-# 2. VM (Runtime)
+# 2. Base (Memory, Platform)
+add_library(mf_base STATIC
+    modules/base/src/mf_memory.c
+    modules/base/src/mf_platform.c
+)
+target_include_directories(mf_base PUBLIC
+    modules/base/include
+)
+if(UNIX)
+    target_link_libraries(mf_base PUBLIC pthread)
+endif()
+
+# 2a. VM (Runtime)
 add_library(mf_vm STATIC
-    modules/vm/src/mf_memory.c
     modules/vm/src/mf_vm.c
 )
 target_include_directories(mf_vm PUBLIC
     modules/vm/include
 )
-target_link_libraries(mf_vm PUBLIC mf_isa)
-
-# 2b. Platform (Threading)
-add_library(mf_platform STATIC
-    modules/platform/src/mf_platform.c
-)
-target_include_directories(mf_platform PUBLIC
-    modules/platform/include
-)
-if(UNIX)
-    target_link_libraries(mf_platform PUBLIC pthread)
-endif()
+target_link_libraries(mf_vm PUBLIC mf_isa mf_base)
 
 # 2c. Scheduler
 add_library(mf_scheduler STATIC
@@ -44,7 +44,7 @@ add_library(mf_scheduler STATIC
 target_include_directories(mf_scheduler PUBLIC
     modules/scheduler/include
 )
-target_link_libraries(mf_scheduler PUBLIC mf_vm mf_platform)
+target_link_libraries(mf_scheduler PUBLIC mf_vm mf_base)
 
 # 3. Compiler (Host Tool)
 add_library(mf_compiler STATIC
@@ -58,23 +58,15 @@ target_include_directories(mf_compiler PUBLIC
 )
 target_link_libraries(mf_compiler PUBLIC mf_vm cjson) # Needs VM for column types, cjson for parsing
 
-# 4. Ops: Core
-add_library(mf_ops_core STATIC
-    modules/ops_core/src/mf_ops_core.c
+# 4. Ops (Math Kernels)
+add_library(mf_ops STATIC
+    modules/ops/src/mf_ops_core.c
+    modules/ops/src/mf_ops_array.c
 )
-target_include_directories(mf_ops_core PUBLIC
-    modules/ops_core/include
+target_include_directories(mf_ops PUBLIC
+    modules/ops/include
 )
-target_link_libraries(mf_ops_core PUBLIC mf_vm m)
-
-# 5. Ops: Array
-add_library(mf_ops_array STATIC
-    modules/ops_array/src/mf_ops_array.c
-)
-target_include_directories(mf_ops_array PUBLIC
-    modules/ops_array/include
-)
-target_link_libraries(mf_ops_array PUBLIC mf_vm m)
+target_link_libraries(mf_ops PUBLIC mf_vm m)
 
 # 6. Backend: CPU
 add_library(mf_backend_cpu STATIC
@@ -83,7 +75,7 @@ add_library(mf_backend_cpu STATIC
 target_include_directories(mf_backend_cpu PUBLIC
     modules/backend_cpu/include
 )
-target_link_libraries(mf_backend_cpu PUBLIC mf_vm mf_ops_core mf_ops_array)
+target_link_libraries(mf_backend_cpu PUBLIC mf_vm mf_ops)
 
 # 7. Engine (Unified Runtime & Loader)
 add_library(mf_engine STATIC
@@ -104,6 +96,7 @@ find_package(SDL2 CONFIG QUIET)
 if(TARGET SDL2::SDL2)
     add_library(mf_host STATIC
         modules/host/src/mf_host.c
+        modules/host/src/mf_app_loader.c
     )
     target_include_directories(mf_host PUBLIC
         modules/host/include
@@ -113,6 +106,7 @@ if(TARGET SDL2::SDL2)
         mf_scheduler 
         SDL2::SDL2 
         SDL2::SDL2main
+        cjson
     )
     message(STATUS "Building mf_host (SDL2 found)")
 else()
@@ -122,9 +116,14 @@ endif()
 # --- Apps ---
 
 # CLI Runner
-add_executable(mf-runner apps/mf-runner/src/main.c)
+add_executable(mf-runner 
+    apps/mf-runner/src/main.c
+    modules/host/src/mf_app_loader.c
+)
+target_include_directories(mf-runner PRIVATE modules/host/include)
 target_link_libraries(mf-runner PRIVATE 
     mf_engine
+    cjson
 )
 
 # Window Visualizer

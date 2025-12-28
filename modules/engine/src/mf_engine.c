@@ -69,3 +69,41 @@ void mf_engine_shutdown(mf_engine* engine) {
     }
     memset(engine, 0, sizeof(mf_engine));
 }
+
+bool mf_engine_create_instance(mf_engine* engine, mf_instance* out_inst, size_t heap_size) {
+    if (!engine || !engine->program || !out_inst) return false;
+    
+    if (heap_size == 0) heap_size = MF_MB(64);
+    
+    out_inst->heap_buffer = malloc(heap_size);
+    if (!out_inst->heap_buffer) return false;
+    
+    mf_heap_init(&out_inst->heap, out_inst->heap_buffer, heap_size);
+    
+    mf_vm_init(&out_inst->vm, &engine->ctx, (mf_allocator*)&out_inst->heap);
+    
+    // Initial Reset to allocate registers
+    // Note: We use the engine's arena for register metadata (it's small and static per instance usually)
+    // Actually, mf_vm_reset allocates mf_tensor structs. If we do this multiple times, we might fill the arena?
+    // The current mf_vm_reset design pushes to arena.
+    // Ideally, registers should be in the heap or a separate small arena per instance if we want many instances.
+    // For now, let's assume we use the main arena. If we run out, we need to increase arena size.
+    // Optimization: Use a temp arena or heap for registers.
+    // Let's use heap for registers? No, mf_vm_reset takes arena.
+    // Workaround: We pass the engine arena. It must be big enough.
+    mf_vm_reset(&out_inst->vm, &engine->arena);
+    
+    return true;
+}
+
+void mf_instance_destroy(mf_instance* inst) {
+    if (!inst) return;
+    
+    mf_vm_shutdown(&inst->vm);
+    
+    if (inst->heap_buffer) {
+        free(inst->heap_buffer);
+        inst->heap_buffer = NULL;
+    }
+    memset(inst, 0, sizeof(mf_instance));
+}

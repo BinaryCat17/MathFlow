@@ -4,7 +4,7 @@
 #include <mathflow/isa/mf_instruction.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/isa/mf_tensor.h>
-#include <mathflow/vm/mf_memory.h>
+#include <mathflow/base/mf_memory.h>
 
 // Forward decl
 typedef struct mf_vm mf_vm;

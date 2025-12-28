@@ -1,7 +1,7 @@
 #ifndef MF_INSTRUCTION_H
 #define MF_INSTRUCTION_H
 
-#include "mf_base.h"
+#include <mathflow/base/mf_types.h>
 #include "mf_opcodes.h"
 
 // Standard 3-address code instruction (64 bits total)

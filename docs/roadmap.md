@@ -135,25 +135,39 @@
     - Update `mf_host` to wrap `mf_engine` internal instance.
     - Initialize `mf_scheduler` from `engine->context` for multi-threaded execution.
 
-## Phase 14: Application Layer (Manifest System)
+## Phase 14: Application Layer (Manifest System) [COMPLETED]
 **Objective:** Decouple "Application Configuration" from "Logic Definition". The Host will strictly run Applications defined by a `.mfapp` manifest, not raw Graphs. This prevents the Host from guessing context and allows different configurations (Window size, Runtime mode) for the same logic.
 
-- [ ] **Step 1: Manifest Definition (`.mfapp`):**
+- [x] **Step 1: Manifest Definition (`.mfapp`):**
     - Define JSON schema:
-        - `runtime`: `{ "type": "shader"|"script", "entry": "path/to/graph.json" }`
-        - `window`: `{ "width": 800, "height": 600, "title": "App Name", "resizable": true }`
-- [ ] **Step 2: App Loader:**
-    - Implement a simple parser in `modules/host` to read `.mfapp` files.
-- [ ] **Step 3: Strict Host Refactoring:**
+        - `runtime`: `{ "type": "shader"|"script", "entry": "relative/path/to/graph.json" }`
+        - `window`: `{ "width": 800, "height": 600, "title": "App Name", "resizable": true, "vsync": true }`
+- [x] **Step 2: App Loader (`mf_app_loader`):**
+    - Implement `mf_app_loader` module in `modules/host`.
+    - **Crucial:** Implement **Relative Path Resolution**. The `entry` path must be resolved relative to the `.mfapp` file location, not the Current Working Directory (CWD).
+    - Parse JSON and populate `mf_host_desc`.
+- [x] **Step 3: Strict Host Refactoring:**
     - Modify `mf_host` to **only** accept `.mfapp` files.
     - Remove hardcoded window defaults.
-    - Initialize `mf_engine` with the graph specified in the manifest's `entry`.
+    - Initialize `mf_engine` with the absolute path resolved by the loader.
     - Select Execution Strategy dynamically:
-        - `runtime.type == "shader"` -> Init ThreadPool & Scheduler.
-        - `runtime.type == "script"` -> Init simple VM Loop (single thread).
-- [ ] **Step 4: Migration:**
+        - `runtime.type == "shader"` -> Init ThreadPool & Scheduler (Parallel Rendering).
+        - `runtime.type == "script"` -> Init simple VM Loop (Single Thread, Stateful).
+- [x] **Step 4: Migration & Cleanup:**
     - Create `.mfapp` files for existing assets (`demo_inventory`, `sdf_button`).
-    - Update CMake presets and launch configurations.
+    - Refactor `mf-runner` to use the new Manifest system and `mf_instance` API.
+    - Update CMake presets.
+
+## Phase 14.5: Architecture Refinement (Cleanup) [COMPLETED]
+**Objective:** Simplify module structure and fix dependency anomalies before building the UI system.
+
+- [x] **Step 1: Consolidate `modules/base`:**
+    - Merge `mf_platform` (Threads/Mutex) and `mf_memory` (Arena/Heap) into a single fundamental module `modules/base`.
+    - Eliminate the dependency of `Engine` on `VM` for memory management.
+- [x] **Step 2: Merge Ops Modules:**
+    - Combine `ops_core` and `ops_array` into a single `modules/ops`.
+    - Simplify include paths and CMake linking.
+    - Integrated `mf_math.h` into `base` and specialized Matrix ops for performance.
 
 ## Phase 15: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.

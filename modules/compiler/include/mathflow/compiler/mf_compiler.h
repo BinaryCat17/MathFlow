@@ -1,12 +1,11 @@
 #ifndef MF_COMPILER_H
 #define MF_COMPILER_H
 
-#include <mathflow/isa/mf_base.h>
+#include <mathflow/base/mf_types.h>
 #include <mathflow/isa/mf_program.h>
-#include <mathflow/isa/mf_tensor.h>
-#include <mathflow/vm/mf_memory.h> 
+#include <mathflow/base/mf_memory.h>
 
-// --- Graph IR (Intermediate Representation) ---
+// --- IR Definitions (Simplification) ---
 
 typedef enum {
     MF_NODE_UNKNOWN = 0,
