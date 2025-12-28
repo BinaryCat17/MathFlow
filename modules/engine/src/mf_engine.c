@@ -1,6 +1,5 @@
 #include <mathflow/engine/mf_engine.h>
 #include "mf_engine_internal.h"
-#include <mathflow/backend_cpu/mf_backend_cpu.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -30,9 +29,10 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     }
     mf_heap_init(&engine->heap, engine->heap_buffer, heap_size);
 
-    // 3. Backend (Initialized with thread count)
-    int num_threads = desc ? desc->num_threads : 0;
-    mf_backend_cpu_init(&engine->backend, num_threads);
+    // 3. Backend (Injection)
+    if (desc) {
+        engine->backend = desc->backend;
+    }
 
     // 4. VM (Initialize but don't reset until bind)
     // Note: VM needs context, which is set in bind.

@@ -3,7 +3,6 @@ find_package(SDL2 CONFIG QUIET)
 # --- Host Core (Manifest, Config, Loader, Headless) ---
 add_library(mf_host_core STATIC
     src/mf_manifest_loader.c
-    src/mf_asset_loader.c
     src/mf_host_headless.c
 )
 add_library(MathFlow::host_core ALIAS mf_host_core)
@@ -16,6 +15,8 @@ target_link_libraries(mf_host_core
     PUBLIC 
         cjson
         MathFlow::engine
+        MathFlow::loader
+    PRIVATE
         MathFlow::compiler
 )
 

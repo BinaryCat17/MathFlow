@@ -13,5 +13,4 @@ target_link_libraries(mf_engine
         MathFlow::isa
     PRIVATE
         MathFlow::vm 
-        MathFlow::backend_cpu
 )

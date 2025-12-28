@@ -2,6 +2,7 @@
 #define MF_ENGINE_H
 
 #include <mathflow/isa/mf_tensor.h>
+#include <mathflow/isa/mf_dispatch_table.h>
 #include <mathflow/base/mf_types.h>
 
 // Forward declarations
@@ -21,9 +22,9 @@ typedef struct mf_engine_desc {
     // Default: 64MB if set to 0.
     size_t heap_size;
 
-    // Number of worker threads for parallel execution.
-    // Default: 0 (Auto-detect CPU count).
-    int num_threads;
+    // Backend Implementation (Required)
+    // The engine copies this table, so it can be on stack.
+    mf_backend_dispatch_table backend;
 } mf_engine_desc;
 
 // --- Lifecycle ---

@@ -18,6 +18,7 @@ add_subdirectory(modules/compiler)
 add_subdirectory(modules/ops)
 add_subdirectory(modules/backend_cpu)
 add_subdirectory(modules/engine)
+add_subdirectory(modules/loader)
 add_subdirectory(modules/host)
 
 # --- Apps ---

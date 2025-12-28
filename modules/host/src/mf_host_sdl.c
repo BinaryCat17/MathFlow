@@ -1,5 +1,5 @@
 #include <mathflow/host/mf_host_sdl.h>
-#include <mathflow/host/mf_asset_loader.h>
+#include <mathflow/loader/mf_loader.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/base/mf_platform.h>
 
@@ -75,7 +75,9 @@ int mf_host_run(const mf_host_desc* desc) {
     mf_engine_desc engine_desc = {0};
     engine_desc.arena_size = 32 * 1024 * 1024; // Increase arena for complex graphs
     engine_desc.heap_size = 128 * 1024 * 1024; // Increase heap for full resolution tensors
-    engine_desc.num_threads = desc->num_threads;
+    
+    // Init Backend (Injection)
+    mf_loader_init_backend(&engine_desc.backend, desc->num_threads);
 
     mf_engine* engine = mf_engine_create(&engine_desc);
     if (!engine) {
@@ -84,7 +86,7 @@ int mf_host_run(const mf_host_desc* desc) {
         return 1;
     }
 
-    if (!mf_asset_loader_load(engine, desc->graph_path)) {
+    if (!mf_loader_load_graph(engine, desc->graph_path)) {
         printf("[Host] Failed to load graph: %s\n", desc->graph_path);
         mf_engine_destroy(engine);
         SDL_DestroyWindow(window); SDL_Quit();

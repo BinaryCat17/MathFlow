@@ -1,6 +1,6 @@
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/engine/mf_engine.h>
-#include <mathflow/host/mf_asset_loader.h>
+#include <mathflow/loader/mf_loader.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -55,10 +55,15 @@ static void final_print_callback(u16 idx, const char* name, mf_tensor* t, void* 
 int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     if (!desc || !desc->graph_path) return 1;
 
-    mf_engine* engine = mf_engine_create(NULL);
+    mf_engine_desc engine_desc = {0};
+    
+    // Init Backend via Loader (Injection)
+    mf_loader_init_backend(&engine_desc.backend, desc->num_threads);
+
+    mf_engine* engine = mf_engine_create(&engine_desc);
     if (!engine) return 1;
 
-    if (!mf_asset_loader_load(engine, desc->graph_path)) {
+    if (!mf_loader_load_graph(engine, desc->graph_path)) {
         mf_engine_destroy(engine);
         return 1;
     }
