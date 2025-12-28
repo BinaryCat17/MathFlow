@@ -109,7 +109,8 @@ graph TD
 
     %% Layer 2: Host (Integration Library)
     subgraph L2 ["Layer 2: Host Framework"]
-        Host["Host (Loader, SDL, Headless)"]:::layerHost
+        Host["Host (SDL/Headless)"]:::layerHost
+        Loader["Loader (Composition Root)"]:::layerHost
     end
 
     %% Layer 3: Core (Logic)
@@ -135,11 +136,14 @@ graph TD
     App_GUI --> Host
     App_CLI --> Host
     
+    Host --> Loader
     Host --> Engine
-    Host --> Compiler
+    
+    Loader --> Compiler
+    Loader --> Backend
+    Loader --> Engine
     
     Engine --> VM
-    Engine --> Backend
     
     Backend --> VM
     Backend --> Ops
@@ -170,8 +174,13 @@ Reference implementation of parallel execution.
 
 ### 3.5. Host (`modules/host`)
 Application Framework & Orchestration.
-*   **`Asset Loader`:** Handles file I/O, format detection (.json vs .bin), and compilation.
 *   **`Host SDL`:** SDL2 integration, Window management, Input handling.
+*   **`Host Headless`:** Logic for CLI execution without graphics.
+
+### 3.6. Loader (`modules/loader`)
+The **Composition Root** of the system.
+*   **Responsibility:** Initializes the Backend, loads Assets (JSON/BIN), invokes Compiler, and binds everything to the Engine.
+*   **Role:** Solves the dependency injection problem, decoupling Apps from low-level system construction.
 
 ---
 
