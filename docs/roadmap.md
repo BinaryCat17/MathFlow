@@ -118,7 +118,26 @@
     - [x] **Standard Uniforms:** Auto-inject `u_Time`, `u_Mouse`, `u_Resolution`.
     - [x] **Managed Loop:** Hide the main loop, event polling, and scheduler dispatch.
     - [ ] **Hot-Reload (Bonus):** Recompile graph on file change.
-    - [x] **Refactor:** Rewrite `apps/mf-window/main.c` to use `mf_host`.
+- [x] **Refactor:** Rewrite `apps/mf-window/main.c` to use `mf_host`.
+
+## Phase 13: Engine Unification (Refactoring)
+**Objective:** Eliminate code duplication between CLI runner and GUI host by introducing a unified `mf_engine` layer. This creates a standard way to initialize MathFlow without depending on a windowing system.
+
+- [ ] **Step 1: The Engine Module (`modules/engine`):
+    - Create `modules/engine` to handle the lifecycle of:
+        - Memory (Arena/Heap).
+        - Compilation (Loading JSON/BIN).
+        - Context & Backend setup.
+    - **Constraint:** Must be Pure C (no SDL/Graphics dependencies).
+- [ ] **Step 2: Refactor `mf-runner`:**
+    - Rewrite CLI tool to use `mf_engine`.
+    - Reduce `apps/mf-runner/src/main.c` to a simple command-line wrapper.
+- [ ] **Step 3: Refactor `mf_host`:**
+    - Update `mf_host` to wrap `mf_engine` internal instance.
+    - Decouple "Math Logic" from "Window Logic".
+
+## Phase 14: UI Widget System
+**Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
 
 ---
 
