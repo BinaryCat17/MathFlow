@@ -79,36 +79,6 @@ void mf_vm_exec(mf_vm* vm);
 // Cleanup dynamic memory (tensors allocated by backend)
 void mf_vm_shutdown(mf_vm* vm);
 
-// --- Parallel Execution API ---
-
-typedef void (*mf_vm_job_setup_func)(mf_vm* vm, u32 job_idx, void* user_data);
-typedef void (*mf_vm_job_finish_func)(mf_vm* vm, u32 job_idx, void* user_data);
-
-// Worker lifecycle (used by mf_engine to create the thread pool)
-void* mf_vm_worker_init(int thread_idx, void* user_data);
-void mf_vm_worker_cleanup(void* thread_local_data, void* user_data);
-
-/**
- * @brief Executes a program in parallel over a range of jobs.
- * This is a high-level orchestration function that uses a thread pool.
- * It creates per-thread VMs and heaps internally.
- * 
- * @param ctx The shared program context.
- * @param pool The thread pool to use.
- * @param job_count Total number of parallel jobs.
- * @param setup_cb Called on each thread's VM before execution of a job.
- * @param finish_cb Called on each thread's VM after execution of a job.
- * @param user_data Passed to callbacks.
- */
-void mf_vm_exec_parallel(
-    const mf_context* ctx,
-    mf_thread_pool* pool,
-    u32 job_count,
-    mf_vm_job_setup_func setup_cb,
-    mf_vm_job_finish_func finish_cb,
-    void* user_data
-);
-
 // --- Accessors ---
 // Returns a pointer to the live tensor in the VM.
 mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode);

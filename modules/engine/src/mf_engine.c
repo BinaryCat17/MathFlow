@@ -20,8 +20,8 @@ void mf_engine_init(mf_engine* engine, const mf_engine_desc* desc) {
     // Initialize Thread Pool
     mf_thread_pool_desc pool_desc = {
         .num_threads = desc ? desc->num_threads : 0,
-        .init_fn = mf_vm_worker_init,
-        .cleanup_fn = mf_vm_worker_cleanup,
+        .init_fn = mf_backend_cpu_worker_init,
+        .cleanup_fn = mf_backend_cpu_worker_cleanup,
         .user_data = NULL
     };
     engine->pool = mf_thread_pool_create(&pool_desc);
@@ -47,6 +47,25 @@ void mf_engine_shutdown(mf_engine* engine) {
         engine->arena_buffer = NULL;
     }
     memset(engine, 0, sizeof(mf_engine));
+}
+
+void mf_engine_dispatch(
+    mf_engine* engine, 
+    u32 count_x, u32 count_y,
+    mf_vm_job_setup_func setup_cb,
+    mf_vm_job_finish_func finish_cb,
+    void* user_data
+) {
+    if (!engine || !engine->backend.dispatch) return;
+    
+    engine->backend.dispatch(
+        &engine->ctx,
+        engine->pool,
+        count_x, count_y,
+        setup_cb,
+        finish_cb,
+        user_data
+    );
 }
 
 bool mf_engine_create_instance(mf_engine* engine, mf_instance* out_inst, size_t heap_size) {

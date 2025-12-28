@@ -49,7 +49,6 @@ static char* get_dir(const char* path) {
 }
 
 static char* join_path(const char* dir, const char* file) {
-    // If file is absolute, return duplicate
     if (file[0] == '/' || file[0] == '\\' || (strlen(file) > 2 && file[1] == ':')) {
         return strdup(file);
     }
@@ -62,10 +61,6 @@ static char* join_path(const char* dir, const char* file) {
     
     if (slash) sprintf(path, "%s%s", dir, file);
     else sprintf(path, "%s/%s", dir, file);
-    
-    // Normalize slashes to platform? 
-    // For now, mixed slashes usually work on Windows C APIs, but let's be safe later if needed.
-    // The previous implementation didn't normalize, so we stick to that.
     
     return path;
 }
@@ -91,7 +86,6 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     out_desc->fullscreen = false;
     out_desc->resizable = true;
     out_desc->vsync = true;
-    out_desc->runtime_type = MF_HOST_RUNTIME_SHADER;
     out_desc->width = 800;
     out_desc->height = 600;
     out_desc->window_title = "MathFlow App";
@@ -99,18 +93,8 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     // 1. Runtime Section
     cJSON* runtime = cJSON_GetObjectItem(root, "runtime");
     if (runtime) {
-        cJSON* type = cJSON_GetObjectItem(runtime, "type");
-        if (type && cJSON_IsString(type)) {
-            if (strcmp(type->valuestring, "script") == 0) {
-                out_desc->runtime_type = MF_HOST_RUNTIME_SCRIPT;
-            } else {
-                out_desc->runtime_type = MF_HOST_RUNTIME_SHADER;
-            }
-        }
-
         cJSON* entry = cJSON_GetObjectItem(runtime, "entry");
         if (entry && cJSON_IsString(entry)) {
-            // Resolve path relative to manifest
             char* base_dir = get_dir(mfapp_path);
             out_desc->graph_path = join_path(base_dir, entry->valuestring);
             free(base_dir);

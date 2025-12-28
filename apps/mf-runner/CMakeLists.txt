@@ -8,7 +8,5 @@ target_include_directories(mf-runner PRIVATE
 
 target_link_libraries(mf-runner 
     PRIVATE 
-        MathFlow::engine
         MathFlow::host_core
-        cjson
 )

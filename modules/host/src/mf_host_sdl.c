@@ -14,7 +14,7 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
     if (!tensor || tensor->dtype != MF_DTYPE_F32) return;
     
     f32* src = (f32*)tensor->data;
-    if (!src) return; // Should not happen if allocated correctly
+    if (!src) return; 
 
     u8* dst = (u8*)pixels;
     
@@ -22,10 +22,8 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
     int t_h = (tensor->ndim > 0) ? tensor->shape[0] : 1;
     int channels = (tensor->ndim > 2) ? tensor->shape[2] : ((tensor->ndim == 1) ? tensor->shape[0] : 1);
     
-    // Safety check for empty tensors
     if (t_w == 0 || t_h == 0) return;
 
-    // Broadcasting Logic
     bool is_scalar = (tensor->size <= 4);
     
     if (is_scalar) {
@@ -53,7 +51,6 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
              }
          }
     } else {
-        // Full Buffer Copy
         int w = (t_w < tex_w) ? t_w : tex_w;
         int h = (t_h < tex_h) ? t_h : tex_h;
 
@@ -90,29 +87,20 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
     }
 }
 
-// --- Internal State ---
-
 typedef struct {
-    // Inputs
     float time;
     float mouse[4];
     int width;
     int height;
-    
-    // Output Target
     void* pixels;
     int tile_count;
     int tile_height;
-    
-    // Uniform Register Indices (Cached)
     u16 r_time;
     u16 r_res, r_resx, r_resy, r_aspect;
     u16 r_mouse, r_mousex, r_mousey;
     u16 r_fragx, r_fragy;
     u16 r_out;
 } mf_host_job_ctx;
-
-// --- Worker Callbacks ---
 
 static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
     mf_host_job_ctx* rc = (mf_host_job_ctx*)user_data;
@@ -124,10 +112,6 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
     if (local_h <= 0) return;
 
     mf_tensor* t;
-
-    // 1. Inject Uniforms
-    // Note: We check if t->data is valid because we rely on mf_vm_reset to allocate it.
-    // If an input is not connected or optimized out, it might be NULL, so we check mapping.
 
     if (rc->r_time != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_time, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = rc->time;
@@ -163,10 +147,8 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
         if (t->data) *((f32*)t->data) = rc->mouse[1];
     }
     
-    // 2. Domain Decomposition (Frag Coord)
     int dims[2] = { local_h, rc->width };
     
-    // FragX: Horizontal gradient 0..W, repeated per row
     if (rc->r_fragx != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_fragx, MF_ACCESS_WRITE))) {
         if (mf_vm_resize_tensor(vm, t, dims, 2)) {
             f32* d = (f32*)t->data;
@@ -178,7 +160,6 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
         }
     }
 
-    // FragY: Vertical gradient Y..Y+H, constant per row
     if (rc->r_fragy != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_fragy, MF_ACCESS_WRITE))) {
         if (mf_vm_resize_tensor(vm, t, dims, 2)) {
             f32* d = (f32*)t->data;
@@ -194,24 +175,20 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
 
 static void host_job_finish(mf_vm* vm, u32 job_idx, void* user_data) {
     mf_host_job_ctx* rc = (mf_host_job_ctx*)user_data;
-    
     if (rc->r_out == 0xFFFF) return; 
     
     mf_tensor* out = mf_vm_map_tensor(vm, rc->r_out, MF_ACCESS_READ);
     if (!out || !out->data) return;
     
     int y_start = job_idx * rc->tile_height;
-    int y_end = y_start + rc->tile_height;
-    if (y_end > rc->height) y_end = rc->height;
-    int local_h = y_end - y_start;
-    
-    u8* pixels_base = (u8*)rc->pixels;
     int pitch = rc->width * 4; 
+    u8* pixels_base = (u8*)rc->pixels;
     
+    int local_h = rc->tile_height;
+    if (y_start + local_h > rc->height) local_h = rc->height - y_start;
+
     convert_to_pixels(out, pixels_base + (y_start * pitch), pitch, rc->width, local_h);
 }
-
-// --- Main Runner ---
 
 int mf_host_run(const mf_host_desc* desc) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
@@ -241,10 +218,8 @@ int mf_host_run(const mf_host_desc* desc) {
     SDL_Renderer* renderer = SDL_CreateRenderer(window, -1, render_flags);
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, desc->width, desc->height);
 
-    // --- MathFlow Init ---
-    
     mf_engine_desc engine_desc = {0};
-    engine_desc.arena_size = 16 * 1024 * 1024; // 16 MB
+    engine_desc.arena_size = 16 * 1024 * 1024;
     engine_desc.num_threads = desc->num_threads;
 
     mf_engine engine;
@@ -257,40 +232,19 @@ int mf_host_run(const mf_host_desc* desc) {
         return 1;
     }
     
-    // --- Strategy Setup ---
-    bool use_parallel = (desc->runtime_type == MF_HOST_RUNTIME_SHADER);
-    
-    // Script Mode State
-    mf_vm vm_script;
-    mf_heap heap_script;
-    void* heap_mem = NULL;
-    u8 arena_mem[4096];
-    mf_arena arena_script;
+    // Cache Registers
+    mf_vm temp_vm; temp_vm.ctx = &engine.ctx; 
+    u16 r_out    = mf_vm_find_register(&temp_vm, "out_Color");
+    u16 r_fragx  = mf_vm_find_register(&temp_vm, "u_FragX");
+    u16 r_fragy  = mf_vm_find_register(&temp_vm, "u_FragY");
 
-    if (use_parallel) {
-        printf("[Host] Mode: Shader (Parallel), Threads: %d\n", mf_thread_pool_get_thread_count(engine.pool));
-    } else {
-        printf("[Host] Mode: Script (Single Thread)\n");
-        size_t heap_size = 16 * 1024 * 1024; // 16 MB Heap
-        heap_mem = malloc(heap_size);
-        mf_heap_init(&heap_script, heap_mem, heap_size);
-        mf_arena_init(&arena_script, arena_mem, sizeof(arena_mem));
-        
-        // Init VM once (State persists in Heap)
-        mf_vm_init(&vm_script, &engine.ctx, (mf_allocator*)&heap_script);
-    }
+    // Strategy Auto-detection
+    bool is_spatial = (r_fragx != 0xFFFF || r_fragy != 0xFFFF);
+    printf("[Host] Execution Strategy: %s\n", is_spatial ? "Spatial (Parallel)" : "Global (Serial)");
 
-    // --- Prepare Job Context (Uniforms) ---
     mf_host_job_ctx job_ctx = {0};
     job_ctx.width = desc->width;
     job_ctx.height = desc->height;
-    
-    // Framebuffer
-    u32* frame_buffer = malloc(desc->width * desc->height * 4);
-    job_ctx.pixels = frame_buffer;
-
-    // Cache Registers
-    mf_vm temp_vm; temp_vm.ctx = &engine.ctx; 
     job_ctx.r_time   = mf_vm_find_register(&temp_vm, "u_Time");
     job_ctx.r_res    = mf_vm_find_register(&temp_vm, "u_Resolution");
     job_ctx.r_resx   = mf_vm_find_register(&temp_vm, "u_ResX");
@@ -299,38 +253,31 @@ int mf_host_run(const mf_host_desc* desc) {
     job_ctx.r_mouse  = mf_vm_find_register(&temp_vm, "u_Mouse");
     job_ctx.r_mousex = mf_vm_find_register(&temp_vm, "u_MouseX");
     job_ctx.r_mousey = mf_vm_find_register(&temp_vm, "u_MouseY");
-    job_ctx.r_fragx  = mf_vm_find_register(&temp_vm, "u_FragX");
-    job_ctx.r_fragy  = mf_vm_find_register(&temp_vm, "u_FragY");
-    job_ctx.r_out    = mf_vm_find_register(&temp_vm, "out_Color");
+    job_ctx.r_fragx  = r_fragx;
+    job_ctx.r_fragy  = r_fragy;
+    job_ctx.r_out    = r_out;
 
-    if (job_ctx.r_out == 0xFFFF) {
-        printf("[Host] Warning: 'out_Color' node not found. Output will be black.\n");
+    u32* frame_buffer = malloc(desc->width * desc->height * 4);
+    job_ctx.pixels = frame_buffer;
+
+    // Stateful Script Mode setup
+    mf_instance script_inst = {0};
+    if (!is_spatial) {
+        mf_engine_create_instance(&engine, &script_inst, 0);
     }
 
-    // --- Loop ---
     bool running = true;
     SDL_Event event;
     u32 start_time = SDL_GetTicks();
     
-    // Tiling
     int pool_threads = mf_thread_pool_get_thread_count(engine.pool);
-    int tile_count = use_parallel ? (pool_threads > 4 ? pool_threads : 4) : 1; 
-    job_ctx.tile_count = tile_count;
-
-    // SCRIPT MODE: Init State Once
-    if (!use_parallel) {
-        mf_vm_reset(&vm_script, &arena_script);
-    }
+    int tile_count = is_spatial ? (pool_threads > 4 ? pool_threads : 4) : 1; 
 
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
-            if (event.type == SDL_KEYDOWN) {
-                 if (event.key.keysym.sym == SDLK_ESCAPE) running = false;
-            }
         }
         
-        // Input
         int mx, my;
         u32 buttons = SDL_GetMouseState(&mx, &my);
         job_ctx.time = (SDL_GetTicks() - start_time) / 1000.0f;
@@ -339,56 +286,27 @@ int mf_host_run(const mf_host_desc* desc) {
         job_ctx.mouse[2] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1.0f : 0.0f;
         job_ctx.mouse[3] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1.0f : 0.0f;
         
-        job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
-        
-        if (use_parallel) {
-            // SHADER MODE: Parallel
-            mf_vm_exec_parallel(&engine.ctx, engine.pool, tile_count, host_job_setup, host_job_finish, &job_ctx);
+        if (is_spatial) {
+            job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
+            mf_engine_dispatch(&engine, tile_count, 1, host_job_setup, host_job_finish, &job_ctx);
         } else {
-            // SCRIPT MODE: Single Threaded, Stateful
-            // Do NOT reset VM here (preserves heap and registers)
-            
-            // Setup Inputs (reuse logic, treat as 1 big tile)
-            job_ctx.tile_height = job_ctx.height; 
-            host_job_setup(&vm_script, 0, &job_ctx);
-            
-            // Execute (includes State Update via COPY)
-            mf_vm_exec(&vm_script);
-            
-            // Read Back
-            host_job_finish(&vm_script, 0, &job_ctx);
-
-            // Print Script Output (Once per ~60 frames)
-            static int frame_counter = 0;
-            if (++frame_counter % 60 == 0) {
-                 mf_tensor* out = mf_vm_map_tensor(&vm_script, job_ctx.r_out, MF_ACCESS_READ);
-                 if (out && out->data) {
-                     printf("[Script Output] ");
-                     int count = out->size > 5 ? 5 : out->size;
-                     f32* d = (f32*)out->data;
-                     for (int i=0; i<count; ++i) printf("%.2f ", d[i]);
-                     if (out->size > 5) printf("...");
-                     printf("\n");
-                 }
-            }
+            job_ctx.tile_height = job_ctx.height;
+            host_job_setup(&script_inst.vm, 0, &job_ctx);
+            mf_vm_exec(&script_inst.vm);
+            host_job_finish(&script_inst.vm, 0, &job_ctx);
         }
         
-        // Render
         SDL_UpdateTexture(texture, NULL, frame_buffer, job_ctx.width * 4);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
     }
     
-    // --- Cleanup ---
+    if (!is_spatial) mf_instance_destroy(&script_inst);
     free(frame_buffer);
-    if (heap_mem) free(heap_mem);
-    
     mf_engine_shutdown(&engine);
-
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();
-    
     return 0;
 }

@@ -49,6 +49,22 @@
 - [x] **Step 3: Headless Runtime:** Implement `mf_host_run_headless` in `host_core` for CLI tools.
 - [x] **Step 4: Build Cleanup:** Remove `target_link_libraries(mf_engine ... mf_compiler)` from CMake.
 
+## Phase 16.7: Host Core Unification
+**Objective:** Make `mf-runner` independent of `mf_engine`, matching the high-level abstraction of `mf-window`.
+
+- [x] **Step 1: Upgrade Headless Host:** Refactor `mf_host_run_headless` to accept `mf_host_desc*` instead of `mf_engine*`. It should handle engine initialization internally.
+- [x] **Step 2: Clean Runner:** Update `apps/mf-runner/src/main.c` to remove engine initialization code.
+- [x] **Step 3: Build Cleanup:** Remove `MathFlow::engine` dependency from `apps/mf-runner`.
+
+## Phase 16.8: Execution Unification (Compute Dispatch)
+**Objective:** Replace the rigid `Script` vs `Shader` separation with a unified "Compute Dispatch" model. Shift the responsibility of parallelism from the VM to the **Backend**, allowing future backends (Vulkan/Metal) to handle execution natively.
+
+- [ ] **Step 1: ISA Update:** Add a `dispatch` function pointer to the `mf_backend_dispatch_table`.
+- [ ] **Step 2: Backend CPU Migration:** Move the thread pool and tiling logic (`mf_vm_parallel.c`) into `modules/backend_cpu`. The CPU backend will now manage the creation of worker VMs.
+- [ ] **Step 3: VM Purification:** Remove parallel execution logic from `modules/vm`, making it a pure single-threaded bytecode interpreter.
+- [ ] **Step 4: Engine Dispatch:** Implement `mf_engine_dispatch(engine, dim_x, dim_y, ...)` which delegates to the active backend.
+- [ ] **Step 5: Host Cleanup:** Update hosts to use the unified `dispatch` API, removing `MF_HOST_RUNTIME_*` flags.
+
 ## Phase 17: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
 

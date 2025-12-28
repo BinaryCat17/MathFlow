@@ -7,7 +7,7 @@ MathFlow is a high-performance, **Data-Oriented** computation engine. It treats 
 
 ## 1. System Overview
 
-**How it works:** You write a graph (JSON). The Engine compiles it, loads it into memory, and the VM executes it frame-by-frame using high-performance math kernels.
+**How it works:** You write a graph (JSON). The Host Asset Loader compiles it (if needed), loads it into the Engine, and the VM executes it frame-by-frame.
 
 ```mermaid
 flowchart LR
@@ -23,13 +23,14 @@ flowchart LR
     Binary[("💾 Program (.bin)")]:::memory
 
     %% Compilation
-    subgraph Build ["Phase: Build & Load"]
+    subgraph Build ["Phase: Host / Build"]
         direction TB
+        Loader["📂 Asset Loader"]:::proc
         Compiler["⚙️ Compiler"]:::proc
     end
 
     %% Execution
-    subgraph Run ["Phase: Execution Loop"]
+    subgraph Run ["Phase: Engine Execution"]
         direction TB
         Engine["🚂 Engine"]:::proc
         VM[["🧠 VM (State)"]]:::proc
@@ -42,16 +43,17 @@ flowchart LR
 
     %% Flow
     User -- "Edits" --> Source
-    Source -- "Parses" --> Compiler
+    Source -- "Loads" --> Loader
+    Loader -- "Uses" --> Compiler
     Compiler -- "Generates" --> Binary
+    Loader -- "Binds Program" --> Engine
     
-    Binary -- "Loads into" --> Engine
     Engine -- "Starts" --> VM
     
     %% The Interactive Loop
     Input -- "Events" --> VM
     VM -- "Dispatches" --> Backend
-    Backend -- "Calls" --> Ops
+    Backend -- "Calls (via Ctx)" --> Ops
     Ops -. "Updates Memory" .-> VM
     VM -- "Pixels" --> Screen
 ```
@@ -60,7 +62,7 @@ flowchart LR
 
 ## 2. Modules
 
-The codebase is organized in layers. High-level apps sit on top, orchestrating the Engine, which relies on the Core Logic, backed by the Low-Level Foundation.
+The codebase is organized in layers. High-level apps sit on top, orchestrating the Engine via the Host Framework.
 
 ```mermaid
 graph TD
@@ -78,14 +80,14 @@ graph TD
 
     %% Layer 2: Host
     subgraph L2 ["Layer 2: Host Framework"]
-        HostCore["📜 Host Core (Config)"]:::layerHost
+        HostCore["📜 Host Core"]:::layerHost
         HostCLI["⌨️ Host CLI (Headless)"]:::layerHost
-        HostSDL["🔌 Host SDL (Window)"]:::layerHost
+        HostSDL["🔌 Host SDL (GUI)"]:::layerHost
     end
 
     %% Layer 3: Core
     subgraph L3 ["Layer 3: System Core"]
-        Engine["🚂 Engine (Resources)"]:::layerCore
+        Engine["🚂 Engine (Runtime)"]:::layerCore
         VM["🧠 Virtual Machine"]:::layerCore
         Compiler["⚙️ Compiler"]:::layerCore
     end
@@ -107,13 +109,12 @@ graph TD
     App_CLI --> HostCLI
     
     HostSDL --> HostCore
-    HostSDL --> Engine
-    
     HostCLI --> HostCore
-    HostCLI --> Engine
+    
+    HostCore --> Engine
+    HostCore --> Compiler
     
     Engine --> VM
-    Engine --> Compiler
     
     %% Core drives Compute
     VM --> Backend
@@ -122,51 +123,52 @@ graph TD
     %% Key dependencies on Foundation
     Compiler -.-> ISA
     VM -.-> ISA
-    Ops -.-> Base
+    Ops -.-> ISA
 ```
 
 ### 2.0. Engine (`modules/engine`)
-*   **Role:** The "Owner". Unified Resource Manager.
+*   **Role:** The "Runtime Owner". Pure execution environment.
 *   **Responsibility:**
-    *   Manages the **Static Lifecycle**: Loads graphs/binaries, allocates the Arena (Program memory).
-    *   **Instance Factory:** Provides API (`mf_engine_create_instance`) to create execution instances (`mf_instance`) which bundle a VM with its own Heap memory.
-    *   Acts as the central API for initializing the library, independent of the execution strategy.
+    *   Manages the **Static Lifecycle**: Allocates the Arena (Program memory).
+    *   **Program Binding:** Accepts a binary `mf_program` via `mf_engine_bind_program`. Does **not** handle file loading or compilation.
+    *   **Instance Factory:** Creates execution instances (`mf_instance`) bundling a VM with Heap memory.
 
 ### 2.1. ISA (`modules/isa`)
-*   **Role:** The "Contract". Defines the Instruction Set Architecture.
-*   **Content:** Header-only definitions of Opcodes (`MF_OP_ADD`, `MF_OP_COPY`), Instruction Formats, and Binary Header structures.
-*   **Versioning:** Includes a versioned binary format to ensure backward compatibility.
+*   **Role:** The "Contract". Defines the Instruction Set and Interfaces.
+*   **Content:**
+    *   **Opcodes:** `MF_OP_ADD`, `MF_OP_COPY`, etc.
+    *   **Formats:** Binary Header, Instruction structs.
+    *   **Kernel Interface:** `mf_kernel_ctx` — the abstraction layer allowing Ops to access memory without knowing about the VM.
+    *   **Dispatch Table:** `mf_dispatch_table` — bridges the Runtime to the Kernels.
 
 ### 2.2. Virtual Machine (`modules/vm`)
 *   **Role:** The "Runner". Executes logic sequentially or in parallel.
-*   **Concept:** Acts as the central execution engine.
 *   **Key Responsibilities:**
-    *   **Execution State:** Manages the Heap (Variables) globally for the instance.
-    *   **Parallelism:** Can execute bytecode over a domain (e.g., pixels) using a thread pool from `base`.
-    *   **Use Case:** Everything from simple game logic to complex parallel rendering.
-    *   **Symbol Table Access:** Uses the Engine's context to map names to registers.
+    *   **Execution State:** Manages the Heap (Variables).
+    *   **Implementation:** Implements `mf_kernel_ctx` to provide memory access to Ops.
+    *   **Parallelism:** Executes over a thread pool.
 
 ### 2.4. Platform (`modules/base`)
 *   **Role:** OS Abstraction Layer.
-*   **Content:** Unified API for Threads, Mutexes, Condition Variables, Atomics, and Thread Pool. Supports Windows (Win32) and Linux (pthreads).
+*   **Content:** Threads, Mutexes, Atomics, Memory Allocators.
 
 ### 2.5. Host (`modules/host`)
-*   **Role:** Application Framework.
-*   **Structure:** Split into three components:
-    *   **`Host Core` (`mf_host_core`):** Pure logic for parsing Application Manifests (`.mfapp`) and configuration (`mf_host_desc`). No dependencies on graphics libraries.
-    *   **`Host CLI` (Planned):** Headless runtime for executing graphs without a window. Used by CLI tools.
-    *   **`Host SDL` (`mf_host_sdl`):** Implements the platform backend using SDL2 (Window creation, Input, Event Loop). Used by GUI apps.
-    *   **Implementation:** See `mf_manifest_loader.h` and `mf_host_sdl.h`.
+*   **Role:** Application Framework & Orchestration.
+*   **Structure:**
+    *   **`Host Core` (`mf_host_core`):** 
+        *   **Manifest Loader:** Parses `.mfapp`.
+        *   **Asset Loader:** Compiles `.json` (using `mf_compiler`) or loads `.bin`.
+        *   **Headless Runtime:** CLI execution loop.
+    *   **`Host SDL` (`mf_host_sdl`):** GUI implementation using SDL2.
 
 ### 2.6. Backend: CPU (`modules/backend_cpu`)
-*   **Role:** Reference Implementation (Software Renderer).
-*   **Responsibility:** Initializes the Dispatch Table with CPU implementations.
-*   **Capabilities:** Supports dynamic broadcasting and reshaping.
+*   **Role:** Reference Implementation.
+*   **Responsibility:** Fills the Dispatch Table with CPU kernel function pointers.
 
-### 2.7. Operations Libraries (`modules/ops_*`)
-These modules contain the actual mathematical kernels.
-*   **`modules/ops_core`:** Basic arithmetic, Trigonometry, Logic, Matrix ops, and State Relay.
-*   **`modules/ops_array`:** Array manipulation kernels.
+### 2.7. Operations (`modules/ops`)
+*   **Role:** Pure Math Kernels.
+*   **Design:** Stateless functions accepting `mf_kernel_ctx`. No dependency on `VM`.
+*   **Utils:** `mf_kernel_utils.h` provides shape resolution and broadcasting helpers.
 
 ---
 
@@ -220,7 +222,7 @@ To support interactive UI (toggles, animations) without external logic:
 
 ---
 
-## 6. The Application Layer (Phase 14)
+## 6. The Application Layer
 
 MathFlow separates **Logic Definition** (Graphs) from **Application Configuration** (Manifests). The Host Application (`mf_host`) acts as a generic runtime that is configured by data.
 

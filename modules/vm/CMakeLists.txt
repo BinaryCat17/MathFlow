@@ -1,6 +1,5 @@
 add_library(mf_vm STATIC
     src/mf_vm.c
-    src/mf_vm_parallel.c
 )
 add_library(MathFlow::vm ALIAS mf_vm)
 

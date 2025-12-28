@@ -25,7 +25,7 @@ typedef struct mf_engine_desc {
 // - Context (Symbols)
 //
 // It does NOT contain the execution state (Heap, Registers, Memory Nodes).
-// Those are managed by mf_vm (single-threaded) or mf_scheduler (multi-threaded).
+// Those are managed by mf_vm or dispatched via the Backend.
 typedef struct mf_engine {
     // Memory
     mf_arena arena;
@@ -55,6 +55,18 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog);
 
 // Shuts down the engine and frees the Arena.
 void mf_engine_shutdown(mf_engine* engine);
+
+/**
+ * @brief Dispatches the current program over a 2D domain.
+ * Automatically uses the active backend and thread pool.
+ */
+void mf_engine_dispatch(
+    mf_engine* engine, 
+    u32 count_x, u32 count_y,
+    mf_vm_job_setup_func setup_cb,
+    mf_vm_job_finish_func finish_cb,
+    void* user_data
+);
 
 // --- Instance Management (Optional Helper) ---
 

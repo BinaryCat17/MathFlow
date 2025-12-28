@@ -1,16 +1,17 @@
 #ifndef MF_HOST_HEADLESS_H
 #define MF_HOST_HEADLESS_H
 
-#include <mathflow/engine/mf_engine.h>
+#include <mathflow/host/mf_host_desc.h>
 
 /**
  * @brief Runs the engine in headless mode (CLI).
- * Executes the graph for a specified number of frames and prints output tensors.
+ * Initializes the engine, loads the graph specified in the descriptor,
+ * executes for a specified number of frames, and prints output.
  * 
- * @param engine The initialized engine with a bound program.
+ * @param desc Configuration descriptor (graph path, settings).
  * @param frames Number of frames to simulate.
  * @return int Exit code (0 on success).
  */
-int mf_host_run_headless(mf_engine* engine, int frames);
+int mf_host_run_headless(const mf_host_desc* desc, int frames);
 
 #endif // MF_HOST_HEADLESS_H
