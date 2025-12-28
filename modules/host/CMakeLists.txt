@@ -12,7 +12,7 @@ target_include_directories(mf_host_core
     PRIVATE src
 )
 target_link_libraries(mf_host_core 
-    PUBLIC 
+    PRIVATE 
         cjson
         MathFlow::engine
         MathFlow::loader
@@ -35,6 +35,7 @@ if(TARGET SDL2::SDL2)
             MathFlow::host_core
         PRIVATE
             MathFlow::engine
+            MathFlow::loader
             SDL2::SDL2 
             SDL2::SDL2main
             cjson
