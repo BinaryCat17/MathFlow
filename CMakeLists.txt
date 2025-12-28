@@ -37,6 +37,15 @@ if(UNIX)
     target_link_libraries(mf_platform PUBLIC pthread)
 endif()
 
+# 2c. Scheduler
+add_library(mf_scheduler STATIC
+    modules/scheduler/src/mf_scheduler.c
+)
+target_include_directories(mf_scheduler PUBLIC
+    modules/scheduler/include
+)
+target_link_libraries(mf_scheduler PUBLIC mf_vm mf_platform)
+
 # 3. Compiler (Host Tool)
 add_library(mf_compiler STATIC
     modules/compiler/src/mf_compiler.c
