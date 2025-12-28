@@ -26,6 +26,17 @@ target_include_directories(mf_vm PUBLIC
 )
 target_link_libraries(mf_vm PUBLIC mf_isa)
 
+# 2b. Platform (Threading)
+add_library(mf_platform STATIC
+    modules/platform/src/mf_platform.c
+)
+target_include_directories(mf_platform PUBLIC
+    modules/platform/include
+)
+if(UNIX)
+    target_link_libraries(mf_platform PUBLIC pthread)
+endif()
+
 # 3. Compiler (Host Tool)
 add_library(mf_compiler STATIC
     modules/compiler/src/mf_compiler.c
