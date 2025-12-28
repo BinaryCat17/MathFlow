@@ -143,6 +143,7 @@ graph TD
     Loader --> Compiler
     Engine --> VM
     VM --> ISA
+    Ops --> ISA
     Engine --> Backend
     Backend --> Ops
 ```
