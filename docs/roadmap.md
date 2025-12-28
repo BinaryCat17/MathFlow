@@ -37,6 +37,14 @@
     - **Backend:** CPU Backend calculates offsets per tile and populates the context.
     - **Result:** The graph becomes resolution-independent and fully parallelizable without external "magic" buffers.
 
+## Phase 17.5: Host Cleanup & Modernization
+**Objective:** Clean up the Host code (`mf_host_sdl.c`) to fully utilize the new Phase 17 architecture. Remove legacy "Coordinate Buffer" logic and switch to the new Tiled Dispatch API.
+
+- [ ] **Step 1: Remove Legacy Host Logic:** Delete the code in `mf_host_sdl.c` that manually allocates and fills `u_FragX` / `u_FragY` buffers. The Graph now handles this internally via `Index` ops.
+- [ ] **Step 2: Switch to Tiled Dispatch:** Update `mf_host_run` to call `mf_engine_dispatch(engine, width, height)` instead of the old hacky `dispatch(1, num_tiles)`.
+- [ ] **Step 3: Direct Texture Output:** Optimize the write-back path. Instead of `float->byte` conversion loop, can we render directly to `u8` tensors? Or make `convert_to_pixels` part of the engine via a `Color` node?
+- [ ] **Step 4: Intrinsic Resolution:** Introduce `MF_OP_RESOLUTION` to allow graphs to query canvas size without Host `u_Resolution` uniforms.
+
 ## Phase 18: Advanced State Management (Double Buffering)
 **Objective:** Enable parallel execution for graphs with state (Memory Nodes) by implementing a double-buffering mechanism. This allows "Stateful Shaders" (e.g. Game of Life, fluid sim) to run efficiently on the CPU/GPU without race conditions.
 
