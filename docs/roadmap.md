@@ -42,8 +42,9 @@
 
 - [ ] **Step 1: Memory Model Update:** Update `mf_vm` to handle two sets of buffers for Memory Nodes (Read-Previous / Write-Current).
 - [ ] **Step 2: Buffer Swap:** Implement `mf_engine_swap_buffers()` to be called at the end of a frame.
-- [ ] **Step 3: Engine Logic:** Update `mf_engine_run` (or `dispatch`) to include automatic strategy selection:
-    - **Logic:** If `workload_size > threshold` AND (`Graph is Pure` OR `Double Buffering Active`) -> **Auto-Parallelize**.
+- [ ] **Step 3: Unified Dispatch:** Remove the hardcoded `if (1x1)` check in `mf_engine_dispatch`. Move the execution strategy logic into the Backend. The Backend should intelligently handle single-threaded stateful execution vs multi-threaded stateless execution, unifying the architecture.
+- [ ] **Step 4: Auto-Parallelize:** Update Engine logic to select strategy:
+    - **Logic:** If `workload_size > threshold` AND (`Graph is Pure` OR `Double Buffering Active`) -> **Parallel**.
     - **Goal:** The Host simply requests "Run on this domain", and the Engine utilizes available cores efficiently without manual flags.
 
 
