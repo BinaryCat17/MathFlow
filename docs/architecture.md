@@ -7,7 +7,8 @@ MathFlow is a high-performance, **Data-Oriented** computation engine. It treats 
 
 ## 1. System Overview
 
-**How it works:** You write a graph (JSON). The Host Asset Loader compiles it (if needed), loads it into the Engine, and the VM executes it frame-by-frame.
+**Architecture:** Single State Engine.
+The Engine owns the Code (Arena) and the Data (Heap). Execution is unified under a single `dispatch` API, which automatically scales from single-threaded logic to massive parallel rendering.
 
 ```mermaid
 flowchart LR
@@ -32,8 +33,7 @@ flowchart LR
     %% Execution
     subgraph Run ["Phase: Engine Execution"]
         direction TB
-        Engine["🚂 Engine"]:::proc
-        VM[["🧠 VM (State)"]]:::proc
+        Engine["🚂 Engine (Single State)"]:::proc
         Backend["🔌 Backend"]:::hw
         Ops["💪 Math Kernels"]:::hw
     end
@@ -48,21 +48,44 @@ flowchart LR
     Compiler -- "Generates" --> Binary
     Loader -- "Binds Program" --> Engine
     
-    Engine -- "Starts" --> VM
-    
-    %% The Interactive Loop
-    Input -- "Events" --> VM
-    VM -- "Dispatches" --> Backend
-    Backend -- "Calls (via Ctx)" --> Ops
-    Ops -. "Updates Memory" .-> VM
-    VM -- "Pixels" --> Screen
+    Input -- "Writes Uniforms" --> Engine
+    Engine -- "Dispatches" --> Backend
+    Backend -- "Calls" --> Ops
+    Ops -. "Updates Memory" .-> Engine
+    Engine -- "Reads Result" --> Screen
 ```
 
 ---
 
-## 2. Modules
+## 2. Core Concepts
 
-The codebase is organized in layers. High-level apps sit on top, orchestrating the Engine via the Host Framework.
+### 2.1. Single State Engine
+The `mf_engine` is the "Computer". It creates and owns the entire runtime environment.
+*   **Encapsulation:** It hides the internal VM, Heap, and Thread Pool behind an opaque handle.
+*   **Single Source of Truth:** All data (tensors) lives in the Engine's Heap. There are no separate "Instance" objects anymore.
+
+### 2.2. Unified Dispatch
+MathFlow uses a smart dispatch system to handle both Logic (Script) and Graphics (Shader) workloads without explicit mode switching.
+
+*   **Script Mode (Stateful):**
+    *   **Call:** `mf_engine_dispatch(engine, 1, 1, ...)`
+    *   **Behavior:** Executes on the **Main VM**. Persists state (Heap) between calls.
+    *   **Use Case:** Game Logic, Physics, CLI Tools, One-shot calculations.
+
+*   **Shader Mode (Stateless/Parallel):**
+    *   **Call:** `mf_engine_dispatch(engine, Width, Height, ...)`
+    *   **Behavior:** Delegates to the **Backend**. The Backend spins up transient workers (e.g., in a Thread Pool) to process the domain in parallel.
+    *   **Use Case:** Rendering, Image Processing, Particle Systems.
+
+### 2.3. Memory Model
+*   **Arena (Static):** Stores Program Code, Constants, Symbol Table. Allocated once at startup.
+*   **Heap (Dynamic):** Stores Tensor Data (Variables). The main working memory.
+
+---
+
+## 3. Modules Detail
+
+The codebase is organized in layers, ensuring separation of concerns.
 
 ```mermaid
 graph TD
@@ -81,7 +104,6 @@ graph TD
     %% Layer 2: Host
     subgraph L2 ["Layer 2: Host Framework"]
         HostCore["📜 Host Core"]:::layerHost
-        HostCLI["⌨️ Host CLI (Headless)"]:::layerHost
         HostSDL["🔌 Host SDL (GUI)"]:::layerHost
     end
 
@@ -104,134 +126,77 @@ graph TD
         ISA["📜 ISA (The Contract)"]:::layerBase
     end
 
-    %% Dependencies (Control Flow)
+    %% Dependencies
     App_GUI --> HostSDL
-    App_CLI --> HostCLI
-    
     HostSDL --> HostCore
-    HostCLI --> HostCore
-    
     HostCore --> Engine
-    HostCore --> Compiler
-    
     Engine --> VM
-    
-    %% Core drives Compute
     VM --> Backend
     Backend --> Ops
-    
-    %% Key dependencies on Foundation
     Compiler -.-> ISA
-    VM -.-> ISA
-    Ops -.-> ISA
 ```
 
-### 2.0. Engine (`modules/engine`)
-*   **Role:** The "Runtime Owner". Pure execution environment.
-*   **Responsibility:**
-    *   Manages the **Static Lifecycle**: Allocates the Arena (Program memory).
-    *   **Program Binding:** Accepts a binary `mf_program` via `mf_engine_bind_program`. Does **not** handle file loading or compilation.
-    *   **Instance Factory:** Creates execution instances (`mf_instance`) bundling a VM with Heap memory.
+### 3.1. Engine (`modules/engine`)
+The public face of the runtime.
+*   **API:** `mf_engine_create`, `mf_engine_bind_program`, `mf_engine_dispatch`.
+*   **Responsibility:** Lifecycle management, Resource ownership, Dispatch logic.
 
-### 2.1. ISA (`modules/isa`)
-*   **Role:** The "Contract". Defines the Instruction Set and Interfaces.
-*   **Content:**
-    *   **Opcodes:** `MF_OP_ADD`, `MF_OP_COPY`, etc.
-    *   **Formats:** Binary Header, Instruction structs.
-    *   **Kernel Interface:** `mf_kernel_ctx` — the abstraction layer allowing Ops to access memory without knowing about the VM.
-    *   **Dispatch Table:** `mf_dispatch_table` — bridges the Runtime to the Kernels.
+### 3.2. ISA (`modules/isa`)
+The "Contract" defining the Instruction Set and Interfaces.
+*   **Opcodes:** `MF_OP_ADD`, `MF_OP_COPY`, etc.
+*   **Formats:** Binary Header, Instruction structs (`mf_instruction`).
+*   **Kernel Interface:** `mf_kernel_ctx` — abstraction allowing Ops to run without VM dependency.
+*   **Dispatch Table:** `mf_dispatch_table` — bridges Runtime to Kernels.
 
-### 2.2. Virtual Machine (`modules/vm`)
-*   **Role:** The "Runner". Executes logic sequentially or in parallel.
-*   **Key Responsibilities:**
-    *   **Execution State:** Manages the Heap (Variables).
-    *   **Implementation:** Implements `mf_kernel_ctx` to provide memory access to Ops.
-    *   **Parallelism:** Executes over a thread pool.
+### 3.3. Virtual Machine (`modules/vm`)
+The internal Bytecode Interpreter.
+*   **Role:** Executes the program instructions sequentially.
+*   **Usage:** Used directly by the Engine for "Script Mode", and by the Backend for "Worker Threads".
 
-### 2.4. Platform (`modules/base`)
-*   **Role:** OS Abstraction Layer.
-*   **Content:** Threads, Mutexes, Atomics, Memory Allocators.
+### 3.4. Compiler (`modules/compiler`)
+Translates JSON Graphs to Binary Bytecode (`mf_program`).
+*   **Role:** Optimization, Flattening of sub-graphs, Validation.
+*   **Independence:** Can be used standalone (offline build) or via the Host Loader (JIT).
 
-### 2.5. Host (`modules/host`)
-*   **Role:** Application Framework & Orchestration.
-*   **Structure:**
-    *   **`Host Core` (`mf_host_core`):** 
-        *   **Manifest Loader:** Parses `.mfapp`.
-        *   **Asset Loader:** Compiles `.json` (using `mf_compiler`) or loads `.bin`.
-        *   **Headless Runtime:** CLI execution loop.
-    *   **`Host SDL` (`mf_host_sdl`):** GUI implementation using SDL2.
+### 3.5. Backend: CPU (`modules/backend_cpu`)
+Reference implementation of parallel execution.
+*   **Role:** Manages the Thread Pool.
+*   **Dispatch:** Splits the (Width x Height) domain into tiles and assigns them to worker threads.
 
-### 2.6. Backend: CPU (`modules/backend_cpu`)
-*   **Role:** Reference Implementation.
-*   **Responsibility:** Fills the Dispatch Table with CPU kernel function pointers.
-
-### 2.7. Operations (`modules/ops`)
-*   **Role:** Pure Math Kernels.
-*   **Design:** Stateless functions accepting `mf_kernel_ctx`. No dependency on `VM`.
-*   **Utils:** `mf_kernel_utils.h` provides shape resolution and broadcasting helpers.
-
----
-
-## 3. Sub-Graphs (Modularity)
-
-MathFlow supports modularity through a "Call-by-Inlining" mechanism. This allows creating complex logic from simple, reusable primitives.
-
-### 3.1. The "Call" Node
-A `Call` node references another `.json` file. During compilation, the parser:
-1.  Loads the target graph.
-2.  **Prefixing:** Adds the caller node's ID as a prefix to all internal nodes (e.g., `button_1::circle::sdf`) to ensure unique names.
-3.  **Interface Mapping:**
-    *   `ExportInput`: Maps parent `links` (by port index) to internal sub-graph entry points.
-    *   `ExportOutput`: Maps internal results back to parent ports.
-4.  **Flattening:** Merges the expanded node list into the main graph IR.
-
-### 3.2. Relative Path Resolution
-The compiler supports relative paths within sub-graphs. If `A.json` calls `B.json` and `B.json` calls `C.json`, the path to `C` is resolved relative to the location of `B`.
+### 3.6. Host (`modules/host`)
+Application Framework & Orchestration.
+*   **`Host Core`:** Manifest parsing, Asset loading (JSON/BIN), Headless runner.
+*   **`Host SDL`:** SDL2 integration, Window management, Input handling, Texture update.
 
 ---
 
 ## 4. The Standard Protocol (Shader Mode)
 
-MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader. This section describes the standard interface used in **Shader Mode**.
+This section describes how the Host interacts with the Engine to render visuals.
 
 ### 4.1. I/O Protocol (Symbol Table)
-The Host Application interacts with the VM using Named Registers:
-1.  **Host Initialization:** `time_reg = mf_vm_find_register(vm, "u_Time")`.
-2.  **Per-Frame:** Write value to `time_reg`.
-3.  **Execution:** `mf_vm_exec(vm)` (or `mf_vm_exec_parallel` for tiled rendering).
-4.  **Readback:** Read from `mf_vm_find_register(vm, "out_Color")`.
+The Host Application interacts with the VM using Named Registers (Uniforms):
+1.  **Map:** `ptr = mf_engine_map_tensor(engine, "u_Time")`.
+2.  **Write:** Update `*ptr` with new time per frame.
+3.  **Dispatch:** `mf_engine_dispatch(engine, 800, 600)`.
+4.  **Read:** Read from `mf_engine_map_tensor(engine, "out_Color")`.
 
 ### 4.2. State Management
 To support interactive UI (toggles, animations) without external logic:
 *   **`MF_NODE_MEMORY`:** Acts as a "delay" line. Outputs the value from the *previous* frame.
 *   **Cycle Breaking:** The compiler treats Memory nodes as inputs (Roots) for the current frame to resolve dependency cycles.
-*   **`MF_OP_COPY`:** At the end of the frame, the VM executes hidden copy instructions to update Memory nodes.
 
 ---
 
-## 5. Memory Model
+## 5. Application Layer (Manifest)
 
-### 5.1. Dual-Allocator Strategy
-1.  **Arena (Static - Engine Owned):** Stores the Program Code, Constants, Symbol Table, and Tensor Metadata. Allocated once at startup.
-2.  **Heap (Dynamic - VM Owned):** Stores Tensor Data (Variables). Supports `realloc` for dynamic resizing (e.g., resolution change).
+MathFlow separates **Logic Definition** (Graphs) from **Application Configuration** (Manifests).
 
-### 5.2. Tensor Ownership
-*   **Constants:** Stored in the Program Binary (Arena).
-*   **Variables:** Allocated in the VM Heap.
-*   **View (Planned):** Support for referencing external memory (e.g., direct write to SDL Surface or GPU Buffer).
-
----
-
-## 6. The Application Layer
-
-MathFlow separates **Logic Definition** (Graphs) from **Application Configuration** (Manifests). The Host Application (`mf_host`) acts as a generic runtime that is configured by data.
-
-### 6.1. Manifest (`.mfapp`)
+### 5.1. Manifest (`.mfapp`)
 A JSON file that defines *how* to run a graph.
 ```json
 {
     "runtime": {
-        "type": "shader",           // Execution Strategy
         "entry": "../graphs/ui.json" // Relative path to logic
     },
     "window": {
@@ -243,18 +208,17 @@ A JSON file that defines *how* to run a graph.
 }
 ```
 
-### 6.2. Execution Modes
-The Manifest dictates the runtime strategy:
+*Note: The explicit "type" ("script"/"shader") has been deprecated in favor of automatic dispatch strategy based on the domain size.*
 
-1.  **Shader Mode (`MF_HOST_RUNTIME_SHADER`):**
-    *   **Goal:** Visuals, UI, Image Processing.
-    *   **Architecture:** Parallel VM execution over a thread pool.
-    *   **Behavior:** The screen is split into tiles. The Graph is executed in parallel for every pixel/tile.
-    *   **State:** Generally stateless per frame (like a Fragment Shader), though `Memory` nodes allow inter-frame persistence (simulated via double-buffering).
-    *   **Host Logic:** Renders to a texture at 60 FPS.
+---
 
-2.  **Script Mode (`MF_HOST_RUNTIME_SCRIPT`):**
-    *   **Goal:** Game Logic, Data Processing, CLI Tools.
-    *   **Architecture:** Single-threaded, Stateful.
-    *   **Behavior:** The Graph runs once per "tick". State persists naturally in the VM Heap.
-    *   **Host Logic:** Runs the loop and prints debug output (`out_Color`) to the console.
+## 6. Sub-Graphs (Modularity)
+
+MathFlow supports modularity through a "Call-by-Inlining" mechanism.
+
+### 6.1. The "Call" Node
+A `Call` node references another `.json` file. During compilation, the parser:
+1.  **Loads** the target graph.
+2.  **Prefixes** internal nodes to ensure unique names.
+3.  **Maps** inputs/outputs to internal ports.
+4.  **Flattens** the result into the main graph IR.

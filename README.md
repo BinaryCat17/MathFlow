@@ -70,9 +70,12 @@ For deep dives into the system design:
 
 *   `modules/`
     *   `isa/` - Instruction Set Architecture definitions (The Contract).
-    *   `vm/` - Virtual Machine core, Memory management, Accessor API.
+    *   `engine/` - The Runtime Core (API, Memory, Dispatch).
+    *   `vm/` - Internal Bytecode Interpreter.
     *   `compiler/` - Translates JSON Graphs to Bytecode (`mf_program`).
-    *   `backend_cpu/` - Reference C11 implementation of math operations.
+    *   `backend_cpu/` - Parallel CPU Execution (Thread Pool).
+    *   `host/` - Application Framework (Window, Input, Loading).
 *   `apps/`
     *   `mf-runner/` - CLI tool for testing and execution.
+    *   `mf-window/` - GUI tool for real-time visualization.
 *   `assets/` - Test graphs and data.
