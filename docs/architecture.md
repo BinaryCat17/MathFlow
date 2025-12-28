@@ -128,7 +128,7 @@ graph TD
     %% Layer 5: Contracts
     subgraph L5 ["Layer 5: Foundation & Contracts"]
         ISA["ISA (The Contract)"]:::layerBase
-        Base["Base (Memory/Utils)"]:::layerBase
+        Base["Base (Common Foundation)"]:::layerBase
     end
 
     %% Dependencies (Build Time)
@@ -148,8 +148,7 @@ graph TD
     VM --> ISA
     Ops --> ISA
     
-    %% Base is implicit foundation
-    ISA --> Base
+    %% Base is implicit dependency for ALL modules
 ```
 
 ### 3.1. Engine (`modules/engine`)
