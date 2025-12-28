@@ -1,7 +1,6 @@
 #include <mathflow/host/mf_host.h>
-#include <mathflow/compiler/mf_compiler.h>
+#include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
-#include <mathflow/backend_cpu/mf_backend_cpu.h>
 #include <mathflow/scheduler/mf_scheduler.h>
 #include <mathflow/platform/mf_platform.h>
 
@@ -239,31 +238,19 @@ int mf_host_run(const mf_host_desc* desc) {
     SDL_Texture* texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, desc->width, desc->height);
 
     // --- MathFlow Init ---
-    // Persistent Allocator for Program
-    void* arena_mem = malloc(16 * 1024 * 1024);
-    mf_arena arena;
-    mf_arena_init(&arena, arena_mem, 16 * 1024 * 1024);
+    
+    mf_engine_desc engine_desc = {0};
+    engine_desc.arena_size = 16 * 1024 * 1024; // 16 MB
 
-    mf_backend_dispatch_table dispatch;
-    mf_backend_cpu_init(&dispatch);
+    mf_engine engine;
+    mf_engine_init(&engine, &engine_desc);
 
-    mf_graph_ir ir = {0};
-    if (!mf_compile_load_json(desc->graph_path, &ir, &arena)) {
+    if (!mf_engine_load_graph(&engine, desc->graph_path)) {
         printf("[Host] Failed to load graph: %s\n", desc->graph_path);
-        // Clean up
-        free(arena_mem); SDL_DestroyWindow(window); SDL_Quit();
+        mf_engine_shutdown(&engine);
+        SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
-
-    mf_program* prog = mf_compile(&ir, &arena);
-    if (!prog) {
-        printf("[Host] Compilation failed.\n");
-        free(arena_mem); SDL_DestroyWindow(window); SDL_Quit();
-        return 1;
-    }
-
-    mf_context ctx;
-    mf_context_init(&ctx, prog, &dispatch);
     
     // --- Scheduler ---
     int num_threads = desc->num_threads;
@@ -282,7 +269,7 @@ int mf_host_run(const mf_host_desc* desc) {
     job_ctx.pixels = frame_buffer;
 
     // Cache Registers
-    mf_vm temp_vm; temp_vm.ctx = &ctx; 
+    mf_vm temp_vm; temp_vm.ctx = &engine.ctx; 
     job_ctx.r_time   = mf_vm_find_register(&temp_vm, "u_Time");
     job_ctx.r_res    = mf_vm_find_register(&temp_vm, "u_Resolution");
     job_ctx.r_resx   = mf_vm_find_register(&temp_vm, "u_ResX");
@@ -332,7 +319,7 @@ int mf_host_run(const mf_host_desc* desc) {
         job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
         
         // Execute
-        mf_scheduler_run(scheduler, &ctx, tile_count, host_job_setup, host_job_finish, &job_ctx);
+        mf_scheduler_run(scheduler, &engine.ctx, tile_count, host_job_setup, host_job_finish, &job_ctx);
         
         // Render
         SDL_UpdateTexture(texture, NULL, frame_buffer, job_ctx.width * 4);
@@ -343,7 +330,9 @@ int mf_host_run(const mf_host_desc* desc) {
     // --- Cleanup ---
     free(frame_buffer);
     mf_scheduler_destroy(scheduler);
-    free(arena_mem);
+    
+    mf_engine_shutdown(&engine);
+
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

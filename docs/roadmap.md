@@ -123,18 +123,17 @@
 ## Phase 13: Engine Unification (Refactoring)
 **Objective:** Eliminate code duplication between CLI runner and GUI host by introducing a unified `mf_engine` layer. This creates a standard way to initialize MathFlow without depending on a windowing system.
 
-- [ ] **Step 1: The Engine Module (`modules/engine`):
-    - Create `modules/engine` to handle the lifecycle of:
-        - Memory (Arena/Heap).
-        - Compilation (Loading JSON/BIN).
-        - Context & Backend setup.
+- [ ] **Step 1: The Engine Module (`modules/engine`):**
+    - Create `mf_engine` struct that owns: `mf_context`, `mf_program`, `mf_arena`.
+    - Implement `mf_engine_init(mf_engine* engine, const mf_engine_desc* desc)`.
+    - Implement `mf_engine_load_graph(mf_engine* engine, const char* path)` (handles both .json and .bin).
     - **Constraint:** Must be Pure C (no SDL/Graphics dependencies).
 - [ ] **Step 2: Refactor `mf-runner`:**
-    - Rewrite CLI tool to use `mf_engine`.
-    - Reduce `apps/mf-runner/src/main.c` to a simple command-line wrapper.
+    - Rewrite CLI tool to use `mf_engine` for loading.
+    - Initialize `mf_vm` from `engine->context` for single-threaded execution.
 - [ ] **Step 3: Refactor `mf_host`:**
     - Update `mf_host` to wrap `mf_engine` internal instance.
-    - Decouple "Math Logic" from "Window Logic".
+    - Initialize `mf_scheduler` from `engine->context` for multi-threaded execution.
 
 ## Phase 14: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.

@@ -85,7 +85,20 @@ target_include_directories(mf_backend_cpu PUBLIC
 )
 target_link_libraries(mf_backend_cpu PUBLIC mf_vm mf_ops_core mf_ops_array)
 
-# 7. Host (SDL2 Application Framework)
+# 7. Engine (Unified Runtime & Loader)
+add_library(mf_engine STATIC
+    modules/engine/src/mf_engine.c
+)
+target_include_directories(mf_engine PUBLIC
+    modules/engine/include
+)
+target_link_libraries(mf_engine PUBLIC 
+    mf_vm 
+    mf_compiler 
+    mf_backend_cpu
+)
+
+# 8. Host (SDL2 Application Framework)
 # Only build if SDL2 is found
 find_package(SDL2 CONFIG QUIET)
 if(TARGET SDL2::SDL2)
@@ -96,10 +109,8 @@ if(TARGET SDL2::SDL2)
         modules/host/include
     )
     target_link_libraries(mf_host PUBLIC 
-        mf_vm 
-        mf_compiler 
+        mf_engine
         mf_scheduler 
-        mf_backend_cpu 
         SDL2::SDL2 
         SDL2::SDL2main
     )
@@ -113,9 +124,7 @@ endif()
 # CLI Runner
 add_executable(mf-runner apps/mf-runner/src/main.c)
 target_link_libraries(mf-runner PRIVATE 
-    mf_vm 
-    mf_compiler 
-    mf_backend_cpu
+    mf_engine
 )
 
 # Window Visualizer

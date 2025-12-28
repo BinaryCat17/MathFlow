@@ -1,16 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mathflow/isa/mf_tensor.h>
+#include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
-#include <mathflow/compiler/mf_compiler.h>
-#include <mathflow/backend_cpu/mf_backend_cpu.h>
-
-static const char* get_filename_ext(const char *filename) {
-    const char *dot = strrchr(filename, '.');
-    if(!dot || dot == filename) return "";
-    return dot + 1;
-}
 
 static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     if (!t || !t->data) {
@@ -19,7 +11,7 @@ static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     }
     
     printf("  [%u] ", idx);
-    if (name) printf("'%s' ", name);
+    if (name) printf("'%s' ", name); 
     
     // Print Shape
     printf("Shape: [");
@@ -70,56 +62,32 @@ int main(int argc, char** argv) {
 
     printf("MathFlow Tensor Runner. Loading: %s\n", path);
 
-    // 1. Setup Memory
-    // Arena for Program Code & Metadata
-    size_t arena_size = MF_MB(8); 
-    void* arena_buffer = malloc(arena_size);
-    mf_arena arena;
-    mf_arena_init(&arena, arena_buffer, arena_size);
+    // 1. Initialize Engine (Code, Constants, Backend)
+    mf_engine engine;
+    mf_engine_init(&engine, NULL);
 
+    if (!mf_engine_load_graph(&engine, path)) {
+        printf("Error: Failed to load graph.\n");
+        mf_engine_shutdown(&engine);
+        return 1;
+    }
+
+    printf("Program: %u tensors, %u insts\n", engine.program->meta.tensor_count, engine.program->meta.instruction_count);
+
+    // 2. Setup Execution State (Heap, VM)
     // Heap for Tensor Data (Dynamic)
     size_t heap_size = MF_MB(64); 
-    void* heap_buffer = malloc(heap_size);
+    void* heap_buffer = malloc(heap_size); 
     mf_heap heap;
     mf_heap_init(&heap, heap_buffer, heap_size);
 
-    mf_program* prog = NULL;
-    const char* ext = get_filename_ext(path);
-
-    // 2. Load / Compile
-    if (strcmp(ext, "json") == 0) {
-        mf_graph_ir ir = {0};
-        if (!mf_compile_load_json(path, &ir, &arena)) {
-            printf("Error: Failed to parse JSON or expand graph.\n");
-            free(arena_buffer); free(heap_buffer); return 1;
-        }
-        
-        prog = mf_compile(&ir, &arena);
-    } else if (strcmp(ext, "bin") == 0) {
-        prog = mf_vm_load_program_from_file(path, &arena);
-    }
-
-    if (!prog) {
-        printf("Error: Failed to generate program.\n");
-        free(arena_buffer); free(heap_buffer); return 1;
-    }
-
-    printf("Program: %u tensors, %u insts\n", prog->meta.tensor_count, prog->meta.instruction_count);
-
-    // 3. Setup Backend & Context & VM
-    mf_backend_dispatch_table cpu_backend;
-    mf_backend_cpu_init(&cpu_backend);
-    
-    mf_context ctx;
-    mf_context_init(&ctx, prog, &cpu_backend);
-
     mf_vm vm;
-    mf_vm_init(&vm, &ctx, (mf_allocator*)&heap);
+    mf_vm_init(&vm, &engine.ctx, (mf_allocator*)&heap);
     
-    // Alloc registers
-    mf_vm_reset(&vm, &arena);
+    // Alloc registers & Memory Nodes
+    mf_vm_reset(&vm, &engine.arena);
     
-    // 4. Execute
+    // 3. Execute
     printf("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
         mf_vm_exec(&vm);
@@ -139,16 +107,14 @@ int main(int argc, char** argv) {
                     }
                 }
 
-                // Heuristic to find 'interesting' tensors (non-constant inputs)
-                // For now just dump everything for small graphs
-                if (prog->meta.tensor_count < 20) {
+                if (engine.program->meta.tensor_count < 20) {
                     print_tensor(i, name, t);
                 }
              }
         }
     }
     
-    // 5. Dump All Tensors
+    // 4. Dump All Tensors
     printf("\n--- Execution Finished ---\n");
     for(u32 i=0; i<vm.register_count; ++i) {
         mf_tensor* t = mf_vm_map_tensor(&vm, i, MF_ACCESS_READ);
@@ -163,13 +129,13 @@ int main(int argc, char** argv) {
         print_tensor(i, name, t);
     }
 
-    // 6. Cleanup
+    // 5. Cleanup
     printf("\n[Memory Stats] Used: %zu, Peak: %zu, Allocations: %zu\n", 
            heap.used_memory, heap.peak_memory, heap.allocation_count);
 
     mf_vm_shutdown(&vm);
-
-    free(arena_buffer);
     free(heap_buffer);
+    
+    mf_engine_shutdown(&engine);
     return 0;
 }
