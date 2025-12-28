@@ -1,7 +1,6 @@
 #include <mathflow/host/mf_host.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
-#include <mathflow/scheduler/mf_scheduler.h>
 #include <mathflow/base/mf_platform.h>
 
 #include <SDL2/SDL.h>
@@ -245,6 +244,7 @@ int mf_host_run(const mf_host_desc* desc) {
     
     mf_engine_desc engine_desc = {0};
     engine_desc.arena_size = 16 * 1024 * 1024; // 16 MB
+    engine_desc.num_threads = desc->num_threads;
 
     mf_engine engine;
     mf_engine_init(&engine, &engine_desc);
@@ -257,7 +257,7 @@ int mf_host_run(const mf_host_desc* desc) {
     }
     
     // --- Strategy Setup ---
-    mf_scheduler* scheduler = NULL;
+    bool use_parallel = (desc->runtime_type == MF_HOST_RUNTIME_SHADER);
     
     // Script Mode State
     mf_vm vm_script;
@@ -266,11 +266,8 @@ int mf_host_run(const mf_host_desc* desc) {
     u8 arena_mem[4096];
     mf_arena arena_script;
 
-    if (desc->runtime_type == MF_HOST_RUNTIME_SHADER) {
-        int num_threads = desc->num_threads;
-        if (num_threads <= 0) num_threads = mf_cpu_count();
-        scheduler = mf_scheduler_create(num_threads);
-        printf("[Host] Mode: Shader (Parallel), Threads: %d\n", num_threads);
+    if (use_parallel) {
+        printf("[Host] Mode: Shader (Parallel), Threads: %d\n", mf_thread_pool_get_thread_count(engine.pool));
     } else {
         printf("[Host] Mode: Script (Single Thread)\n");
         size_t heap_size = 16 * 1024 * 1024; // 16 MB Heap
@@ -315,11 +312,12 @@ int mf_host_run(const mf_host_desc* desc) {
     u32 start_time = SDL_GetTicks();
     
     // Tiling
-    int tile_count = (scheduler) ? (mf_scheduler_get_thread_count(scheduler) > 4 ? mf_scheduler_get_thread_count(scheduler) : 4) : 1; 
+    int pool_threads = mf_thread_pool_get_thread_count(engine.pool);
+    int tile_count = use_parallel ? (pool_threads > 4 ? pool_threads : 4) : 1; 
     job_ctx.tile_count = tile_count;
 
     // SCRIPT MODE: Init State Once
-    if (!scheduler) {
+    if (!use_parallel) {
         mf_vm_reset(&vm_script, &arena_script);
     }
 
@@ -342,9 +340,9 @@ int mf_host_run(const mf_host_desc* desc) {
         
         job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
         
-        if (scheduler) {
+        if (use_parallel) {
             // SHADER MODE: Parallel
-            mf_scheduler_run(scheduler, &engine.ctx, tile_count, host_job_setup, host_job_finish, &job_ctx);
+            mf_vm_exec_parallel(&engine.ctx, engine.pool, tile_count, host_job_setup, host_job_finish, &job_ctx);
         } else {
             // SCRIPT MODE: Single Threaded, Stateful
             // Do NOT reset VM here (preserves heap and registers)
@@ -382,7 +380,6 @@ int mf_host_run(const mf_host_desc* desc) {
     
     // --- Cleanup ---
     free(frame_buffer);
-    if (scheduler) mf_scheduler_destroy(scheduler);
     if (heap_mem) free(heap_mem);
     
     mf_engine_shutdown(&engine);

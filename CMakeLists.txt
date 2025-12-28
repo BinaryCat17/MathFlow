@@ -20,6 +20,7 @@ target_include_directories(mf_isa INTERFACE
 add_library(mf_base STATIC
     modules/base/src/mf_memory.c
     modules/base/src/mf_platform.c
+    modules/base/src/mf_thread_pool.c
 )
 target_include_directories(mf_base PUBLIC
     modules/base/include
@@ -31,20 +32,12 @@ endif()
 # 2a. VM (Runtime)
 add_library(mf_vm STATIC
     modules/vm/src/mf_vm.c
+    modules/vm/src/mf_vm_parallel.c
 )
 target_include_directories(mf_vm PUBLIC
     modules/vm/include
 )
 target_link_libraries(mf_vm PUBLIC mf_isa mf_base)
-
-# 2c. Scheduler
-add_library(mf_scheduler STATIC
-    modules/scheduler/src/mf_scheduler.c
-)
-target_include_directories(mf_scheduler PUBLIC
-    modules/scheduler/include
-)
-target_link_libraries(mf_scheduler PUBLIC mf_vm mf_base)
 
 # 3. Compiler (Host Tool)
 add_library(mf_compiler STATIC
@@ -103,7 +96,6 @@ if(TARGET SDL2::SDL2)
     )
     target_link_libraries(mf_host PUBLIC 
         mf_engine
-        mf_scheduler 
         SDL2::SDL2 
         SDL2::SDL2main
         cjson

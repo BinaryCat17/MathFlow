@@ -7,65 +7,116 @@ MathFlow is a high-performance, **Data-Oriented** computation engine. It treats 
 
 ## 1. System Overview
 
-The project is structured as a **Monorepo** with strict decoupling between Definition (ISA), Resource Management (Engine), Translation (Compiler), and Execution (VM/Scheduler).
+**How it works:** You write a graph (JSON). The Engine compiles it, loads it into memory, and the VM executes it frame-by-frame using high-performance math kernels.
 
 ```mermaid
-flowchart TD
-    %% Assets
-    JSON("Graph file .json")
-    BIN("Program Binary .bin")
+flowchart LR
+    %% Styles
+    classDef file fill:#fff,stroke:#333,stroke-width:1px,stroke-dasharray: 5 5;
+    classDef proc fill:#eef,stroke:#33a,stroke-width:2px;
+    classDef memory fill:#fee,stroke:#a33,stroke-width:2px;
+    classDef hw fill:#efe,stroke:#3a3,stroke-width:2px;
 
-    %% Module: Engine
-    subgraph EngineMod ["Module: Engine (Resource Manager)"]
-        Engine[Engine Core]
-        Arena[Arena Allocator]
-        Program[Program Data]
-        Context[Execution Context]
+    %% Data
+    User((User))
+    Source["📄 Graph (.json)"]:::file
+    Binary[("💾 Program (.bin)")]:::memory
+
+    %% Compilation
+    subgraph Build ["Phase: Build & Load"]
+        direction TB
+        Compiler["⚙️ Compiler"]:::proc
     end
 
-    %% Module: Compiler
-    subgraph CompilerMod ["Module: Compiler"]
-        Parser[JSON Parser]
-        Semantics[Semantics & Inference]
-        CodeGen[CodeGen & Optimizer]
+    %% Execution
+    subgraph Run ["Phase: Execution Loop"]
+        direction TB
+        Engine["🚂 Engine"]:::proc
+        VM[["🧠 VM (State)"]]:::proc
+        Backend["🔌 Backend"]:::hw
+        Ops["💪 Math Kernels"]:::hw
     end
 
-    %% Execution Strategies
-    subgraph ExecStrat ["Execution Strategies"]
-        VM["VM (Single-Threaded)"]
-        Scheduler["Scheduler (Multi-Threaded)"]
-    end
-
-    %% Backends
-    subgraph BackendMod ["Module: Backends & Ops"]
-        Interface[Dispatch Interface]
-        CPU[CPU Backend]
-        OpsCore["Ops: Core Math"]
-        OpsArray["Ops: Array Utils"]
-    end
+    Input["🖱️ Input"]:::hw
+    Screen["🖥️ Screen"]:::hw
 
     %% Flow
-    JSON --> Parser --> Semantics --> CodeGen --> BIN
+    User -- "Edits" --> Source
+    Source -- "Parses" --> Compiler
+    Compiler -- "Generates" --> Binary
     
-    BIN -.-> Engine
-    Engine --> Arena
-    Engine --> Program
-    Engine --> Context
+    Binary -- "Loads into" --> Engine
+    Engine -- "Starts" --> VM
     
-    Context --> VM
-    Context --> Scheduler
-    
-    VM <--> Interface
-    Scheduler <--> Interface
-    
-    Interface -.-> CPU
-    CPU -.-> OpsCore
-    CPU -.-> OpsArray
+    %% The Interactive Loop
+    Input -- "Events" --> VM
+    VM -- "Dispatches" --> Backend
+    Backend -- "Calls" --> Ops
+    Ops -. "Updates Memory" .-> VM
+    VM -- "Pixels" --> Screen
 ```
 
 ---
 
 ## 2. Modules
+
+The codebase is organized in layers. High-level apps sit on top, orchestrating the Engine, which relies on the Core Logic, backed by the Low-Level Foundation.
+
+```mermaid
+graph TD
+    %% Styles
+    classDef layerApp fill:#dce,stroke:#86b,stroke-width:2px;
+    classDef layerHost fill:#cde,stroke:#68b,stroke-width:2px;
+    classDef layerCore fill:#dec,stroke:#6b8,stroke-width:2px;
+    classDef layerBase fill:#edd,stroke:#b66,stroke-width:2px;
+
+    %% Layer 1: Apps
+    subgraph L1 ["Layer 1: The User Experience"]
+        App_GUI["🖼️ mf-window"]:::layerApp
+        App_CLI["⌨️ mf-runner"]:::layerApp
+    end
+
+    %% Layer 2: Host
+    subgraph L2 ["Layer 2: Host Framework"]
+        Host["🔌 Host (SDL2 / Input)"]:::layerHost
+    end
+
+    %% Layer 3: Core
+    subgraph L3 ["Layer 3: System Core"]
+        Engine["🚂 Engine (Resources)"]:::layerCore
+        VM["🧠 Virtual Machine"]:::layerCore
+        Compiler["⚙️ Compiler"]:::layerCore
+    end
+
+    %% Layer 4: Compute
+    subgraph L4 ["Layer 4: Compute Providers"]
+        Backend["🔌 Backend Interface"]:::layerBase
+        Ops["💪 Math Kernels"]:::layerBase
+    end
+
+    %% Layer 5: Foundation
+    subgraph L5 ["Layer 5: Project Foundation"]
+        Base["🧱 Base (Mem/Threads)"]:::layerBase
+        ISA["📜 ISA (The Contract)"]:::layerBase
+    end
+
+    %% Dependencies (Control Flow)
+    App_GUI --> Host
+    App_CLI --> Host
+    
+    Host --> Engine
+    Engine --> VM
+    Engine --> Compiler
+    
+    %% Core drives Compute
+    VM --> Backend
+    Backend --> Ops
+    
+    %% Key dependencies on Foundation
+    Compiler -.-> ISA
+    VM -.-> ISA
+    Ops -.-> Base
+```
 
 ### 2.0. Engine (`modules/engine`)
 *   **Role:** The "Owner". Unified Resource Manager.
@@ -80,46 +131,31 @@ flowchart TD
 *   **Versioning:** Includes a versioned binary format to ensure backward compatibility.
 
 ### 2.2. Virtual Machine (`modules/vm`)
-*   **Role:** The "Runner" (Single-Threaded).
-*   **Concept:** Acts like a **CPU**. Executes logic sequentially.
+*   **Role:** The "Runner". Executes logic sequentially or in parallel.
+*   **Concept:** Acts as the central execution engine.
 *   **Key Responsibilities:**
     *   **Execution State:** Manages the Heap (Variables) globally for the instance.
-    *   **Use Case:** Game logic, sequential scripts, state machines (where order matters and side-effects exist).
+    *   **Parallelism:** Can execute bytecode over a domain (e.g., pixels) using a thread pool from `base`.
+    *   **Use Case:** Everything from simple game logic to complex parallel rendering.
     *   **Symbol Table Access:** Uses the Engine's context to map names to registers.
 
-### 2.3. Compiler (`modules/compiler`)
-*   **Role:** The Translator.
-*   **Structure:**
-    *   `mf_json_parser`: Converts JSON to Intermediate Representation (IR). Performs **Recursive Expansion** (Inlining) of Sub-Graphs.
-    *   `mf_semantics`: Performs Shape Inference and Type Checking.
-    *   `mf_codegen`: Topological Sort (Cycle Breaking for State nodes), Register Allocation, and Bytecode generation.
-*   **Expansion Logic:** Sub-graphs are completely flattened during the parsing phase. The VM only sees a single linear list of instructions.
-
-### 2.4. Scheduler (`modules/scheduler`)
-*   **Role:** The "Job System" (Multi-Threaded).
-*   **Concept:** Acts like a **GPU/Compute Shader**. Executes logic in parallel over a domain.
-*   **Key Responsibilities:**
-    *   **Parallel Execution:** Splits the domain (e.g., screen pixels) into tiles and distributes them across a thread pool.
-    *   **Stateless:** Optimized for independent calculations. Does not support global mutable state safely without locking.
-    *   **Use Case:** Rendering, Image Processing, Particle Systems, Massive Math Ops.
-
-### 2.5. Platform (`modules/platform`)
+### 2.4. Platform (`modules/base`)
 *   **Role:** OS Abstraction Layer.
-*   **Content:** Unified API for Threads, Mutexes, Condition Variables, and Atomics. Supports Windows (Win32) and Linux (pthreads).
+*   **Content:** Unified API for Threads, Mutexes, Condition Variables, Atomics, and Thread Pool. Supports Windows (Win32) and Linux (pthreads).
 
-### 2.6. Host (`modules/host`)
+### 2.5. Host (`modules/host`)
 *   **Role:** Application Framework.
 *   **Responsibility:** Provides a **Manifest-Driven** runtime.
     *   Parses `.mfapp` configuration files.
-    *   Initializes `mf_engine` and the appropriate execution strategy (VM vs Scheduler).
+    *   Initializes `mf_engine` and sets up the VM execution strategy.
     *   Handles window creation (SDL2), input polling, and the main loop.
 
-### 2.7. Backend: CPU (`modules/backend_cpu`)
+### 2.6. Backend: CPU (`modules/backend_cpu`)
 *   **Role:** Reference Implementation (Software Renderer).
 *   **Responsibility:** Initializes the Dispatch Table with CPU implementations.
 *   **Capabilities:** Supports dynamic broadcasting and reshaping.
 
-### 2.8. Operations Libraries (`modules/ops_*`)
+### 2.7. Operations Libraries (`modules/ops_*`)
 These modules contain the actual mathematical kernels.
 *   **`modules/ops_core`:** Basic arithmetic, Trigonometry, Logic, Matrix ops, and State Relay.
 *   **`modules/ops_array`:** Array manipulation kernels.
@@ -152,7 +188,7 @@ MathFlow is evolving into a system capable of rendering UI purely through mathem
 The Host Application interacts with the VM using Named Registers:
 1.  **Host Initialization:** `time_reg = mf_vm_find_register(vm, "u_Time")`.
 2.  **Per-Frame:** Write value to `time_reg`.
-3.  **Execution:** `mf_vm_exec(vm)` (or `mf_scheduler_run`).
+3.  **Execution:** `mf_vm_exec(vm)` (or `mf_vm_exec_parallel` for tiled rendering).
 4.  **Readback:** Read from `mf_vm_find_register(vm, "out_Color")`.
 
 ### 4.2. State Management
@@ -167,7 +203,7 @@ To support interactive UI (toggles, animations) without external logic:
 
 ### 5.1. Dual-Allocator Strategy
 1.  **Arena (Static - Engine Owned):** Stores the Program Code, Constants, Symbol Table, and Tensor Metadata. Allocated once at startup.
-2.  **Heap (Dynamic - VM/Scheduler Owned):** Stores Tensor Data (Variables). Supports `realloc` for dynamic resizing (e.g., resolution change).
+2.  **Heap (Dynamic - VM Owned):** Stores Tensor Data (Variables). Supports `realloc` for dynamic resizing (e.g., resolution change).
 
 ### 5.2. Tensor Ownership
 *   **Constants:** Stored in the Program Binary (Arena).
@@ -202,7 +238,7 @@ The Manifest dictates the runtime strategy:
 
 1.  **Shader Mode (`MF_HOST_RUNTIME_SHADER`):**
     *   **Goal:** Visuals, UI, Image Processing.
-    *   **Architecture:** Multi-threaded "Job System".
+    *   **Architecture:** Parallel VM execution over a thread pool.
     *   **Behavior:** The screen is split into tiles. The Graph is executed in parallel for every pixel/tile.
     *   **State:** Generally stateless per frame (like a Fragment Shader), though `Memory` nodes allow inter-frame persistence (simulated via double-buffering).
     *   **Host Logic:** Renders to a texture at 60 FPS.

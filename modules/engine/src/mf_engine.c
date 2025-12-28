@@ -24,6 +24,15 @@ void mf_engine_init(mf_engine* engine, const mf_engine_desc* desc) {
     // Initialize default CPU backend
     // In the future, this could be configurable (GPU/Metal/Vulkan)
     mf_backend_cpu_init(&engine->backend);
+
+    // Initialize Thread Pool
+    mf_thread_pool_desc pool_desc = {
+        .num_threads = desc ? desc->num_threads : 0,
+        .init_fn = mf_vm_worker_init,
+        .cleanup_fn = mf_vm_worker_cleanup,
+        .user_data = NULL
+    };
+    engine->pool = mf_thread_pool_create(&pool_desc);
 }
 
 bool mf_engine_load_graph(mf_engine* engine, const char* path) {
@@ -63,6 +72,11 @@ bool mf_engine_load_graph(mf_engine* engine, const char* path) {
 }
 
 void mf_engine_shutdown(mf_engine* engine) {
+    if (engine->pool) {
+        mf_thread_pool_destroy(engine->pool);
+        engine->pool = NULL;
+    }
+
     if (engine->arena_buffer) {
         free(engine->arena_buffer);
         engine->arena_buffer = NULL;

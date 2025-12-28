@@ -4,12 +4,17 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/vm/mf_vm.h>
+#include <mathflow/base/mf_thread_pool.h>
 
 // Configuration for initializing the engine
 typedef struct mf_engine_desc {
     // Size of the static arena for Program Code & Metadata.
     // Default: 8MB if set to 0.
     size_t arena_size;
+
+    // Number of worker threads for parallel execution.
+    // Default: 0 (Auto-detect CPU count).
+    int num_threads;
 } mf_engine_desc;
 
 // The MathFlow Engine
@@ -34,6 +39,9 @@ typedef struct mf_engine {
 
     // Shared Context (for VM/Scheduler)
     mf_context ctx;
+
+    // Execution Resources
+    mf_thread_pool* pool;
 } mf_engine;
 
 // Initialize the engine. Allocates the Arena.
