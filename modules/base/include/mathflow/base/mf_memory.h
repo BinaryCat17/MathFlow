@@ -11,7 +11,7 @@ typedef struct mf_allocator mf_allocator;
 struct mf_allocator {
     // Function pointers for polymorphism
     void* (*alloc)(mf_allocator* self, size_t size);
-    void* (*realloc)(mf_allocator* self, void* ptr, size_t size);
+    void* (*realloc)(mf_allocator* self, void* ptr, size_t old_size, size_t new_size);
     void  (*free)(mf_allocator* self, void* ptr);
 };
 
@@ -50,7 +50,7 @@ typedef struct {
 
 void mf_heap_init(mf_heap* heap, void* backing_buffer, size_t size);
 void* mf_heap_alloc(mf_allocator* self, size_t size);
-void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t size);
+void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t old_size, size_t new_size);
 void  mf_heap_free(mf_allocator* self, void* ptr);
 
 #endif // MF_MEMORY_H

@@ -164,7 +164,18 @@ bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape,
     if (needed_bytes > tensor->capacity_bytes) {
         void* new_ptr = NULL;
         if (tensor->data && (tensor->flags & MF_TENSOR_OWNS_DATA)) {
-            new_ptr = vm->allocator->realloc(vm->allocator, tensor->data, needed_bytes);
+            size_t old_bytes = tensor->capacity_bytes; // Use capacity, not size, for realloc base
+            // Wait, realloc expects old_size? 
+            // Actually, for Arena we need the VALID data size to copy.
+            // But standard realloc doesn't care about data valid size, it cares about block size.
+            // BUT, our "Dumb Realloc" does memcpy(ptr, ptr, old_size).
+            // So we should pass the VALID DATA SIZE we want to preserve?
+            // No, the Allocator contract is usually about MEMORY BLOCK sizes.
+            // However, since we don't store block size in Arena, we MUST pass what we want to copy.
+            // Let's pass 'tensor->size * type_size' as the 'size to preserve'.
+            
+            size_t valid_bytes = tensor->size * type_size;
+            new_ptr = vm->allocator->realloc(vm->allocator, tensor->data, valid_bytes, needed_bytes);
         } else {
             // First alloc or transitioning from static (arena) to dynamic
             new_ptr = vm->allocator->alloc(vm->allocator, needed_bytes);

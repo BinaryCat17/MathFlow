@@ -22,17 +22,26 @@ void* mf_arena_alloc(mf_allocator* self, size_t size) {
     return ptr;
 }
 
-// Arena doesn't support free/realloc in the traditional sense
+// Arena doesn't support free in the traditional sense
 void mf_arena_free_noop(mf_allocator* self, void* ptr) { (void)self; (void)ptr; }
-void* mf_arena_realloc_noop(mf_allocator* self, void* ptr, size_t size) { 
-    (void)self; (void)ptr; (void)size; 
-    return NULL; 
+
+// Arena realloc: Dumb Alloc + Copy
+void* mf_arena_realloc(mf_allocator* self, void* ptr, size_t old_size, size_t new_size) {
+    if (!ptr) return mf_arena_alloc(self, new_size);
+    if (new_size == 0) return NULL;
+    if (new_size <= old_size) return ptr; // Shrink is no-op for arena
+
+    void* new_ptr = mf_arena_alloc(self, new_size);
+    if (new_ptr) {
+        memcpy(new_ptr, ptr, old_size);
+    }
+    return new_ptr;
 }
 
 void mf_arena_init(mf_arena* arena, void* backing_buffer, size_t size) {
     arena->base.alloc = mf_arena_alloc;
     arena->base.free = mf_arena_free_noop;
-    arena->base.realloc = mf_arena_realloc_noop;
+    arena->base.realloc = mf_arena_realloc;
     
     arena->memory = (u8*)backing_buffer;
     arena->size = size;
@@ -162,18 +171,23 @@ void mf_heap_free(mf_allocator* self, void* ptr) {
     }
 }
 
-void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t size) {
-    if (!ptr) return mf_heap_alloc(self, size);
-    if (size == 0) {
+void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t old_size, size_t new_size) {
+    if (!ptr) return mf_heap_alloc(self, new_size);
+    if (new_size == 0) {
         mf_heap_free(self, ptr);
         return NULL;
     }
     
+    // Safety check: trust the block header more than the user provided old_size for internal logic
     mf_heap_block* block = (mf_heap_block*)((u8*)ptr - BLOCK_HEADER_SIZE);
-    size_t old_size = block->size;
-    size_t aligned_req = ALIGN_UP(size, MF_ALIGNMENT);
+    size_t actual_old_size = block->size;
     
-    if (aligned_req <= old_size) {
+    // Use the actual size for logic, but old_size could be used for optimizations if needed
+    (void)old_size; 
+
+    size_t aligned_req = ALIGN_UP(new_size, MF_ALIGNMENT);
+    
+    if (aligned_req <= actual_old_size) {
         // Shrink? Maybe later. For now just return same ptr.
         return ptr; 
     }
@@ -181,14 +195,14 @@ void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t size) {
     // Expand
     // 1. Check if next block is free and has enough space
     if (block->next && block->next->is_free) {
-        size_t combined = old_size + BLOCK_HEADER_SIZE + block->next->size;
+        size_t combined = actual_old_size + BLOCK_HEADER_SIZE + block->next->size;
         if (combined >= aligned_req) {
             // Merge and claim
             mf_heap* heap = (mf_heap*)self;
             // Remove 'next' from free usage (it's conceptually merging)
             // But we just consume it.
             
-            size_t needed_extra = aligned_req - old_size;
+            // size_t needed_extra = aligned_req - actual_old_size;
             // Actually, we just merge them first
             block->size += BLOCK_HEADER_SIZE + block->next->size;
             block->next = block->next->next;
@@ -197,15 +211,15 @@ void* mf_heap_realloc(mf_allocator* self, void* ptr, size_t size) {
             // (Same logic as alloc)
             // For now, keep it simple.
             
-            heap->used_memory += (combined - old_size); // Adjusted usage logic slightly wrong here but ok for prototype
+            heap->used_memory += (combined - actual_old_size); // Adjusted usage logic slightly wrong here but ok for prototype
             return ptr;
         }
     }
     
     // 2. Alloc new, copy, free old
-    void* new_ptr = mf_heap_alloc(self, size);
+    void* new_ptr = mf_heap_alloc(self, new_size);
         if (new_ptr) {
-            memcpy(new_ptr, ptr, old_size);
+            memcpy(new_ptr, ptr, actual_old_size);
             mf_heap_free(self, ptr);
         }
         return new_ptr;

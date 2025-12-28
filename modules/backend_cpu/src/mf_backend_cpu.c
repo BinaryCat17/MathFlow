@@ -15,7 +15,7 @@ typedef struct {
 
 typedef struct {
     mf_vm vm;
-    mf_heap heap;
+    mf_arena temp_arena; // Was mf_heap
     void* heap_mem;
     size_t heap_size;
     mf_arena reg_arena;
@@ -40,7 +40,7 @@ static void* worker_init(int thread_idx, void* user_data) {
     size_t heap_size = 16 * 1024 * 1024;
     state->heap_mem = malloc(heap_size);
     state->heap_size = heap_size;
-    mf_heap_init(&state->heap, state->heap_mem, heap_size);
+    mf_arena_init(&state->temp_arena, state->heap_mem, heap_size);
     
     mf_arena_init(&state->reg_arena, state->reg_arena_mem, sizeof(state->reg_arena_mem));
     
@@ -73,7 +73,8 @@ static void propagate_state(mf_backend_cpu_worker_state* state, const mf_cpu_par
         if (shapes_match) {
             size_t size = mf_tensor_size_bytes(main_t);
             if (size > 0 && main_t->data) {
-                void* data = mf_heap_alloc((mf_allocator*)&state->heap, size);
+                // Use temp_arena (as mf_allocator)
+                void* data = mf_arena_alloc((mf_allocator*)&state->temp_arena, size);
                 if (data) {
                     memcpy(data, main_t->data, size);
                     worker_t->data = data;
@@ -136,7 +137,9 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     
     // 1. Reset VM
     mf_arena_reset(&state->reg_arena);
-    mf_vm_init(&state->vm, batch->ctx, (mf_allocator*)&state->heap);
+    mf_arena_reset(&state->temp_arena); // Reset temp memory for this job
+    
+    mf_vm_init(&state->vm, batch->ctx, (mf_allocator*)&state->temp_arena);
     mf_vm_reset(&state->vm, &state->reg_arena);
     
     // 2. Propagate
