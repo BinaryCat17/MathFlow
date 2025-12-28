@@ -16,8 +16,6 @@ target_link_libraries(mf_host_core
         cjson
         MathFlow::engine
         MathFlow::loader
-    PRIVATE
-        MathFlow::compiler
 )
 
 # --- Host SDL (Window & Input) ---
