@@ -72,12 +72,12 @@ flowchart TD
     *   **Execution:** Iterates over the instruction list and delegates to the Backend via the Dispatch Table.
 
 ### 2.3. Compiler (`modules/compiler`)
-*   **Role:** The Translator (Offline Tool).
+*   **Role:** The Translator.
 *   **Structure:**
-    *   `mf_json_parser`: Converts JSON to Intermediate Representation (IR).
+    *   `mf_json_parser`: Converts JSON to Intermediate Representation (IR). Performs **Recursive Expansion** (Inlining) of Sub-Graphs.
     *   `mf_semantics`: Performs Shape Inference and Type Checking.
     *   `mf_codegen`: Topological Sort (Cycle Breaking for State nodes), Register Allocation, and Bytecode generation.
-*   **Output:** A self-contained `.bin` file containing Code, Constants, and the Symbol Table.
+*   **Expansion Logic:** Sub-graphs are completely flattened during the parsing phase. The VM only sees a single linear list of instructions.
 
 ### 2.4. Backend: CPU (`modules/backend_cpu`)
 *   **Role:** Reference Implementation (Software Renderer).
@@ -86,12 +86,30 @@ flowchart TD
 
 ### 2.5. Operations Libraries (`modules/ops_*`)
 These modules contain the actual mathematical kernels. They are decoupled from the VM to allow easy reuse or replacement.
-*   **`modules/ops_core`:** Basic arithmetic (`Add`, `Mul`), Trigonometry (`Sin`, `Atan2`), Logic (`And`, `Select`), and Matrix ops (`MatMul`).
+*   **`modules/ops_core`:** Basic arithmetic (`Add`, `Mul`), Trigonometry (`Sin`, `Atan2`), Logic (`And`, `Select`), Matrix ops (`MatMul`), and **State Relay** (`Copy`).
 *   **`modules/ops_array`:** Array manipulation kernels (`Range`, `CumSum`, `Compress`).
 
 ---
 
-## 3. The "Pixel Engine" Concept
+## 3. Sub-Graphs (Modularity)
+
+MathFlow supports modularity through a "Call-by-Inlining" mechanism. This allows creating complex logic from simple, reusable primitives.
+
+### 3.1. The "Call" Node
+A `Call` node references another `.json` file. During compilation, the parser:
+1.  Loads the target graph.
+2.  **Prefixing:** Adds the caller node's ID as a prefix to all internal nodes (e.g., `button_1::circle::sdf`) to ensure unique names.
+3.  **Interface Mapping:**
+    *   `ExportInput`: Maps parent `links` (by port index) to internal sub-graph entry points.
+    *   `ExportOutput`: Maps internal results back to parent ports.
+4.  **Flattening:** Merges the expanded node list into the main graph IR.
+
+### 3.2. Relative Path Resolution
+The compiler supports relative paths within sub-graphs. If `A.json` calls `B.json` and `B.json` calls `C.json`, the path to `C` is resolved relative to the location of `B`, enabling portable component libraries.
+
+---
+
+## 4. The "Pixel Engine" Concept
 
 MathFlow is evolving into a system capable of rendering UI purely through mathematics (SDFs, Pixel Math), similar to a Fragment Shader.
 

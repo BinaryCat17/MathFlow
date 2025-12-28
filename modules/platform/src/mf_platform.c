@@ -55,6 +55,27 @@ void mf_mutex_destroy(mf_mutex_t* mutex) {
     DeleteCriticalSection(mutex);
 }
 
+void mf_cond_init(mf_cond_t* cond) {
+    InitializeConditionVariable(cond);
+}
+
+void mf_cond_wait(mf_cond_t* cond, mf_mutex_t* mutex) {
+    SleepConditionVariableCS(cond, mutex, INFINITE);
+}
+
+void mf_cond_signal(mf_cond_t* cond) {
+    WakeConditionVariable(cond);
+}
+
+void mf_cond_broadcast(mf_cond_t* cond) {
+    WakeAllConditionVariable(cond);
+}
+
+void mf_cond_destroy(mf_cond_t* cond) {
+    // Windows Condition Variables do not need to be destroyed explicitly
+    (void)cond;
+}
+
 int32_t mf_atomic_inc(mf_atomic_i32* var) {
     return InterlockedIncrement(var);
 }
@@ -98,6 +119,26 @@ void mf_mutex_unlock(mf_mutex_t* mutex) {
 
 void mf_mutex_destroy(mf_mutex_t* mutex) {
     pthread_mutex_destroy(mutex);
+}
+
+void mf_cond_init(mf_cond_t* cond) {
+    pthread_cond_init(cond, NULL);
+}
+
+void mf_cond_wait(mf_cond_t* cond, mf_mutex_t* mutex) {
+    pthread_cond_wait(cond, mutex);
+}
+
+void mf_cond_signal(mf_cond_t* cond) {
+    pthread_cond_signal(cond);
+}
+
+void mf_cond_broadcast(mf_cond_t* cond) {
+    pthread_cond_broadcast(cond);
+}
+
+void mf_cond_destroy(mf_cond_t* cond) {
+    pthread_cond_destroy(cond);
 }
 
 int32_t mf_atomic_inc(mf_atomic_i32* var) {

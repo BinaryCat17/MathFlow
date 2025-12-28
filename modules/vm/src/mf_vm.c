@@ -60,17 +60,10 @@ void mf_vm_reset(mf_vm* vm, mf_arena* arena) {
         
         if (src->data) {
             // Constant: Deep copy data to Allocator memory.
-            // This ensures each VM instance has its own copy of constants/state if they were mutable.
-            // Although constants are technically immutable, SoA structure might suggest owning data.
-            // Ideally, read-only data shouldn't be duplicated.
-            // But mf_tensor has only one 'data' pointer.
-            // Optimization: If flag IS_CONSTANT is set in descriptor, maybe we can point to shared memory?
-            // For now, let's copy to be safe (and simple) for thread isolation.
-            
             if (vm->allocator) {
                 size_t bytes = src->capacity_bytes;
                 dst->data = vm->allocator->alloc(vm->allocator, bytes);
-                memcpy(dst->data, src->data, bytes);
+                if (dst->data) memcpy(dst->data, src->data, bytes);
                 dst->capacity_bytes = bytes;
                 dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
             } else {
@@ -79,10 +72,19 @@ void mf_vm_reset(mf_vm* vm, mf_arena* arena) {
                  // Do not set OWNS_DATA
             }
         } else {
-            // Variable: Init empty
-            dst->data = NULL;
-            dst->capacity_bytes = 0;
-            dst->flags |= MF_TENSOR_DYNAMIC;
+            // Variable: Allocate based on shape
+            if (vm->allocator && src->size > 0) {
+                 size_t bytes = src->size * mf_dtype_size(src->dtype);
+                 dst->data = vm->allocator->alloc(vm->allocator, bytes);
+                 if (dst->data) memset(dst->data, 0, bytes);
+                 
+                 dst->capacity_bytes = bytes;
+                 dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
+            } else {
+                 dst->data = NULL;
+                 dst->capacity_bytes = 0;
+                 dst->flags |= MF_TENSOR_DYNAMIC;
+            }
         }
     }
 }

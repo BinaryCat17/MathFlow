@@ -13,6 +13,8 @@ target_link_libraries(mf-window
         mf_vm
         mf_compiler
         mf_backend_cpu
+        mf_scheduler
+        mf_platform
 )
 
 target_include_directories(mf-window PRIVATE 
@@ -20,4 +22,6 @@ target_include_directories(mf-window PRIVATE
     ${CMAKE_SOURCE_DIR}/modules/compiler/include
     ${CMAKE_SOURCE_DIR}/modules/backend_cpu/include
     ${CMAKE_SOURCE_DIR}/modules/isa/include
+    ${CMAKE_SOURCE_DIR}/modules/scheduler/include
+    ${CMAKE_SOURCE_DIR}/modules/platform/include
 )
