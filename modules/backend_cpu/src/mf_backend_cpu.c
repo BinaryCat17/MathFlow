@@ -184,6 +184,15 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     // 3. Setup Virtual Batching
     state->vm.batch_size = batch_size;
     
+    // Setup Intrinsics (Axis 0 = Y, Axis 1 = X)
+    state->vm.global_offset[0] = start_y;
+    state->vm.global_offset[1] = start_x;
+    state->vm.global_offset[2] = 0;
+    
+    state->vm.local_size[0] = active_h;
+    state->vm.local_size[1] = active_w;
+    state->vm.local_size[2] = 1;
+    
     // 4. Propagate Inputs
     prepare_inputs(state, batch, job_idx);
     

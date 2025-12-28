@@ -40,6 +40,12 @@ struct mf_kernel_ctx {
     // Virtual Batching: If > 0, operations should restrict processing to this count.
     // This allows Tiled Execution on buffers larger than the current tile.
     u32 batch_size;
+
+    // Tiling Intrinsics (Coordinate Generation)
+    // Used by MF_OP_INDEX to generate spatial coordinates.
+    // Axis 0: Y (or slowest dim), Axis 1: X (or fastest dim), Axis 2: Z
+    u32 global_offset[3]; // Base coordinate of the current tile
+    u32 local_size[3];    // Size of the current tile (e.g. 64, 64, 1)
 };
 
 // --- Kernel Signature ---

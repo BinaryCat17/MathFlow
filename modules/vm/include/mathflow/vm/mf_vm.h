@@ -55,6 +55,8 @@ struct mf_vm {
     
     // Execution Configuration
     u32 batch_size; // Virtual Batching: If > 0, operations process only this many elements. 0 = Full Tensor Size.
+    u32 global_offset[3];
+    u32 local_size[3];
 
     // State
     mf_vm_error error;

@@ -145,6 +145,7 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
             case MF_NODE_NOT: inst->opcode = MF_OP_NOT; instr_count++; break;
             
             case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
+            case MF_NODE_INDEX: inst->opcode = MF_OP_INDEX; instr_count++; break;
             case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
             case MF_NODE_COMPRESS: 
                 inst->opcode = MF_OP_COMPRESS; 

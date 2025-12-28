@@ -63,6 +63,7 @@ typedef enum {
 
     // Array Ops
     MF_NODE_RANGE,
+    MF_NODE_INDEX, // Intrinsic Coordinate Generator
     MF_NODE_CUMSUM,
     MF_NODE_COMPRESS,
 

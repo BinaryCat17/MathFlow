@@ -31,7 +31,7 @@
     - Assigns a Tile to a Worker.
     - Worker sets VM Batch Size = Tile Size (e.g., 4096).
     - Runs the linear graph.
-- [ ] **Step 3: Intrinsic Coordinates (The Index Op):** Implement a generic `MF_OP_INDEX(axis)` instruction.
+- [x] **Step 3: Intrinsic Coordinates (The Index Op):** Implement a generic `MF_OP_INDEX(axis)` instruction.
     - **Concept:** Enables the Graph to generate its own spatial coordinates (like `gl_FragCoord` or `arange`), decoupling logic from Host inputs.
     - **Architecture:** Update `mf_kernel_ctx` to carry Tiling Context (`global_offset`, `tile_size`).
     - **Backend:** CPU Backend calculates offsets per tile and populates the context.

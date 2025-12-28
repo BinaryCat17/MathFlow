@@ -209,7 +209,8 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             break;
 
         case MF_NODE_RANGE:
-            // Output is 1D Array of F32. Size is dynamic (determined by input value).
+        case MF_NODE_INDEX:
+            // Output is 1D Array of F32. Size is dynamic (determined by input value or batch context).
             out->dtype = MF_DTYPE_F32; 
             out->ndim = 1;
             out->shape[0] = 0; // Dynamic

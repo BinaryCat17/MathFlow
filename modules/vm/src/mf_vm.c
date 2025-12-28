@@ -95,6 +95,9 @@ void mf_vm_exec(mf_vm* vm) {
         .error = impl_error,
         .batch_size = vm->batch_size
     };
+    // Copy Intrinsics
+    memcpy(kernel_ctx.global_offset, vm->global_offset, sizeof(vm->global_offset));
+    memcpy(kernel_ctx.local_size, vm->local_size, sizeof(vm->local_size));
 
     for (size_t i = 0; i < vm->ctx->code_count; ++i) {
         if (vm->error != MF_ERROR_NONE) break;

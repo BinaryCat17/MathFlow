@@ -95,6 +95,7 @@ static const mf_node_map_entry NODE_MAP[] = {
 
     // --- Array Ops ---
     {"Range", MF_NODE_RANGE},
+    {"Index", MF_NODE_INDEX},
     {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS},
 

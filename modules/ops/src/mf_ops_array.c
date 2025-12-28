@@ -106,9 +106,56 @@ static void op_compress(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16
     }
 }
 
+// --- Op: Index (Intrinsic Coordinate) ---
+// Src1: Axis (0=Y, 1=X, etc)
+// Dest: Vector of global coordinates
+static void op_index(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* axis_t = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    if (!dst || !axis_t) return;
+
+    int axis = 0;
+    if (axis_t->dtype == MF_DTYPE_F32) axis = (int)((f32*)axis_t->data)[0];
+    else if (axis_t->dtype == MF_DTYPE_I32) axis = ((int32_t*)axis_t->data)[0];
+    
+    // Determine Output Size
+    // If batch_size is set, use it. Otherwise 1 (Scalar)? 
+    // Usually OP_INDEX implies we are in a parallel context.
+    size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
+
+    dst->dtype = MF_DTYPE_F32;
+    int32_t shape[] = { (int32_t)count };
+    if (!ctx->resize_tensor(ctx->impl, dst, shape, 1)) return;
+
+    f32* d = (f32*)dst->data;
+    
+    // Generation Logic (Assumes 2D Tile Layout: Row-Major)
+    // Axis 1 is Fastest (X), Axis 0 is Slowest (Y)
+    u32 width = ctx->local_size[1];
+    if (width == 0) width = 1; // Safety
+    
+    u32 offset = ctx->global_offset[axis];
+    
+    for (size_t i = 0; i < count; ++i) {
+        u32 coord = 0;
+        if (axis == 1) {
+            // X: Modulo Width
+            coord = offset + (i % width);
+        } else if (axis == 0) {
+            // Y: Divide Width
+            coord = offset + (i / width);
+        } else {
+            // Z or others: For now assume 0 or direct mapping if 1D
+             coord = offset;
+        }
+        d[i] = (f32)coord;
+    }
+}
+
 // --- Registration ---
 void mf_ops_array_register(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_RANGE] = op_range;
+    table->op_table[MF_OP_INDEX] = op_index;
     table->op_table[MF_OP_CUMSUM] = op_cumsum;
     table->op_table[MF_OP_COMPRESS] = op_compress;
 }
