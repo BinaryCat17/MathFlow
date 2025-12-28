@@ -89,7 +89,4 @@ int32_t mf_vm_find_register(mf_vm* vm, const char* name);
 
 bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
 
-// Helper: Load program from file and return it (uses Arena)
-mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
-
 #endif // MF_VM_H
