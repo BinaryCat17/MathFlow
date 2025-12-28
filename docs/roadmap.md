@@ -40,20 +40,20 @@
 
 ---
 
-## Phase 8: The Visualizer (SDL2 Host)
+## Phase 8: The Visualizer (SDL2 Host) [COMPLETED]
 **Objective:** Create a runtime environment capable of displaying the MathFlow output buffer as an image.
 
-- [ ] **Dependencies:** Add `SDL2` to `vcpkg.json`.
-- [ ] **New App:** `apps/mf-window`.
-- [ ] **Input Protocol:**
+- [x] **Dependencies:** Add `SDL2` to `vcpkg.json`.
+- [x] **New App:** `apps/mf-window`.
+- [x] **Input Protocol:**
     - Host injects Tensors via Name (using `mf_vm_find_register`):
         - `u_Time` (Scalar F32)
         - `u_Resolution` (Vec2 F32)
         - `u_Mouse` (Vec4 F32: x, y, click_left, click_right)
-- [ ] **Output Protocol:**
+- [x] **Output Protocol:**
     - Host expects a single Output Tensor:
         - `out_Color` (Shape: `[Height, Width, 4]`, Type: `U8` or `F32`).
-- [ ] **Render Loop:**
+- [x] **Render Loop:**
     - Lock Texture -> `mf_vm_exec` -> Copy Tensor Data to Texture -> Unlock -> Present.
 
 ## Phase 9: Pixel Math (SDF UI)
@@ -80,12 +80,25 @@
 - [x] **Compiler Inlining:** Recursively load and inline sub-graphs, prefixing IDs to avoid collisions.
 - [x] **Interface Definition:** Schema for defining Inputs/Outputs of a sub-graph module (`ExportInput`, `ExportOutput`).
 
-## Phase 11: Performance (Parallel CPU)
-**Objective:** Software rendering 800x600 pixels on a single thread might be slow (480k pixels * N nodes). We need parallelism.
+## Phase 11: Parallel Architecture (Multithreading) [COMPLETED]
+**Objective:** Move from single-threaded execution to a Job System. This requires refactoring the VM to be "Stateless" (separating Code from Data) to run multiple instances on different threads safely.
 
-- [ ] **Tile-Based Execution:** Split the execution domain (Shape) into tiles.
-- [ ] **Task System:** Simple thread pool.
-- [ ] **Stateless VM:** Ensure `mf_vm_exec` is thread-safe (read-only graphs, separate memory for working buffers per thread).
+- [x] **Step 1: VM Refactoring (Context Segregation):**
+    - Split `mf_vm` into:
+        - `mf_context` (Read-Only): Program, Symbol Table, Constants.
+        - `mf_execution_state` (Mutable): Heap, Registers, Temp Buffers.
+    - Update API to `mf_vm_exec(const mf_context* ctx, mf_execution_state* state)`.
+- [x] **Step 2: Platform Abstraction Layer:**
+    - Create `modules/platform`:
+        - Unified wrappers for Threads/Mutexes (Win32 `CreateThread` vs POSIX `pthread`).
+        - Atomic primitives.
+- [x] **Step 3: Domain Decomposition (Slicing):**
+    - Implement "View" tensors (accessing memory ranges without copying).
+    - Allow the Host to split large Input Tensors (e.g. `u_FragX` of 480k pixels) into N chunks.
+- [x] **Step 4: The Job System:**
+    - Create a Worker Thread Pool.
+    - Implement `mf_scheduler_dispatch(ctx, inputs, job_count)`.
+    - **Sync:** Main thread aggregates results and handles `MF_OP_COPY` (State Logic is single-threaded).
 
 ---
 
