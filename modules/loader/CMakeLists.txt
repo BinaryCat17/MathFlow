@@ -9,9 +9,8 @@ target_include_directories(mf_loader
 )
 
 target_link_libraries(mf_loader 
-    PUBLIC 
-        MathFlow::engine
     PRIVATE
+        MathFlow::engine
         MathFlow::compiler
         MathFlow::backend_cpu
 )
