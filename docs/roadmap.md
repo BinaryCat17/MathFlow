@@ -120,18 +120,18 @@
     - [ ] **Hot-Reload (Bonus):** Recompile graph on file change.
 - [x] **Refactor:** Rewrite `apps/mf-window/main.c` to use `mf_host`.
 
-## Phase 13: Engine Unification (Refactoring)
+## Phase 13: Engine Unification (Refactoring) [COMPLETED]
 **Objective:** Eliminate code duplication between CLI runner and GUI host by introducing a unified `mf_engine` layer. This creates a standard way to initialize MathFlow without depending on a windowing system.
 
-- [ ] **Step 1: The Engine Module (`modules/engine`):**
+- [x] **Step 1: The Engine Module (`modules/engine`):**
     - Create `mf_engine` struct that owns: `mf_context`, `mf_program`, `mf_arena`.
     - Implement `mf_engine_init(mf_engine* engine, const mf_engine_desc* desc)`.
     - Implement `mf_engine_load_graph(mf_engine* engine, const char* path)` (handles both .json and .bin).
     - **Constraint:** Must be Pure C (no SDL/Graphics dependencies).
-- [ ] **Step 2: Refactor `mf-runner`:**
+- [x] **Step 2: Refactor `mf-runner`:**
     - Rewrite CLI tool to use `mf_engine` for loading.
     - Initialize `mf_vm` from `engine->context` for single-threaded execution.
-- [ ] **Step 3: Refactor `mf_host`:**
+- [x] **Step 3: Refactor `mf_host`:**
     - Update `mf_host` to wrap `mf_engine` internal instance.
     - Initialize `mf_scheduler` from `engine->context` for multi-threaded execution.
 
