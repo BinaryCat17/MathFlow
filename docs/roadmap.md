@@ -31,7 +31,11 @@
     - Assigns a Tile to a Worker.
     - Worker sets VM Batch Size = Tile Size (e.g., 4096).
     - Runs the linear graph.
-- [ ] **Step 3: Coordinate Intrinsics:** Implement optimized on-the-fly generation of `index_x` / `index_y` input tensors for the current tile offset. This eliminates the need to allocate huge "Coordinate Buffers" for the entire screen.
+- [ ] **Step 3: Intrinsic Coordinates (The Index Op):** Implement a generic `MF_OP_INDEX(axis)` instruction.
+    - **Concept:** Enables the Graph to generate its own spatial coordinates (like `gl_FragCoord` or `arange`), decoupling logic from Host inputs.
+    - **Architecture:** Update `mf_kernel_ctx` to carry Tiling Context (`global_offset`, `tile_size`).
+    - **Backend:** CPU Backend calculates offsets per tile and populates the context.
+    - **Result:** The graph becomes resolution-independent and fully parallelizable without external "magic" buffers.
 
 ## Phase 18: Advanced State Management (Double Buffering)
 **Objective:** Enable parallel execution for graphs with state (Memory Nodes) by implementing a double-buffering mechanism. This allows "Stateful Shaders" (e.g. Game of Life, fluid sim) to run efficiently on the CPU/GPU without race conditions.
