@@ -135,23 +135,25 @@
     - Update `mf_host` to wrap `mf_engine` internal instance.
     - Initialize `mf_scheduler` from `engine->context` for multi-threaded execution.
 
-## Phase 14: Application Manifest & Runtime Adaptation
-**Objective:** Decouple the Host executable from the Application logic. The Graph should act as a self-contained "Cartridge" that defines its own execution requirements via a `config` block. This prevents the "messy host" problem where C-code logic depends on specific graph types.
+## Phase 14: Application Layer (Manifest System)
+**Objective:** Decouple "Application Configuration" from "Logic Definition". The Host will strictly run Applications defined by a `.mfapp` manifest, not raw Graphs. This prevents the Host from guessing context and allows different configurations (Window size, Runtime mode) for the same logic.
 
-- [ ] **Step 1: Schema & Compiler Extension:**
-    - Update `mf_json_parser` to parse a generic `config` object.
-    - Supported keys: 
-        - `app_type`: `"shader"` (Parallel/Scheduler) or `"script"` (Sequential/VM).
-        - `window`: `{ "width": 800, "height": 600, "title": "My App" }`.
-- [ ] **Step 2: Binary Format Update (`mf_program`):**
-    - Update `mf_bin_header` or add a metadata section to store this configuration in `.bin` files.
-    - Ensure `mf_engine` exposes this configuration after loading.
-- [ ] **Step 3: Host Intelligence:**
-    - Refactor `mf_host` to read `engine->program->config` *before* initialization.
-    - **Dynamic Setup:** Create window based on config resolution.
-    - **Adaptive Execution:** 
-        - If `app_type == "shader"` -> Init ThreadPool & Scheduler.
-        - If `app_type == "script"` -> Init simple VM Loop (single thread).
+- [ ] **Step 1: Manifest Definition (`.mfapp`):**
+    - Define JSON schema:
+        - `runtime`: `{ "type": "shader"|"script", "entry": "path/to/graph.json" }`
+        - `window`: `{ "width": 800, "height": 600, "title": "App Name", "resizable": true }`
+- [ ] **Step 2: App Loader:**
+    - Implement a simple parser in `modules/host` to read `.mfapp` files.
+- [ ] **Step 3: Strict Host Refactoring:**
+    - Modify `mf_host` to **only** accept `.mfapp` files.
+    - Remove hardcoded window defaults.
+    - Initialize `mf_engine` with the graph specified in the manifest's `entry`.
+    - Select Execution Strategy dynamically:
+        - `runtime.type == "shader"` -> Init ThreadPool & Scheduler.
+        - `runtime.type == "script"` -> Init simple VM Loop (single thread).
+- [ ] **Step 4: Migration:**
+    - Create `.mfapp` files for existing assets (`demo_inventory`, `sdf_button`).
+    - Update CMake presets and launch configurations.
 
 ## Phase 15: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
