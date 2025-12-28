@@ -1,6 +1,5 @@
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
-#include <mathflow/vm/mf_vm_utils.h>
 
 #include <stdlib.h>
 #include <string.h>
