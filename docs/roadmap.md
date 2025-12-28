@@ -34,10 +34,10 @@
 ## Phase 16.5: Kernel API Refactoring (Strict Layering)
 **Objective:** Eliminate the circular dependency `Ops -> VM`. The Math Kernels (`ops`) should be pure functions or depend only on a lightweight context, not the full Virtual Machine state.
 
-- [ ] **Step 1: Kernel Context:** Define a generic `mf_kernel_ctx` interface in `isa` (or `base`) for memory allocation and error reporting.
-- [ ] **Step 2: Refactor Ops:** Rewrite core math kernels to accept `mf_tensor*` directly or `mf_kernel_ctx`, removing all `#include <mathflow/vm/...>`.
-- [ ] **Step 3: Update Backend:** Adapt the `mf_backend_cpu` dispatch table to bridge the VM state to the new Kernel API.
-- [ ] **Step 4: Cleanup:** Remove `target_link_libraries(mf_ops ... mf_vm)` from CMake.
+- [x] **Step 1: Kernel Context:** Define a generic `mf_kernel_ctx` interface in `isa` (or `base`) for memory allocation and error reporting.
+- [x] **Step 2: Refactor Ops:** Rewrite core math kernels to accept `mf_tensor*` directly or `mf_kernel_ctx`, removing all `#include <mathflow/vm/...>`.
+- [x] **Step 3: Update Backend:** Adapt the `mf_backend_cpu` dispatch table to bridge the VM state to the new Kernel API.
+- [x] **Step 4: Cleanup:** Remove `target_link_libraries(mf_ops ... mf_vm)` from CMake.
 
 ## Phase 16.6: Runtime Purity (Detach Compiler)
 **Objective:** The `mf_engine` should be a pure Runtime execution environment, capable of running on constrained devices without the overhead of a JSON parser or Compiler. Compilation logic must move up to the Host layer.

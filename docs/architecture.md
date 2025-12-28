@@ -78,7 +78,9 @@ graph TD
 
     %% Layer 2: Host
     subgraph L2 ["Layer 2: Host Framework"]
-        Host["🔌 Host (SDL2 / Input)"]:::layerHost
+        HostCore["📜 Host Core (Config)"]:::layerHost
+        HostCLI["⌨️ Host CLI (Headless)"]:::layerHost
+        HostSDL["🔌 Host SDL (Window)"]:::layerHost
     end
 
     %% Layer 3: Core
@@ -101,10 +103,15 @@ graph TD
     end
 
     %% Dependencies (Control Flow)
-    App_GUI --> Host
-    App_CLI --> Host
+    App_GUI --> HostSDL
+    App_CLI --> HostCLI
     
-    Host --> Engine
+    HostSDL --> HostCore
+    HostSDL --> Engine
+    
+    HostCLI --> HostCore
+    HostCLI --> Engine
+    
     Engine --> VM
     Engine --> Compiler
     
@@ -145,10 +152,11 @@ graph TD
 
 ### 2.5. Host (`modules/host`)
 *   **Role:** Application Framework.
-*   **Responsibility:** Provides a **Manifest-Driven** runtime.
-    *   Parses `.mfapp` configuration files.
-    *   Initializes `mf_engine` and sets up the VM execution strategy.
-    *   Handles window creation (SDL2), input polling, and the main loop.
+*   **Structure:** Split into three components:
+    *   **`Host Core` (`mf_host_core`):** Pure logic for parsing Application Manifests (`.mfapp`) and configuration (`mf_host_desc`). No dependencies on graphics libraries.
+    *   **`Host CLI` (Planned):** Headless runtime for executing graphs without a window. Used by CLI tools.
+    *   **`Host SDL` (`mf_host_sdl`):** Implements the platform backend using SDL2 (Window creation, Input, Event Loop). Used by GUI apps.
+    *   **Implementation:** See `mf_manifest_loader.h` and `mf_host_sdl.h`.
 
 ### 2.6. Backend: CPU (`modules/backend_cpu`)
 *   **Role:** Reference Implementation (Software Renderer).

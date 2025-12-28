@@ -11,8 +11,8 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 find_package(cJSON CONFIG REQUIRED)
 
 # --- Modules ---
-add_subdirectory(modules/isa)
 add_subdirectory(modules/base)
+add_subdirectory(modules/isa)
 add_subdirectory(modules/vm)
 add_subdirectory(modules/compiler)
 add_subdirectory(modules/ops)

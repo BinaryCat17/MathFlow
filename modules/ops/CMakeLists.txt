@@ -12,6 +12,6 @@ target_include_directories(mf_ops
 # TODO: Break dependency on VM. Ops should be pure math kernels.
 target_link_libraries(mf_ops 
     PUBLIC 
-        MathFlow::vm 
+        MathFlow::isa
         m
 )

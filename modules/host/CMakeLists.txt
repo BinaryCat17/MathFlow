@@ -26,8 +26,9 @@ if(TARGET SDL2::SDL2)
 
     target_link_libraries(mf_host_sdl 
         PUBLIC 
-            MathFlow::engine
             MathFlow::host_core
+        PRIVATE
+            MathFlow::engine
             SDL2::SDL2 
             SDL2::SDL2main
             cjson

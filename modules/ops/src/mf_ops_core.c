@@ -1,6 +1,5 @@
 #include <mathflow/ops/mf_ops_core.h>
-#include <mathflow/vm/mf_vm.h>
-#include <mathflow/vm/mf_vm_utils.h>
+#include <mathflow/ops/mf_kernel_utils.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_math.h>
 #include <string.h>
@@ -24,12 +23,12 @@ MF_KERNEL_UNARY(abs, fabsf)
 MF_KERNEL_UNARY(sqrt, sqrtf)
 
 // --- Kernel: Binary Min/Max ---
-static void op_min(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_min(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
-    if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return;
+    if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
     bool a_s = (a->size == 1); bool b_s = (b->size == 1);
     for(size_t i=0; i<dst->size; ++i) { 
@@ -39,12 +38,12 @@ static void op_min(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
-static void op_max(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_max(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
-    if (!mf_utils_resolve_binary_shape(vm, dst, a, b)) return;
+    if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
     bool a_s = (a->size == 1); bool b_s = (b->size == 1);
     for(size_t i=0; i<dst->size; ++i) { 
@@ -56,17 +55,13 @@ static void op_max(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 
 // --- Kernel: SmoothStep ---
 // SmoothStep(x, edges) -> edges is [min, max]
-static void op_smoothstep(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* val = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* edges = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_smoothstep(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* val = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* edges = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !val || !edges) return;
     
-    // Edges must have last dim 2, or be size 2.
-    // For MVP: Assume edges is [..., 2] and matches Val broadcasting.
-    // Actually, edges might be a single Vec2 [2] (Uniform broadcast).
-    
-    if (!mf_utils_resolve_unary_shape(vm, dst, val)) return; // Output shape = Value shape
+    if (!mf_utils_resolve_unary_shape(ctx, dst, val)) return; // Output shape = Value shape
     dst->dtype = MF_DTYPE_F32;
 
     f32* X = (f32*)val->data;
@@ -92,13 +87,13 @@ static void op_smoothstep(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 // --- Kernel: GLSL Math ---
 
 // Step(edge, x) -> 1.0 if x >= edge, else 0.0
-static void op_step(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* edge = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* x = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_step(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* edge = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* x = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !edge || !x) return;
     
-    if (!mf_utils_resolve_binary_shape(vm, dst, edge, x)) return;
+    if (!mf_utils_resolve_binary_shape(ctx, dst, edge, x)) return;
     // Output is F32 (0.0 or 1.0)
     dst->dtype = MF_DTYPE_F32;
     
@@ -113,10 +108,10 @@ static void op_step(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 }
 
 // Dot(a, b) -> Sum(a*b) along last axis
-static void op_dot(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_dot(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     if (a->size != b->size) return; // Strict size check for now
@@ -125,7 +120,7 @@ static void op_dot(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
     
     // Resize dst (copies shape from A, but truncated)
-    if (!mf_vm_resize_tensor(vm, dst, a->shape, out_ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, out_ndim)) return;
     dst->dtype = MF_DTYPE_F32;
 
     f32* A = (f32*)a->data; 
@@ -145,13 +140,13 @@ static void op_dot(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 }
 
 // Length(a) -> Sqrt(Dot(a, a))
-static void op_length(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_length(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
 
     int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
-    if (!mf_vm_resize_tensor(vm, dst, a->shape, out_ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, out_ndim)) return;
     dst->dtype = MF_DTYPE_F32;
 
     f32* A = (f32*)a->data; 
@@ -182,24 +177,24 @@ MF_KERNEL_COMPARE(gequal, >=)
 MF_KERNEL_LOGIC(and, &&)
 MF_KERNEL_LOGIC(or, ||)
 
-static void op_not(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_not(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return; 
     dst->dtype = MF_DTYPE_U8;
-    if (!mf_utils_resolve_unary_shape(vm, dst, a)) return;
+    if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return;
     u8* da = (u8*)a->data; u8* dd = (u8*)dst->data;
     for(size_t i=0; i<dst->size; ++i) dd[i] = !da[i];
 }
 
 // --- Kernel: Where (Select) ---
-static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_where_true(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* cond = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* val = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !cond || !val) return;
     
-    if (!mf_utils_resolve_binary_shape(vm, dst, cond, val)) return;
+    if (!mf_utils_resolve_binary_shape(ctx, dst, cond, val)) return;
     dst->dtype = val->dtype; // Enforce type
     
     u8* c = (u8*)cond->data; u8* v = (u8*)val->data; u8* d = (u8*)dst->data; size_t es = mf_dtype_size(val->dtype);
@@ -207,13 +202,13 @@ static void op_where_true(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     for(size_t i=0; i<dst->size; ++i) if (c[c_s ? 0 : i]) memcpy(d + i*es, v + (v_s ? 0 : i*es), es);
 }
 
-static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* cond = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* val = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_where_false(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* cond = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* val = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !cond || !val) return;
 
-    if (!mf_utils_resolve_binary_shape(vm, dst, cond, val)) return;
+    if (!mf_utils_resolve_binary_shape(ctx, dst, cond, val)) return;
     dst->dtype = val->dtype;
 
     u8* c = (u8*)cond->data; u8* v = (u8*)val->data; u8* d = (u8*)dst->data; size_t es = mf_dtype_size(val->dtype);
@@ -222,17 +217,17 @@ static void op_where_false(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 }
 
 // --- Kernel: Matrix ---
-static void op_matmul(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_matmul(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     int dim = (int)sqrtf((float)a->size); 
     if (dim * dim != a->size) return; 
     
     dst->dtype = a->dtype;
-    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
 
     // Fast Path
     if (dim == 4 && a->size == 16) {
@@ -261,13 +256,13 @@ static void op_matmul(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
-static void op_transpose(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_transpose(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return; 
     
     dst->dtype = a->dtype;
-    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
     
     int dim = (int)sqrtf((float)a->size);
     
@@ -290,13 +285,13 @@ static void op_transpose(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) out[c * dim + r] = src[r * dim + c];
 }
 
-static void op_inverse(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_inverse(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
     
     dst->dtype = a->dtype;
-    if (!mf_vm_resize_tensor(vm, dst, a->shape, a->ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
 
     int dim = (int)sqrtf((float)a->size);
     
@@ -320,10 +315,10 @@ static void op_inverse(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 
 // --- Kernel: Join (Pack Vec2) ---
 // Join(a, b) -> [..., 2] where ... is the common shape
-static void op_join(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_join(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
 
     // Resolve common shape (broadcasting rules apply for inputs)
@@ -364,8 +359,8 @@ static void op_join(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     dst->dtype = a->dtype; // Assume same type
 
     // Realloc if needed
-    // NOTE: mf_vm_resize_tensor expects the shape to be passed.
-    if (!mf_vm_resize_tensor(vm, dst, dst->shape, dst->ndim)) return;
+    // NOTE: ctx->resize_tensor expects the shape to be passed.
+    if (!ctx->resize_tensor(ctx->impl, dst, dst->shape, dst->ndim)) return;
     
     f32* A = (f32*)a->data; 
     f32* B = (f32*)b->data; 
@@ -378,13 +373,13 @@ static void op_join(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 }
 
 // --- Kernel: Memory/State ---
-static void op_copy(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_copy(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
     dst->dtype = src->dtype;
-    if (!mf_vm_resize_tensor(vm, dst, src->shape, src->ndim)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, src->shape, src->ndim)) return;
 
     size_t size = mf_dtype_size(src->dtype) * src->size;
     memcpy(dst->data, src->data, size);

@@ -1,15 +1,14 @@
 #include <mathflow/ops/mf_ops_array.h>
-#include <mathflow/vm/mf_vm.h>
-#include <mathflow/vm/mf_vm_utils.h>
+#include <mathflow/ops/mf_kernel_utils.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
 
 // --- Op: Range (Iota) ---
 // Src1: Scalar count (e.g. 5)
 // Dest: Vector [0, 1, 2, 3, 4]
-static void op_range(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* count_tensor = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_range(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* count_tensor = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !count_tensor) return;
 
     // Determine count
@@ -25,7 +24,7 @@ static void op_range(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     // Resize Dest
     dst->dtype = MF_DTYPE_F32; // Always F32 for now
     int32_t shape[] = { count };
-    if (!mf_vm_resize_tensor(vm, dst, shape, 1)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, shape, 1)) return;
 
     // Fill
     f32* d = (f32*)dst->data;
@@ -37,13 +36,13 @@ static void op_range(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 // --- Op: CumSum (Prefix Sum) ---
 // Src1: Vector [10, 20, 30]
 // Dest: Vector [10, 30, 60]
-static void op_cumsum(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
+static void op_cumsum(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
     // Shape matches source
-    if (!mf_utils_resolve_unary_shape(vm, dst, src)) return;
+    if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return;
 
     // Implementation (F32 only for now)
     if (src->dtype != MF_DTYPE_F32) return; // TODO: Support others
@@ -61,10 +60,10 @@ static void op_cumsum(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 // Src1: Data [10, 20, 30]
 // Src2: Mask [1, 0, 1]
 // Dest: [10, 30]
-static void op_compress(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_vm_map_tensor(vm, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* data = mf_vm_map_tensor(vm, src1_idx, MF_ACCESS_READ);
-    mf_tensor* mask = mf_vm_map_tensor(vm, src2_idx, MF_ACCESS_READ);
+static void op_compress(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* data = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    mf_tensor* mask = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
     
     if (!dst || !data || !mask) return;
 
@@ -86,7 +85,7 @@ static void op_compress(mf_vm* vm, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     // Resize Dest
     dst->dtype = data->dtype;
     int32_t new_shape[] = { (int32_t)true_count };
-    if (!mf_vm_resize_tensor(vm, dst, new_shape, 1)) return;
+    if (!ctx->resize_tensor(ctx->impl, dst, new_shape, 1)) return;
 
     // Pass 2: Copy
     size_t write_idx = 0;

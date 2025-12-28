@@ -3,6 +3,8 @@
 
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_program.h>
+#include <mathflow/isa/mf_kernel_ctx.h>
+#include <mathflow/isa/mf_dispatch_table.h>
 #include <mathflow/base/mf_memory.h>
 #include <mathflow/base/mf_thread_pool.h>
 
@@ -10,26 +12,6 @@
 typedef struct mf_vm mf_vm;
 typedef struct mf_context mf_context;
 
-// --- Enums ---
-
-typedef enum {
-    MF_ACCESS_READ = 0,
-    MF_ACCESS_WRITE = 1,
-    MF_ACCESS_RW = 2
-} mf_access_mode;
-
-// --- Backend Interface ---
-// Universal Op Function
-// Operates on the Execution State (VM)
-typedef void (*mf_op_func)(mf_vm* vm, u16 dest, u16 src1, u16 src2);
-
-// Hook for sync (e.g. GPU upload/download)
-typedef void (*mf_hook_map)(mf_vm* vm, mf_tensor* tensor, mf_access_mode mode);
-
-typedef struct {
-    mf_op_func op_table[MF_OP_LIMIT];
-    mf_hook_map on_map;
-} mf_backend_dispatch_table;
 
 // --- Context (Immutable / Shared) ---
 // Holds the Program Code, Symbols, and Backend Interface.

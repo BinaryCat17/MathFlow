@@ -89,6 +89,11 @@ void mf_vm_reset(mf_vm* vm, mf_arena* arena) {
     }
 }
 
+static void impl_error(void* impl, int error_code) {
+    mf_vm* vm = (mf_vm*)impl;
+    vm->error = (mf_vm_error)error_code;
+}
+
 void mf_vm_exec(mf_vm* vm) {
     if (!vm->ctx) return;
     
@@ -98,12 +103,20 @@ void mf_vm_exec(mf_vm* vm) {
         // Hook for exec start?
     }
 
+    // Setup Kernel Context
+    mf_kernel_ctx kernel_ctx = {
+        .impl = vm,
+        .map_tensor = (mf_tensor* (*)(void*, u16, mf_access_mode))mf_vm_map_tensor,
+        .resize_tensor = (bool (*)(void*, mf_tensor*, const int32_t*, uint8_t))mf_vm_resize_tensor,
+        .error = impl_error
+    };
+
     for (size_t i = 0; i < vm->ctx->code_count; ++i) {
         if (vm->error != MF_ERROR_NONE) break;
 
         mf_instruction inst = vm->ctx->code[i];
         if (backend->op_table[inst.opcode]) {
-            backend->op_table[inst.opcode](vm, inst.dest_idx, inst.src1_idx, inst.src2_idx);
+            backend->op_table[inst.opcode](&kernel_ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
         }
     }
 }
