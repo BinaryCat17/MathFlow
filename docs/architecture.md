@@ -16,7 +16,7 @@ flowchart TD
     BIN("Program Binary .bin")
 
     %% Module: Engine
-    subgraph "Module: Engine (Resource Manager)"
+    subgraph EngineMod ["Module: Engine (Resource Manager)"]
         Engine[Engine Core]
         Arena[Arena Allocator]
         Program[Program Data]
@@ -24,24 +24,24 @@ flowchart TD
     end
 
     %% Module: Compiler
-    subgraph "Module: Compiler"
+    subgraph CompilerMod ["Module: Compiler"]
         Parser[JSON Parser]
         Semantics[Semantics & Inference]
         CodeGen[CodeGen & Optimizer]
     end
 
     %% Execution Strategies
-    subgraph "Execution Strategies"
-        VM[VM (Single-Threaded)]
-        Scheduler[Scheduler (Multi-Threaded)]
+    subgraph ExecStrat ["Execution Strategies"]
+        VM["VM (Single-Threaded)"]
+        Scheduler["Scheduler (Multi-Threaded)"]
     end
 
     %% Backends
-    subgraph "Module: Backends & Ops"
+    subgraph BackendMod ["Module: Backends & Ops"]
         Interface[Dispatch Interface]
         CPU[CPU Backend]
-        OpsCore[Ops: Core Math]
-        OpsArray[Ops: Array Utils]
+        OpsCore["Ops: Core Math"]
+        OpsArray["Ops: Array Utils"]
     end
 
     %% Flow
