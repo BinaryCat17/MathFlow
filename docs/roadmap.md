@@ -7,6 +7,20 @@
 
 ---
 
+## Phase 16: Architecture Enforcement (CMake Modularization)
+**Objective:** Make the codebase physically match the Architecture Diagram by splitting the monolithic `CMakeLists.txt` into strict per-module files. This enforces visibility rules (Private/Public) and prevents architectural drift (e.g., lower layers accidentally depending on upper layers).
+
+- [ ] **Step 1: Leaf Modules:** Create `CMakeLists.txt` for `isa` (Interface), `base`, and `ops`.
+- [ ] **Step 2: Core Modules:** Create build files for `vm` and `backend_cpu`.
+- [ ] **Step 3: Dependency Break (Compiler):** Investigate and remove `mf_compiler`'s dependency on `mf_vm`. Move shared logic (e.g. tensor size calc) to `isa` or `base`.
+- [ ] **Step 4: Integration:** Create build files for `engine`, `host`, and `apps`.
+- [ ] **Step 5: Root Cleanup:** Replace root build logic with simple `add_subdirectory` calls.
+
+## Phase 17: UI Widget System
+**Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
+
+---
+
 ## Completed Phases (Archive)
 
 ### Milestone 3: Engine Unification & Apps (Phases 11-15)
