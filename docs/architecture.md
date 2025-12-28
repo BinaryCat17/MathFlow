@@ -149,7 +149,7 @@ graph TD
     Ops --> ISA
     
     %% Base is implicit foundation
-    Base -.-> ISA
+    ISA --> Base
 ```
 
 ### 3.1. Engine (`modules/engine`)
