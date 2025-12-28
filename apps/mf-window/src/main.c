@@ -152,8 +152,24 @@ void job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
         }
     }
 
+    if (rc->r_resx != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_resx, MF_ACCESS_WRITE))) {
+        if (t->data) *((f32*)t->data) = (f32)rc->width;
+    }
+
+    if (rc->r_resy != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_resy, MF_ACCESS_WRITE))) {
+        if (t->data) *((f32*)t->data) = (f32)rc->height;
+    }
+
     if (rc->r_mouse != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mouse, MF_ACCESS_WRITE))) {
         if (t->data) memcpy(t->data, rc->mouse, sizeof(float)*4);
+    }
+    
+    if (rc->r_mousex != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mousex, MF_ACCESS_WRITE))) {
+        if (t->data) *((f32*)t->data) = rc->mouse[0];
+    }
+
+    if (rc->r_mousey != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mousey, MF_ACCESS_WRITE))) {
+        if (t->data) *((f32*)t->data) = rc->mouse[1];
     }
     
     // Aspect Ratio
@@ -280,8 +296,12 @@ int main(int argc, char** argv) {
     mf_vm temp_vm; temp_vm.ctx = &ctx; 
     job_ctx.r_time = mf_vm_find_register(&temp_vm, "u_Time");
     job_ctx.r_res = mf_vm_find_register(&temp_vm, "u_Resolution");
+    job_ctx.r_resx = mf_vm_find_register(&temp_vm, "u_ResX");
+    job_ctx.r_resy = mf_vm_find_register(&temp_vm, "u_ResY");
     job_ctx.r_aspect = mf_vm_find_register(&temp_vm, "u_Aspect");
     job_ctx.r_mouse = mf_vm_find_register(&temp_vm, "u_Mouse");
+    job_ctx.r_mousex = mf_vm_find_register(&temp_vm, "u_MouseX");
+    job_ctx.r_mousey = mf_vm_find_register(&temp_vm, "u_MouseY");
     job_ctx.r_fragx = mf_vm_find_register(&temp_vm, "u_FragX");
     job_ctx.r_fragy = mf_vm_find_register(&temp_vm, "u_FragY");
     job_ctx.r_out = mf_vm_find_register(&temp_vm, "out_Color");
