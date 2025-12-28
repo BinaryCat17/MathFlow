@@ -1,6 +1,5 @@
 #include <mathflow/host/mf_asset_loader.h>
 #include <mathflow/compiler/mf_compiler.h>
-#include <mathflow/vm/mf_vm.h>
 #include <mathflow/engine/mf_engine.h>
 
 #include <stdio.h>
