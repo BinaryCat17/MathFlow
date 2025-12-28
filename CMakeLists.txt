@@ -85,6 +85,29 @@ target_include_directories(mf_backend_cpu PUBLIC
 )
 target_link_libraries(mf_backend_cpu PUBLIC mf_vm mf_ops_core mf_ops_array)
 
+# 7. Host (SDL2 Application Framework)
+# Only build if SDL2 is found
+find_package(SDL2 CONFIG QUIET)
+if(TARGET SDL2::SDL2)
+    add_library(mf_host STATIC
+        modules/host/src/mf_host.c
+    )
+    target_include_directories(mf_host PUBLIC
+        modules/host/include
+    )
+    target_link_libraries(mf_host PUBLIC 
+        mf_vm 
+        mf_compiler 
+        mf_scheduler 
+        mf_backend_cpu 
+        SDL2::SDL2 
+        SDL2::SDL2main
+    )
+    message(STATUS "Building mf_host (SDL2 found)")
+else()
+    message(WARNING "SDL2 not found. mf_host will not be built.")
+endif()
+
 # --- Apps ---
 
 # CLI Runner

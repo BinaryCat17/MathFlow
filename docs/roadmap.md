@@ -112,9 +112,13 @@
 - [x] **Step 3: Memory Management (Thread Scratch):**
     - [x] Replace hardcoded stack buffers in workers with proper Thread-Local Arenas.
     - [x] Ensure robust handling of large graphs without stack overflow (Fixed VM Memory reset bug).
-- [ ] **Step 4: Engine Abstraction:**
-    - Create a helper layer (e.g., `modules/app_framework`) to handle SDL init, input mapping, and rendering loop.
-    - Clean up `apps/mf-window/main.c` to focus on logic.
+- [x] **Step 4: Engine Abstraction (The Host Layer):**
+    - [x] Create `modules/host` to encapsulate SDL2, Input, and Rendering.
+    - [x] **Goal:** Allow creating a new app in < 20 lines of C code.
+    - [x] **Standard Uniforms:** Auto-inject `u_Time`, `u_Mouse`, `u_Resolution`.
+    - [x] **Managed Loop:** Hide the main loop, event polling, and scheduler dispatch.
+    - [ ] **Hot-Reload (Bonus):** Recompile graph on file change.
+    - [x] **Refactor:** Rewrite `apps/mf-window/main.c` to use `mf_host`.
 
 ---
 
