@@ -4,8 +4,13 @@
     { "id": "u_ResY", "type": "Input", "data": { "value": 600.0 } },
     { "id": "u_MouseX", "type": "Input", "data": { "value": 400.0 } },
     { "id": "u_MouseY", "type": "Input", "data": { "value": 300.0 } },
-    { "id": "u_FragX", "type": "Input", "data": { "value": 1000.0 } },
-    { "id": "u_FragY", "type": "Input", "data": { "value": 0.0 } },
+    
+    { "id": "const_axis_0", "type": "Input", "data": { "value": 0.0 } },
+    { "id": "const_axis_1", "type": "Input", "data": { "value": 1.0 } },
+
+    { "id": "u_FragX", "type": "Index" },
+    { "id": "u_FragY", "type": "Index" },
+
     { "id": "u_Aspect", "type": "Input", "data": { "value": 1.33 } },
     
     { "id": "const_05", "type": "Input", "data": { "value": 0.5 } },
@@ -43,11 +48,11 @@
     { "id": "aa_edges", "type": "Join" },
     
     { "id": "out_Color", "type": "SmoothStep" }
-    
-
   ],
   "links": [
-    
+    { "src": "const_axis_1", "src_port": 0, "dst": "u_FragX", "dst_port": 0 },
+    { "src": "const_axis_0", "src_port": 0, "dst": "u_FragY", "dst_port": 0 },
+
     { "src": "u_FragX", "src_port": 0, "dst": "x_norm", "dst_port": 0 },
     { "src": "u_ResX", "src_port": 0, "dst": "x_norm", "dst_port": 1 },
     { "src": "x_norm", "src_port": 0, "dst": "x_centered", "dst_port": 0 },

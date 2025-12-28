@@ -13,6 +13,40 @@ mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
     return NULL;
 }
 
+// --- Helper: Shape Compatibility ---
+static bool mf_shapes_compatible(const mf_tensor* a, const mf_tensor* b, mf_tensor* out) {
+    bool a_scal = (a->size == 1);
+    bool b_scal = (b->size == 1);
+    
+    if (a_scal) { *out = *b; return true; }
+    if (b_scal) { *out = *a; return true; }
+    
+    // Strict match
+    if (mf_tensor_same_shape(a, b)) { *out = *a; return true; }
+    
+    // Simple Broadcasting: [Batch, N] vs [N]
+    if (a->ndim == b->ndim + 1) {
+        // Check suffix
+        bool match = true;
+        for (int i=0; i<b->ndim; ++i) if (a->shape[i+1] != b->shape[i]) match = false;
+        if (match) { *out = *a; return true; }
+    }
+    if (b->ndim == a->ndim + 1) {
+        bool match = true;
+        for (int i=0; i<a->ndim; ++i) if (b->shape[i+1] != a->shape[i]) match = false;
+        if (match) { *out = *b; return true; }
+    }
+    
+    // Dynamic Batch Broadcasting ([0, N] vs [N])
+    // If shape[0] == 0, treat as Wildcard
+    if (a->shape[0] == 0 && a->ndim == b->ndim + 1) {
+        // Assume match
+        *out = *a; return true;
+    }
+
+    return false;
+}
+
 // --- Shape Inference Logic ---
 
 bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node* s3) {
@@ -28,17 +62,10 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
                 
-                // Validation: Both must be same shape or one must be scalar
-                bool a_scal = (a->size == 1);
-                bool b_scal = (b->size == 1);
-                
-                if (!a_scal && !b_scal && !mf_tensor_same_shape(a, b)) {
-                    printf("Error: Shape mismatch in node '%s'. Input shapes: ", node->id);
-                    printf("[%d] vs [%d]\n", a->shape[0], b->shape[0]);
+                if (!mf_shapes_compatible(a, b, out)) {
+                    printf("Error: Shape mismatch in node '%s'. Input shapes: [%d] vs [%d]\n", node->id, a->ndim, b->ndim);
                     return false;
                 }
-
-                *out = a_scal ? *b : *a;
             }
         } break;
 
