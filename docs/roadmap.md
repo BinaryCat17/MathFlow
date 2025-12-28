@@ -22,17 +22,16 @@
 - [x] **Step 2: Worker Memory Optimization:** Switch Backend CPU workers from `mf_heap` (Free List) to `mf_arena` (Linear) for temporary frame data. This removes allocation overhead per frame.
 - [x] **Step 3: Engine Reset:** Implement `mf_engine_reset()` to allow clearing the Heap and Arena pointers without destroying OS threads/buffers, enabling efficient graph hot-reloading.
 
-## Phase 17: Heterogeneous Compute Architecture (The Map Op)
-**Objective:** Prepare the architecture for hybrid CPU/GPU execution by moving from "Flat Inlined Graphs" to a "Kernel + Dispatch" model. Instead of imperative function calls, we introduce `OP_MAP` — a functional primitive ideal for SIMD and Compute Shaders.
+## Phase 17: Implicit Parallelism (Smart Tiling)
+**Objective:** Achieve high-performance execution of complex graphs (e.g., N objects interactions on Full HD screen) without introducing explicit Kernels or `OP_MAP`. We utilize **Tiled Execution** (Chunking) to keep intermediate tensors small (L1/L2 Cache friendly) while preserving the linear simplicity of the Graph ISA.
 
-- [ ] **Step 1: Kernel Definition:** Extend `mf_program` to support multiple "Kernels" (independent bytecode blobs). The Main Graph becomes just a coordinator that dispatches data to Kernels.
-- [ ] **Step 2: ISA Update (OP_MAP):** Introduce `MF_OP_MAP`.
-    - **Semantics:** "Apply Kernel K to every element of Tensor T".
-    - **Usage:** VM sees `OP_MAP`, delegates to Backend. Backend decides *where* to run it (CPU Threads or GPU).
-- [ ] **Step 3: Compiler Evolution (Kernel Extraction):** Modify `mf_compiler` to stop inlining "Pure" sub-graphs. Instead, compile them into separate Kernels and emit `OP_MAP` instructions in the main flow.
-- [ ] **Step 4: Backend Implementation:**
-    - Update `backend_cpu` to handle `map` by spinning up the Thread Pool (replacing the current global dispatch logic).
-    - *Future Proofing:* This structure maps 1:1 to `vkCmdDispatch` in Vulkan.
+- [ ] **Step 1: Virtual Batching:** Update `mf_vm` to support "Active Batch Size". Allow the VM to execute operations on a logical subset (`N` elements) of the allocated tensors, decoupling calculation size from buffer capacity.
+- [ ] **Step 2: Tiled Dispatcher:** Rewrite `mf_backend_cpu` dispatch logic. Instead of a naive loop or one huge job, implement 2D Tiling (e.g., 64x64 blocks).
+    - The Backend calculates tiles.
+    - Assigns a Tile to a Worker.
+    - Worker sets VM Batch Size = Tile Size (e.g., 4096).
+    - Runs the linear graph.
+- [ ] **Step 3: Coordinate Intrinsics:** Implement optimized on-the-fly generation of `index_x` / `index_y` input tensors for the current tile offset. This eliminates the need to allocate huge "Coordinate Buffers" for the entire screen.
 
 ## Phase 18: Advanced State Management (Double Buffering)
 **Objective:** Enable parallel execution for graphs with state (Memory Nodes) by implementing a double-buffering mechanism. This allows "Stateful Shaders" (e.g. Game of Life, fluid sim) to run efficiently on the CPU/GPU without race conditions.
