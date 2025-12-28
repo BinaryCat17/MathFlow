@@ -20,7 +20,7 @@
 
 - [x] **Step 1: Arena Realloc:** Implement "dumb realloc" (Alloc + Copy) in `mf_arena` to support tensor resizing on linear memory.
 - [x] **Step 2: Worker Memory Optimization:** Switch Backend CPU workers from `mf_heap` (Free List) to `mf_arena` (Linear) for temporary frame data. This removes allocation overhead per frame.
-- [ ] **Step 3: Engine Reset:** Implement `mf_engine_reset()` to allow clearing the Heap and Arena pointers without destroying OS threads/buffers, enabling efficient graph hot-reloading.
+- [x] **Step 3: Engine Reset:** Implement `mf_engine_reset()` to allow clearing the Heap and Arena pointers without destroying OS threads/buffers, enabling efficient graph hot-reloading.
 
 ## Phase 17: Heterogeneous Compute Architecture (The Map Op)
 **Objective:** Prepare the architecture for hybrid CPU/GPU execution by moving from "Flat Inlined Graphs" to a "Kernel + Dispatch" model. Instead of imperative function calls, we introduce `OP_MAP` — a functional primitive ideal for SIMD and Compute Shaders.

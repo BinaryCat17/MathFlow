@@ -36,6 +36,10 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc);
 // Destroys the engine and frees all resources.
 void mf_engine_destroy(mf_engine* engine);
 
+// Resets the engine state (Heap, Arena, Program), keeping resources (Threads, Buffers) alive.
+// Useful for hot-reloading graphs.
+void mf_engine_reset(mf_engine* engine);
+
 // Returns the internal arena used for program allocation.
 // Required for external loaders/compilers.
 mf_arena* mf_engine_get_arena(mf_engine* engine);

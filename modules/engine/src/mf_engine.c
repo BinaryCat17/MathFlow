@@ -58,6 +58,31 @@ void mf_engine_destroy(mf_engine* engine) {
     free(engine);
 }
 
+void mf_engine_reset(mf_engine* engine) {
+    if (!engine) return;
+
+    // 1. Shutdown VM (clears registers pointer, etc)
+    mf_vm_shutdown(&engine->vm);
+    
+    // 2. Reset Allocators
+    // Arena reset is fast (pos = 0)
+    mf_arena_reset(&engine->arena);
+    
+    // Heap reset: just re-initialize the free list
+    // This is valid because we own the buffer
+    if (engine->heap_buffer) {
+        mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
+    }
+    
+    // 3. Clear Program State
+    engine->program = NULL;
+    memset(&engine->ctx, 0, sizeof(mf_context));
+    
+    // 4. Re-init VM (restore allocator pointers)
+    // Note: context is now empty, but will be filled on next bind_program
+    mf_vm_init(&engine->vm, &engine->ctx, (mf_allocator*)&engine->heap);
+}
+
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
     if (!engine) return NULL;
     return &engine->arena;
