@@ -10,6 +10,7 @@ target_include_directories(mf_backend_cpu
 
 target_link_libraries(mf_backend_cpu 
     PUBLIC 
+        MathFlow::isa
         MathFlow::vm 
         MathFlow::ops
 )

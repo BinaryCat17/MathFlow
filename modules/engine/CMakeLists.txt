@@ -10,6 +10,7 @@ target_include_directories(mf_engine
 
 target_link_libraries(mf_engine 
     PUBLIC 
+        MathFlow::isa
         MathFlow::vm 
         MathFlow::backend_cpu
 )
