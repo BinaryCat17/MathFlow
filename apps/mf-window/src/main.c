@@ -144,16 +144,10 @@ int main(int argc, char** argv) {
     mf_heap heap;
     mf_heap_init(&heap, heap_mem, 64 * 1024 * 1024);
 
-    // VM
-    mf_vm vm_instance;
-    mf_vm* vm = &vm_instance;
-    mf_vm_init(vm, (mf_allocator*)&heap);
-
     // Load Backend
     mf_backend_dispatch_table dispatch;
     mf_backend_cpu_init(&dispatch);
-    vm->backend = &dispatch;
-
+    
     // Compile Graph
     char* json_src = read_file(argv[1]);
     if (!json_src) {
@@ -167,11 +161,17 @@ int main(int argc, char** argv) {
     mf_program* prog = mf_compile(&ir, &arena);
     if (!prog) { printf("Compilation failed\n"); return 1; }
     
-    // Save program for debug (optional)
-    // mf_compile_save_program(prog, "out/debug_out.bin");
+    // Setup Context (Stateless)
+    mf_context ctx;
+    mf_context_init(&ctx, prog, &dispatch);
 
-    // Load Program
-    mf_vm_load_program(vm, prog, &arena);
+    // Setup VM (Stateful)
+    mf_vm vm_instance;
+    mf_vm* vm = &vm_instance;
+    mf_vm_init(vm, &ctx, (mf_allocator*)&heap);
+    
+    // Allocate State
+    mf_vm_reset(vm, &arena);
 
     // Find Inputs
     u16 reg_time = mf_vm_find_register(vm, "u_Time");

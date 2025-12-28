@@ -8,6 +8,7 @@
 
 // Forward decl
 typedef struct mf_vm mf_vm;
+typedef struct mf_context mf_context;
 
 // --- Enums ---
 
@@ -19,10 +20,10 @@ typedef enum {
 
 // --- Backend Interface ---
 // Universal Op Function
+// Operates on the Execution State (VM)
 typedef void (*mf_op_func)(mf_vm* vm, u16 dest, u16 src1, u16 src2);
 
 // Hook for sync (e.g. GPU upload/download)
-// Now takes a Tensor pointer
 typedef void (*mf_hook_map)(mf_vm* vm, mf_tensor* tensor, mf_access_mode mode);
 
 typedef struct {
@@ -30,7 +31,29 @@ typedef struct {
     mf_hook_map on_map;
 } mf_backend_dispatch_table;
 
-// --- VM State ---
+// --- Context (Immutable / Shared) ---
+// Holds the Program Code, Symbols, and Backend Interface.
+// Thread-safe: Can be shared across multiple VMs.
+struct mf_context {
+    // Code
+    mf_instruction* code;
+    size_t code_count;
+    
+    // Symbols
+    mf_bin_symbol* symbols;
+    size_t symbol_count;
+
+    // Initial Tensor State (Prototypes from Program)
+    mf_tensor* tensor_prototypes;
+    size_t register_count;
+
+    // Execution Logic
+    mf_backend_dispatch_table* backend;
+};
+
+// --- VM (Execution State / Mutable) ---
+// Holds the Heap, Register Values, and Error State.
+// NOT Thread-safe: Each thread must have its own VM.
 typedef enum {
     MF_ERROR_NONE = 0,
     MF_ERROR_OOM = 1,          // Out of Memory
@@ -39,19 +62,12 @@ typedef enum {
 } mf_vm_error;
 
 struct mf_vm {
-    // Code & Registers
-    mf_instruction* _code;
-    size_t _code_count;
+    const mf_context* ctx; // Shared Context
     
-    mf_tensor* _registers;
-    size_t _register_count;
+    // Registers (Active Tensors)
+    mf_tensor* registers;
+    size_t register_count;
 
-    mf_bin_symbol* _symbols;
-    size_t _symbol_count;
-
-    // Execution Context
-    mf_backend_dispatch_table* backend;
-    
     // Memory Management
     mf_allocator* allocator; // For dynamic tensor data
     
@@ -62,12 +78,18 @@ struct mf_vm {
     void* user_data;
 };
 
-// Helper to load binary from disk
-void mf_vm_init(mf_vm* vm, mf_allocator* allocator);
-mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
+// --- Context API ---
+// Initializes a context with a program and backend.
+// The Context does NOT own the Program memory (it just points to it).
+void mf_context_init(mf_context* ctx, const mf_program* prog, mf_backend_dispatch_table* backend);
 
-// Load program into VM memory (allocates registers)
-void mf_vm_load_program(mf_vm* vm, const mf_program* prog, mf_arena* arena);
+// --- VM API ---
+// Initialize a VM instance attached to a Context.
+void mf_vm_init(mf_vm* vm, const mf_context* ctx, mf_allocator* allocator);
+
+// Load Program Data into VM (Allocates registers based on Context prototypes).
+// Must be called before exec.
+void mf_vm_reset(mf_vm* vm, mf_arena* arena);
 
 // Execute program
 void mf_vm_exec(mf_vm* vm);
@@ -77,12 +99,15 @@ void mf_vm_shutdown(mf_vm* vm);
 
 // --- Accessors ---
 // Returns a pointer to the live tensor in the VM.
-// The backend can then read shape/data.
 mf_tensor* mf_vm_map_tensor(mf_vm* vm, u16 idx, mf_access_mode mode);
 
 // Named access: Returns register index or -1 if not found.
+// Lookups are done via the Context's Symbol Table.
 int32_t mf_vm_find_register(mf_vm* vm, const char* name);
 
 bool mf_vm_resize_tensor(mf_vm* vm, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
+
+// Helper: Load program from file and return it (uses Arena)
+mf_program* mf_vm_load_program_from_file(const char* path, mf_arena* arena);
 
 #endif // MF_VM_H

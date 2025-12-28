@@ -106,15 +106,18 @@ int main(int argc, char** argv) {
 
     printf("Program: %u tensors, %u insts\n", prog->meta.tensor_count, prog->meta.instruction_count);
 
-    // 3. Setup Backend & VM
+    // 3. Setup Backend & Context & VM
     mf_backend_dispatch_table cpu_backend;
     mf_backend_cpu_init(&cpu_backend);
     
+    mf_context ctx;
+    mf_context_init(&ctx, prog, &cpu_backend);
+
     mf_vm vm;
-    mf_vm_init(&vm, (mf_allocator*)&heap);
-    vm.backend = &cpu_backend;
+    mf_vm_init(&vm, &ctx, (mf_allocator*)&heap);
     
-    mf_vm_load_program(&vm, prog, &arena);
+    // Alloc registers
+    mf_vm_reset(&vm, &arena);
     
     // 4. Execute
     printf("Running for %d frames...\n", frames);
@@ -124,14 +127,14 @@ int main(int argc, char** argv) {
         // Debug output for first few frames
         if (f < 5) {
              printf("Frame %d:\n", f);
-             for(u32 i=0; i<vm._register_count; ++i) {
-                mf_tensor* t = &vm._registers[i];
+             for(u32 i=0; i<vm.register_count; ++i) {
+                mf_tensor* t = &vm.registers[i];
                 
                 // Find name
                 const char* name = NULL;
-                for (u32 s = 0; s < vm._symbol_count; ++s) {
-                    if (vm._symbols[s].register_idx == i) {
-                        name = vm._symbols[s].name;
+                for (u32 s = 0; s < vm.ctx->symbol_count; ++s) {
+                    if (vm.ctx->symbols[s].register_idx == i) {
+                        name = vm.ctx->symbols[s].name;
                         break;
                     }
                 }
@@ -147,13 +150,13 @@ int main(int argc, char** argv) {
     
     // 5. Dump All Tensors
     printf("\n--- Execution Finished ---\n");
-    for(u32 i=0; i<vm._register_count; ++i) {
+    for(u32 i=0; i<vm.register_count; ++i) {
         mf_tensor* t = mf_vm_map_tensor(&vm, i, MF_ACCESS_READ);
 
         const char* name = NULL;
-        for (u32 s = 0; s < vm._symbol_count; ++s) {
-            if (vm._symbols[s].register_idx == i) {
-                name = vm._symbols[s].name;
+        for (u32 s = 0; s < vm.ctx->symbol_count; ++s) {
+            if (vm.ctx->symbols[s].register_idx == i) {
+                name = vm.ctx->symbols[s].name;
                 break;
             }
         }
