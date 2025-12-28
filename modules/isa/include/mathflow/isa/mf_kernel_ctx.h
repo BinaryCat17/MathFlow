@@ -36,6 +36,10 @@ struct mf_kernel_ctx {
      * @param error_code Implementation-specific error code.
      */
     void (*error)(void* impl, int error_code);
+
+    // Virtual Batching: If > 0, operations should restrict processing to this count.
+    // This allows Tiled Execution on buffers larger than the current tile.
+    u32 batch_size;
 };
 
 // --- Kernel Signature ---

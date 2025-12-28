@@ -92,7 +92,8 @@ void mf_vm_exec(mf_vm* vm) {
         .impl = vm,
         .map_tensor = (mf_tensor* (*)(void*, u16, mf_access_mode))mf_vm_map_tensor,
         .resize_tensor = (bool (*)(void*, mf_tensor*, const int32_t*, uint8_t))mf_vm_resize_tensor,
-        .error = impl_error
+        .error = impl_error,
+        .batch_size = vm->batch_size
     };
 
     for (size_t i = 0; i < vm->ctx->code_count; ++i) {

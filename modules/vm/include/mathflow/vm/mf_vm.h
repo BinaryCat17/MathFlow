@@ -53,6 +53,9 @@ struct mf_vm {
     // Memory Management
     mf_allocator* allocator; // For dynamic tensor data
     
+    // Execution Configuration
+    u32 batch_size; // Virtual Batching: If > 0, operations process only this many elements. 0 = Full Tensor Size.
+
     // State
     mf_vm_error error;
     

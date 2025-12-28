@@ -9,14 +9,42 @@
 // --- Helper: Shape Resolution (Inline) ---
 
 static inline bool mf_utils_resolve_binary_shape(const mf_kernel_ctx* ctx, mf_tensor* dst, const mf_tensor* a, const mf_tensor* b) {
-    const mf_tensor* shape_src = (a->size >= b->size) ? a : b;
-    // Default: output dtype matches A (usually f32)
     if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
+
+    // Virtual Batching
+    if (ctx->batch_size > 0) {
+        // If batching is active, we force the output to be a 1D vector of batch_size
+        // UNLESS both inputs are scalars (size=1), then output is scalar.
+        bool a_scalar = (a->size == 1);
+        bool b_scalar = (b->size == 1);
+        
+        if (a_scalar && b_scalar) {
+             int32_t scalar_shape[] = {1};
+             return ctx->resize_tensor(ctx->impl, dst, scalar_shape, 0);
+        } else {
+             int32_t batch_shape[] = { (int32_t)ctx->batch_size };
+             return ctx->resize_tensor(ctx->impl, dst, batch_shape, 1);
+        }
+    }
+
+    const mf_tensor* shape_src = (a->size >= b->size) ? a : b;
     return ctx->resize_tensor(ctx->impl, dst, shape_src->shape, shape_src->ndim);
 }
 
 static inline bool mf_utils_resolve_unary_shape(const mf_kernel_ctx* ctx, mf_tensor* dst, const mf_tensor* a) {
     if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
+    
+    // Virtual Batching
+    if (ctx->batch_size > 0) {
+        if (a->size == 1) {
+             int32_t scalar_shape[] = {1};
+             return ctx->resize_tensor(ctx->impl, dst, scalar_shape, 0);
+        } else {
+             int32_t batch_shape[] = { (int32_t)ctx->batch_size };
+             return ctx->resize_tensor(ctx->impl, dst, batch_shape, 1);
+        }
+    }
+
     return ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim);
 }
 

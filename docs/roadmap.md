@@ -25,7 +25,7 @@
 ## Phase 17: Implicit Parallelism (Smart Tiling)
 **Objective:** Achieve high-performance execution of complex graphs (e.g., N objects interactions on Full HD screen) without introducing explicit Kernels or `OP_MAP`. We utilize **Tiled Execution** (Chunking) to keep intermediate tensors small (L1/L2 Cache friendly) while preserving the linear simplicity of the Graph ISA.
 
-- [ ] **Step 1: Virtual Batching:** Update `mf_vm` to support "Active Batch Size". Allow the VM to execute operations on a logical subset (`N` elements) of the allocated tensors, decoupling calculation size from buffer capacity.
+- [x] **Step 1: Virtual Batching:** Update `mf_vm` to support "Active Batch Size". Allow the VM to execute operations on a logical subset (`N` elements) of the allocated tensors, decoupling calculation size from buffer capacity.
 - [ ] **Step 2: Tiled Dispatcher:** Rewrite `mf_backend_cpu` dispatch logic. Instead of a naive loop or one huge job, implement 2D Tiling (e.g., 64x64 blocks).
     - The Backend calculates tiles.
     - Assigns a Tile to a Worker.
