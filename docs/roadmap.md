@@ -100,6 +100,22 @@
     - Implement `mf_scheduler_dispatch(ctx, inputs, job_count)`.
     - **Sync:** Main thread aggregates results and handles `MF_OP_COPY` (State Logic is single-threaded).
 
+## Phase 12: Architecture Hardening (Prep for UI)
+**Objective:** Optimize the system for complex applications (Inventory UI) by eliminating performance bottlenecks and improving API ergonomics.
+
+- [ ] **Step 1: Platform Upgrade (CondVars):**
+    - Add `mf_cond_t` (Condition Variables) to `modules/platform`.
+    - Implement for Win32 (`CONDITION_VARIABLE`) and POSIX (`pthread_cond_t`).
+- [ ] **Step 2: Scheduler Optimization (Thread Pool):**
+    - Replace "Spawn-and-Join" model with a persistent Thread Pool.
+    - Worker threads sleep on CondVar waiting for jobs.
+- [ ] **Step 3: Memory Management (Thread Scratch):**
+    - Replace hardcoded stack buffers in workers with proper Thread-Local Arenas.
+    - Ensure robust handling of large graphs without stack overflow.
+- [ ] **Step 4: Engine Abstraction:**
+    - Create a helper layer (e.g., `modules/app_framework`) to handle SDL init, input mapping, and rendering loop.
+    - Clean up `apps/mf-window/main.c` to focus on logic.
+
 ---
 
 ## Completed Phases (Archive)
