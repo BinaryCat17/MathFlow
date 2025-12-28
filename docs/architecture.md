@@ -80,9 +80,10 @@ flowchart TD
 
 ### 2.2. Virtual Machine (`modules/vm`)
 *   **Role:** The "Runner" (Single-Threaded).
+*   **Concept:** Acts like a **CPU**. Executes logic sequentially.
 *   **Key Responsibilities:**
-    *   **Execution State:** Manages the Heap (Variables) and Registers for a single execution context.
-    *   **Stateful:** Good for simple scripts or sequential logic where state persists in the VM instance.
+    *   **Execution State:** Manages the Heap (Variables) globally for the instance.
+    *   **Use Case:** Game logic, sequential scripts, state machines (where order matters and side-effects exist).
     *   **Symbol Table Access:** Uses the Engine's context to map names to registers.
 
 ### 2.3. Compiler (`modules/compiler`)
@@ -95,9 +96,11 @@ flowchart TD
 
 ### 2.4. Scheduler (`modules/scheduler`)
 *   **Role:** The "Job System" (Multi-Threaded).
+*   **Concept:** Acts like a **GPU/Compute Shader**. Executes logic in parallel over a domain.
 *   **Key Responsibilities:**
     *   **Parallel Execution:** Splits the domain (e.g., screen pixels) into tiles and distributes them across a thread pool.
-    *   **Stateless:** Uses the Engine's immutable Context, but allocates temporary per-thread scratch memory for execution.
+    *   **Stateless:** Optimized for independent calculations. Does not support global mutable state safely without locking.
+    *   **Use Case:** Rendering, Image Processing, Particle Systems, Massive Math Ops.
 
 ### 2.5. Platform (`modules/platform`)
 *   **Role:** OS Abstraction Layer.
