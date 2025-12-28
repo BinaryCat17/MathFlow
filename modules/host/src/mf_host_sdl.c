@@ -1,7 +1,6 @@
 #include <mathflow/host/mf_host_sdl.h>
 #include <mathflow/host/mf_asset_loader.h>
 #include <mathflow/engine/mf_engine.h>
-#include <mathflow/vm/mf_vm.h>
 #include <mathflow/base/mf_platform.h>
 
 #include <SDL2/SDL.h>
@@ -102,7 +101,7 @@ typedef struct {
     u16 r_out;
 } mf_host_job_ctx;
 
-static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
+static void host_job_setup(mf_job_handle job, u32 job_idx, void* user_data) {
     mf_host_job_ctx* rc = (mf_host_job_ctx*)user_data;
     
     int y_start = job_idx * rc->tile_height;
@@ -113,44 +112,44 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
 
     mf_tensor* t;
 
-    if (rc->r_time != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_time, MF_ACCESS_WRITE))) {
+    if (rc->r_time != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_time, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = rc->time;
     }
     
-    if (rc->r_res != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_res, MF_ACCESS_WRITE))) {
+    if (rc->r_res != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_res, MF_ACCESS_WRITE))) {
         if (t->data) {
              f32* d = (f32*)t->data; d[0] = (f32)rc->width; d[1] = (f32)rc->height;
         }
     }
 
-    if (rc->r_resx != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_resx, MF_ACCESS_WRITE))) {
+    if (rc->r_resx != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_resx, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = (f32)rc->width;
     }
 
-    if (rc->r_resy != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_resy, MF_ACCESS_WRITE))) {
+    if (rc->r_resy != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_resy, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = (f32)rc->height;
     }
     
-    if (rc->r_aspect != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_aspect, MF_ACCESS_WRITE))) {
+    if (rc->r_aspect != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_aspect, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = (f32)rc->width / (f32)rc->height;
     }
 
-    if (rc->r_mouse != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mouse, MF_ACCESS_WRITE))) {
+    if (rc->r_mouse != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_mouse, MF_ACCESS_WRITE))) {
         if (t->data) memcpy(t->data, rc->mouse, sizeof(float)*4);
     }
     
-    if (rc->r_mousex != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mousex, MF_ACCESS_WRITE))) {
+    if (rc->r_mousex != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_mousex, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = rc->mouse[0];
     }
 
-    if (rc->r_mousey != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_mousey, MF_ACCESS_WRITE))) {
+    if (rc->r_mousey != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_mousey, MF_ACCESS_WRITE))) {
         if (t->data) *((f32*)t->data) = rc->mouse[1];
     }
     
     int dims[2] = { local_h, rc->width };
     
-    if (rc->r_fragx != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_fragx, MF_ACCESS_WRITE))) {
-        if (mf_vm_resize_tensor(vm, t, dims, 2)) {
+    if (rc->r_fragx != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_fragx, MF_ACCESS_WRITE))) {
+        if (mf_job_resize_tensor(job, t, dims, 2)) {
             f32* d = (f32*)t->data;
             for (int y = 0; y < local_h; ++y) {
                 for (int x = 0; x < rc->width; ++x) {
@@ -160,8 +159,8 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
         }
     }
 
-    if (rc->r_fragy != 0xFFFF && (t = mf_vm_map_tensor(vm, rc->r_fragy, MF_ACCESS_WRITE))) {
-        if (mf_vm_resize_tensor(vm, t, dims, 2)) {
+    if (rc->r_fragy != 0xFFFF && (t = mf_job_map_tensor(job, rc->r_fragy, MF_ACCESS_WRITE))) {
+        if (mf_job_resize_tensor(job, t, dims, 2)) {
             f32* d = (f32*)t->data;
             for (int y = 0; y < local_h; ++y) {
                 float val = (f32)(y_start + y) + 0.5f;
@@ -173,11 +172,11 @@ static void host_job_setup(mf_vm* vm, u32 job_idx, void* user_data) {
     }
 }
 
-static void host_job_finish(mf_vm* vm, u32 job_idx, void* user_data) {
+static void host_job_finish(mf_job_handle job, u32 job_idx, void* user_data) {
     mf_host_job_ctx* rc = (mf_host_job_ctx*)user_data;
     if (rc->r_out == 0xFFFF) return; 
     
-    mf_tensor* out = mf_vm_map_tensor(vm, rc->r_out, MF_ACCESS_READ);
+    mf_tensor* out = mf_job_map_tensor(job, rc->r_out, MF_ACCESS_READ);
     if (!out || !out->data) return;
     
     int y_start = job_idx * rc->tile_height;
@@ -222,37 +221,43 @@ int mf_host_run(const mf_host_desc* desc) {
     engine_desc.arena_size = 16 * 1024 * 1024;
     engine_desc.num_threads = desc->num_threads;
 
-    mf_engine engine;
-    mf_engine_init(&engine, &engine_desc);
+    mf_engine* engine = mf_engine_create(&engine_desc);
+    if (!engine) {
+        printf("[Host] Failed to create engine\n");
+        SDL_DestroyWindow(window); SDL_Quit();
+        return 1;
+    }
 
-    if (!mf_asset_loader_load(&engine, desc->graph_path)) {
+    if (!mf_asset_loader_load(engine, desc->graph_path)) {
         printf("[Host] Failed to load graph: %s\n", desc->graph_path);
-        mf_engine_shutdown(&engine);
+        mf_engine_destroy(engine);
         SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
     
     // Cache Registers
-    mf_vm temp_vm; temp_vm.ctx = &engine.ctx; 
-    u16 r_out    = mf_vm_find_register(&temp_vm, "out_Color");
-    u16 r_fragx  = mf_vm_find_register(&temp_vm, "u_FragX");
-    u16 r_fragy  = mf_vm_find_register(&temp_vm, "u_FragY");
-
-    // Strategy Auto-detection
-    bool is_spatial = (r_fragx != 0xFFFF || r_fragy != 0xFFFF);
-    printf("[Host] Execution Strategy: %s\n", is_spatial ? "Spatial (Parallel)" : "Global (Serial)");
+    int32_t ir_out    = mf_engine_find_register(engine, "out_Color");
+    int32_t ir_fragx  = mf_engine_find_register(engine, "u_FragX");
+    int32_t ir_fragy  = mf_engine_find_register(engine, "u_FragY");
+    
+    u16 r_out   = (ir_out >= 0) ? (u16)ir_out : 0xFFFF;
+    u16 r_fragx = (ir_fragx >= 0) ? (u16)ir_fragx : 0xFFFF;
+    u16 r_fragy = (ir_fragy >= 0) ? (u16)ir_fragy : 0xFFFF;
 
     mf_host_job_ctx job_ctx = {0};
     job_ctx.width = desc->width;
     job_ctx.height = desc->height;
-    job_ctx.r_time   = mf_vm_find_register(&temp_vm, "u_Time");
-    job_ctx.r_res    = mf_vm_find_register(&temp_vm, "u_Resolution");
-    job_ctx.r_resx   = mf_vm_find_register(&temp_vm, "u_ResX");
-    job_ctx.r_resy   = mf_vm_find_register(&temp_vm, "u_ResY");
-    job_ctx.r_aspect = mf_vm_find_register(&temp_vm, "u_Aspect");
-    job_ctx.r_mouse  = mf_vm_find_register(&temp_vm, "u_Mouse");
-    job_ctx.r_mousex = mf_vm_find_register(&temp_vm, "u_MouseX");
-    job_ctx.r_mousey = mf_vm_find_register(&temp_vm, "u_MouseY");
+    
+    int32_t idx;
+    idx = mf_engine_find_register(engine, "u_Time"); job_ctx.r_time = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_Resolution"); job_ctx.r_res = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_ResX"); job_ctx.r_resx = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_ResY"); job_ctx.r_resy = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_Aspect"); job_ctx.r_aspect = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_Mouse"); job_ctx.r_mouse = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_MouseX"); job_ctx.r_mousex = (idx >= 0) ? (u16)idx : 0xFFFF;
+    idx = mf_engine_find_register(engine, "u_MouseY"); job_ctx.r_mousey = (idx >= 0) ? (u16)idx : 0xFFFF;
+    
     job_ctx.r_fragx  = r_fragx;
     job_ctx.r_fragy  = r_fragy;
     job_ctx.r_out    = r_out;
@@ -260,18 +265,11 @@ int mf_host_run(const mf_host_desc* desc) {
     u32* frame_buffer = malloc(desc->width * desc->height * 4);
     job_ctx.pixels = frame_buffer;
 
-    // Stateful Script Mode setup
-    mf_instance script_inst = {0};
-    if (!is_spatial) {
-        mf_engine_create_instance(&engine, &script_inst, 0);
-    }
-
     bool running = true;
     SDL_Event event;
     u32 start_time = SDL_GetTicks();
     
-    int pool_threads = mf_thread_pool_get_thread_count(engine.pool);
-    int tile_count = is_spatial ? (pool_threads > 4 ? pool_threads : 4) : 1; 
+    int tile_count = (desc->num_threads > 0) ? desc->num_threads : 4; 
 
     while (running) {
         while (SDL_PollEvent(&event)) {
@@ -286,24 +284,16 @@ int mf_host_run(const mf_host_desc* desc) {
         job_ctx.mouse[2] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1.0f : 0.0f;
         job_ctx.mouse[3] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1.0f : 0.0f;
         
-        if (is_spatial) {
-            job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
-            mf_engine_dispatch(&engine, tile_count, 1, host_job_setup, host_job_finish, &job_ctx);
-        } else {
-            job_ctx.tile_height = job_ctx.height;
-            host_job_setup(&script_inst.vm, 0, &job_ctx);
-            mf_vm_exec(&script_inst.vm);
-            host_job_finish(&script_inst.vm, 0, &job_ctx);
-        }
+        job_ctx.tile_height = (job_ctx.height + tile_count - 1) / tile_count;
+        mf_engine_dispatch(engine, tile_count, 1, host_job_setup, host_job_finish, &job_ctx);
         
         SDL_UpdateTexture(texture, NULL, frame_buffer, job_ctx.width * 4);
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
     }
     
-    if (!is_spatial) mf_instance_destroy(&script_inst);
     free(frame_buffer);
-    mf_engine_shutdown(&engine);
+    mf_engine_destroy(engine);
     SDL_DestroyTexture(texture);
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);

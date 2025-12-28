@@ -14,7 +14,8 @@ static const char* get_filename_ext(const char *filename) {
 }
 
 bool mf_asset_loader_load(mf_engine* engine, const char* path) {
-    if (!engine || !engine->arena_buffer) return false;
+    mf_arena* arena = mf_engine_get_arena(engine);
+    if (!arena) return false;
     
     const char* ext = get_filename_ext(path);
     mf_program* prog = NULL;
@@ -22,15 +23,15 @@ bool mf_asset_loader_load(mf_engine* engine, const char* path) {
     if (strcmp(ext, "json") == 0) {
         // Compile from source
         mf_graph_ir ir = {0};
-        if (!mf_compile_load_json(path, &ir, &engine->arena)) {
+        if (!mf_compile_load_json(path, &ir, arena)) {
             printf("[AssetLoader] Failed to load/parse JSON: %s\n", path);
             return false;
         }
         
-        prog = mf_compile(&ir, &engine->arena);
+        prog = mf_compile(&ir, arena);
     } else if (strcmp(ext, "bin") == 0) {
         // Load binary
-        prog = mf_vm_load_program_from_file(path, &engine->arena);
+        prog = mf_vm_load_program_from_file(path, arena);
     } else {
         printf("[AssetLoader] Unknown file extension: %s\n", ext);
         return false;

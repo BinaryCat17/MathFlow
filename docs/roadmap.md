@@ -59,14 +59,52 @@
 ## Phase 16.8: Execution Unification (Compute Dispatch)
 **Objective:** Replace the rigid `Script` vs `Shader` separation with a unified "Compute Dispatch" model. Shift the responsibility of parallelism from the VM to the **Backend**, allowing future backends (Vulkan/Metal) to handle execution natively.
 
-- [ ] **Step 1: ISA Update:** Add a `dispatch` function pointer to the `mf_backend_dispatch_table`.
-- [ ] **Step 2: Backend CPU Migration:** Move the thread pool and tiling logic (`mf_vm_parallel.c`) into `modules/backend_cpu`. The CPU backend will now manage the creation of worker VMs.
-- [ ] **Step 3: VM Purification:** Remove parallel execution logic from `modules/vm`, making it a pure single-threaded bytecode interpreter.
-- [ ] **Step 4: Engine Dispatch:** Implement `mf_engine_dispatch(engine, dim_x, dim_y, ...)` which delegates to the active backend.
-- [ ] **Step 5: Host Cleanup:** Update hosts to use the unified `dispatch` API, removing `MF_HOST_RUNTIME_*` flags.
+- [x] **Step 1: ISA Update:** Add a `dispatch` function pointer to the `mf_backend_dispatch_table`.
+- [x] **Step 2: Backend CPU Migration:** Move the thread pool and tiling logic (`mf_vm_parallel.c`) into `modules/backend_cpu`. The CPU backend will now manage the creation of worker VMs.
+- [x] **Step 3: VM Purification:** Remove parallel execution logic from `modules/vm`, making it a pure single-threaded bytecode interpreter.
+- [x] **Step 4: Engine Dispatch:** Implement `mf_engine_dispatch(engine, dim_x, dim_y, ...)` which delegates to the active backend.
+- [x] **Step 5: Host Cleanup:** Update hosts to use the unified `dispatch` API, removing `MF_HOST_RUNTIME_*` flags.
 
-## Phase 17: UI Widget System
-**Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
+## Phase 16.9: Engine Encapsulation & Single State (Completed)
+**Objective:** Fully encapsulate the Virtual Machine within the Engine. Remove `mf_instance` to enforce a "Single Source of Truth" architecture. Unify execution under `mf_engine_dispatch`.
+
+- [x] **Step 1: Opaque Architecture:** Redefined `mf_engine` as an opaque handle. Removed `mf_instance` entirely from the public API.
+- [x] **Step 2: Engine Proxy API:** Implemented direct data access (`mf_engine_map_tensor`, `mf_engine_find_register`) mapping to the internal VM state.
+- [x] **Step 3: Unified Dispatch:** Implemented smart `mf_engine_dispatch`:
+    - **1x1 Dispatch:** Runs on the Main VM (Stateful, Script Mode).
+    - **NxM Dispatch:** Delegates to Backend (Stateless, Parallel/Shader Mode).
+- [x] **Step 4: Host Isolation:** Rewrote `mf_host_sdl.c` and `mf_host_headless.c` to use ONLY `mf_engine.h` and opaque `mf_job_handle`.
+- [x] **Step 5: CMake Decoupling:** Removed `MathFlow::vm` from `modules/host/CMakeLists.txt` public interface.
+
+## Phase 16.10: Data Propagation & API Cleanup
+**Objective:** Remove low-level execution callbacks (`setup_cb`, `finish_cb`, `mf_job_handle`) from the public API. Implement automatic state propagation so the Host only interacts with the Main Engine State.
+
+- [ ] **Step 1: Backend Context Access:** Update `mf_backend_dispatch_func` to accept the `Main VM` state (or its memory pointers) as a read-only source.
+- [ ] **Step 2: Worker Initialization:** Modify CPU Backend workers to automatically bind to the Main VM's constants/uniforms (Zero-Copy or Fast-Copy).
+- [ ] **Step 3: Output Consolidation:** Implement a mechanism where parallel workers write directly to the Main VM's output tensor buffers (slicing/tiling handled internally).
+- [ ] **Step 4: API Purification:** Remove job-related types and callbacks from `mf_engine.h`. `mf_engine_dispatch` becomes a simple call: `dispatch(engine, x, y)`.
+
+## Phase 17: Heterogeneous Compute Architecture (The Map Op)
+**Objective:** Prepare the architecture for hybrid CPU/GPU execution by moving from "Flat Inlined Graphs" to a "Kernel + Dispatch" model. Instead of imperative function calls, we introduce `OP_MAP` — a functional primitive ideal for SIMD and Compute Shaders.
+
+- [ ] **Step 1: Kernel Definition:** Extend `mf_program` to support multiple "Kernels" (independent bytecode blobs). The Main Graph becomes just a coordinator that dispatches data to Kernels.
+- [ ] **Step 2: ISA Update (OP_MAP):** Introduce `MF_OP_MAP`.
+    - **Semantics:** "Apply Kernel K to every element of Tensor T".
+    - **Usage:** VM sees `OP_MAP`, delegates to Backend. Backend decides *where* to run it (CPU Threads or GPU).
+- [ ] **Step 3: Compiler Evolution (Kernel Extraction):** Modify `mf_compiler` to stop inlining "Pure" sub-graphs. Instead, compile them into separate Kernels and emit `OP_MAP` instructions in the main flow.
+- [ ] **Step 4: Backend Implementation:**
+    - Update `backend_cpu` to handle `map` by spinning up the Thread Pool (replacing the current global dispatch logic).
+    - *Future Proofing:* This structure maps 1:1 to `vkCmdDispatch` in Vulkan.
+
+## Phase 18: Advanced State Management (Double Buffering)
+**Objective:** Enable parallel execution for graphs with state (Memory Nodes) by implementing a double-buffering mechanism. This allows "Stateful Shaders" (e.g. Game of Life, fluid sim) to run efficiently on the CPU/GPU without race conditions.
+
+- [ ] **Step 1: Memory Model Update:** Update `mf_vm` to handle two sets of buffers for Memory Nodes (Read-Previous / Write-Current).
+- [ ] **Step 2: Buffer Swap:** Implement `mf_engine_swap_buffers()` to be called at the end of a frame.
+- [ ] **Step 3: Engine Logic:** Update `mf_engine_run` (or `dispatch`) to include automatic strategy selection:
+    - **Logic:** If `workload_size > threshold` AND (`Graph is Pure` OR `Double Buffering Active`) -> **Auto-Parallelize**.
+    - **Goal:** The Host simply requests "Run on this domain", and the Engine utilizes available cores efficiently without manual flags.
+
 
 ---
 

@@ -35,4 +35,11 @@ typedef struct { f32 m[16]; } mf_mat4;
 // Column-major 3x3 matrix
 typedef struct { f32 m[9]; } mf_mat3;
 
+// --- Access Modes ---
+typedef enum {
+    MF_ACCESS_READ = 0,
+    MF_ACCESS_WRITE = 1,
+    MF_ACCESS_RW = 2
+} mf_access_mode;
+
 #endif // MF_TYPES_H

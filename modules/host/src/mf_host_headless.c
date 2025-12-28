@@ -1,7 +1,6 @@
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/host/mf_asset_loader.h>
-#include <mathflow/vm/mf_vm.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -41,64 +40,51 @@ static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     }
 }
 
+static void debug_print_callback(u16 idx, const char* name, mf_tensor* t, void* user_data) {
+    // Simple filter: print first 20 registers or any named output
+    if (idx < 20 || (name && strncmp(name, "out_", 4) == 0)) {
+        print_tensor(idx, name, t);
+    }
+}
+
+static void final_print_callback(u16 idx, const char* name, mf_tensor* t, void* user_data) {
+    // Always print
+    print_tensor(idx, name, t);
+}
+
 int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     if (!desc || !desc->graph_path) return 1;
 
-    mf_engine engine;
-    mf_engine_init(&engine, NULL);
+    mf_engine* engine = mf_engine_create(NULL);
+    if (!engine) return 1;
 
-    if (!mf_asset_loader_load(&engine, desc->graph_path)) {
-        mf_engine_shutdown(&engine);
+    if (!mf_asset_loader_load(engine, desc->graph_path)) {
+        mf_engine_destroy(engine);
         return 1;
     }
 
-    mf_instance inst;
-    if (!mf_engine_create_instance(&engine, &inst, 0)) {
-        mf_engine_shutdown(&engine);
-        return 1;
-    }
+    // No explicit instance creation needed. Engine owns the state.
 
     printf("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
-        mf_vm_exec(&inst.vm);
+        // Dispatch 1x1 = Script Mode (Stateful)
+        mf_engine_dispatch(engine, 1, 1, NULL, NULL, NULL);
         
-        if (inst.vm.error != MF_ERROR_NONE) {
-            printf("Error: Runtime error %d\n", inst.vm.error);
+        mf_engine_error err = mf_engine_get_error(engine);
+        if (err != MF_ENGINE_ERR_NONE) {
+            printf("Error: Runtime error %d\n", err);
             break;
         }
         
         if (f < 3) {
              printf("--- Frame %d ---\n", f);
-             for(u32 i=0; i<inst.vm.register_count; ++i) {
-                mf_tensor* t = &inst.vm.registers[i];
-                const char* name = NULL;
-                for (u32 s = 0; s < inst.vm.ctx->symbol_count; ++s) {
-                    if (inst.vm.ctx->symbols[s].register_idx == i) {
-                        name = inst.vm.ctx->symbols[s].name;
-                        break;
-                    }
-                }
-                if (engine.program->meta.tensor_count < 20 || (name && strncmp(name, "out_", 4) == 0)) {
-                    print_tensor(i, name, t);
-                }
-             }
+             mf_engine_iterate_registers(engine, debug_print_callback, NULL);
         }
     }
     
     printf("\n--- Final State ---\n");
-    for(u32 i=0; i<inst.vm.register_count; ++i) {
-        mf_tensor* t = mf_vm_map_tensor(&inst.vm, i, MF_ACCESS_READ);
-        const char* name = NULL;
-        for (u32 s = 0; s < inst.vm.ctx->symbol_count; ++s) {
-            if (inst.vm.ctx->symbols[s].register_idx == i) {
-                name = inst.vm.ctx->symbols[s].name;
-                break;
-            }
-        }
-        print_tensor(i, name, t);
-    }
+    mf_engine_iterate_registers(engine, final_print_callback, NULL);
 
-    mf_instance_destroy(&inst);
-    mf_engine_shutdown(&engine);
+    mf_engine_destroy(engine);
     return 0;
 }

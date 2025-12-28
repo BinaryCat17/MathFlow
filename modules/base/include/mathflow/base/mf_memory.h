@@ -18,7 +18,7 @@ struct mf_allocator {
 // --- Arena Allocator (Linear / Frame Memory) ---
 // Fast, no free(), reset() only.
 
-typedef struct {
+typedef struct mf_arena {
     mf_allocator base; // Inheritance
     u8* memory;
     size_t size;

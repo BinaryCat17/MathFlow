@@ -17,7 +17,6 @@ target_link_libraries(mf_host_core
         cjson
         MathFlow::engine
         MathFlow::compiler
-        MathFlow::vm
 )
 
 # --- Host SDL (Window & Input) ---

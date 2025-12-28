@@ -2,9 +2,14 @@
 #define MF_ENGINE_H
 
 #include <mathflow/isa/mf_tensor.h>
-#include <mathflow/isa/mf_program.h>
-#include <mathflow/vm/mf_vm.h>
-#include <mathflow/base/mf_thread_pool.h>
+#include <mathflow/base/mf_types.h>
+
+// Forward declarations
+typedef struct mf_program mf_program;
+typedef struct mf_arena mf_arena;
+
+// Opaque Engine Handle
+typedef struct mf_engine mf_engine;
 
 // Configuration for initializing the engine
 typedef struct mf_engine_desc {
@@ -12,77 +17,89 @@ typedef struct mf_engine_desc {
     // Default: 8MB if set to 0.
     size_t arena_size;
 
+    // Size of the dynamic heap for Variables (State).
+    // Default: 64MB if set to 0.
+    size_t heap_size;
+
     // Number of worker threads for parallel execution.
     // Default: 0 (Auto-detect CPU count).
     int num_threads;
 } mf_engine_desc;
 
-// The MathFlow Engine
-// Represents the "Static" part of the runtime:
-// - Code (Program)
-// - Constants (Arena)
-// - Backend Operations (Dispatch Table)
-// - Context (Symbols)
-//
-// It does NOT contain the execution state (Heap, Registers, Memory Nodes).
-// Those are managed by mf_vm or dispatched via the Backend.
-typedef struct mf_engine {
-    // Memory
-    mf_arena arena;
-    void* arena_buffer; // Owned
+// --- Lifecycle ---
 
-    // Code
-    mf_program* program;
+// Creates a new Engine instance.
+// Allocates internal state (VM, Heap, Arena).
+mf_engine* mf_engine_create(const mf_engine_desc* desc);
 
-    // Operations
-    mf_backend_dispatch_table backend;
+// Destroys the engine and frees all resources.
+void mf_engine_destroy(mf_engine* engine);
 
-    // Shared Context (for VM/Scheduler)
-    mf_context ctx;
+// Returns the internal arena used for program allocation.
+// Required for external loaders/compilers.
+mf_arena* mf_engine_get_arena(mf_engine* engine);
 
-    // Execution Resources
-    mf_thread_pool* pool;
-} mf_engine;
-
-// Initialize the engine. Allocates the Arena.
-// Does NOT load a graph.
-void mf_engine_init(mf_engine* engine, const mf_engine_desc* desc);
+// --- Setup ---
 
 // Binds a loaded program to the engine.
-// Initializes the Execution Context.
+// Initializes the Execution Context and allocates registers in the Heap.
 // @param prog Pointer to program data (must be valid for engine lifetime).
 void mf_engine_bind_program(mf_engine* engine, mf_program* prog);
 
-// Shuts down the engine and frees the Arena.
-void mf_engine_shutdown(mf_engine* engine);
+// --- Execution ---
+
+// Opaque handle for a job execution context (wraps the underlying worker VM/Kernel)
+typedef void* mf_job_handle;
+
+typedef void (*mf_engine_job_setup_func)(mf_job_handle job, u32 job_idx, void* user_data);
+typedef void (*mf_engine_job_finish_func)(mf_job_handle job, u32 job_idx, void* user_data);
 
 /**
  * @brief Dispatches the current program over a 2D domain.
  * Automatically uses the active backend and thread pool.
+ * 
+ * If count_x=1 and count_y=1, it runs as a single task (Script Mode).
+ * Otherwise, it runs in parallel (Shader Mode).
  */
 void mf_engine_dispatch(
     mf_engine* engine, 
     u32 count_x, u32 count_y,
-    mf_vm_job_setup_func setup_cb,
-    mf_vm_job_finish_func finish_cb,
+    mf_engine_job_setup_func setup_cb,
+    mf_engine_job_finish_func finish_cb,
     void* user_data
 );
 
-// --- Instance Management (Optional Helper) ---
+// --- Job Utils (Thread-Safe) ---
 
-// Represents a running instance of a program (VM + Memory)
-typedef struct mf_instance {
-    mf_vm vm;
-    mf_heap heap;
-    void* heap_buffer;
-} mf_instance;
+// Maps a tensor within a job context.
+mf_tensor* mf_job_map_tensor(mf_job_handle job, u16 reg_idx, mf_access_mode mode);
 
-// Creates a new execution instance with its own Heap.
-// This simplifies VM creation, handling memory allocation internally.
-// @param heap_size Size of dynamic memory (Variables). Default: 64MB if 0.
-bool mf_engine_create_instance(mf_engine* engine, mf_instance* out_inst, size_t heap_size);
+// Resizes a tensor within a job context.
+bool mf_job_resize_tensor(mf_job_handle job, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
 
-// Destroys the instance and frees its memory.
-void mf_instance_destroy(mf_instance* inst);
+// --- State Access (Single Source of Truth) ---
+
+// Finds a register index by name. Returns -1 if not found.
+int32_t mf_engine_find_register(mf_engine* engine, const char* name);
+
+// Maps a tensor from the Engine's main state.
+mf_tensor* mf_engine_map_tensor(mf_engine* engine, u16 reg_idx, mf_access_mode mode);
+
+// Resizes a tensor in the Engine's main state.
+bool mf_engine_resize_tensor(mf_engine* engine, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
+
+typedef enum {
+    MF_ENGINE_ERR_NONE = 0,
+    MF_ENGINE_ERR_OOM,
+    MF_ENGINE_ERR_SHAPE,
+    MF_ENGINE_ERR_INVALID_OP
+} mf_engine_error;
+
+mf_engine_error mf_engine_get_error(mf_engine* engine);
+
+typedef void (*mf_engine_register_cb)(u16 reg_idx, const char* name, mf_tensor* tensor, void* user_data);
+
+// Iterates over all registers in the Engine's main state.
+void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, void* user_data);
 
 #endif // MF_ENGINE_H

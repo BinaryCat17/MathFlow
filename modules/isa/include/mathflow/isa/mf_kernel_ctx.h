@@ -3,14 +3,6 @@
 
 #include <mathflow/isa/mf_tensor.h>
 
-// --- Access Modes ---
-
-typedef enum {
-    MF_ACCESS_READ = 0,
-    MF_ACCESS_WRITE = 1,
-    MF_ACCESS_RW = 2
-} mf_access_mode;
-
 // --- Kernel Context Interface ---
 
 typedef struct mf_kernel_ctx mf_kernel_ctx;

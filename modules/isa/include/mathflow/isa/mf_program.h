@@ -46,7 +46,7 @@ typedef struct {
 } mf_bin_header;
 
 // In-memory representation
-typedef struct {
+typedef struct mf_program {
     mf_bin_header meta;
     
     mf_instruction* code;
