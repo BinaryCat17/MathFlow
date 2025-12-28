@@ -1,0 +1,13 @@
+{
+    "runtime": {
+        "type": "shader",
+        "entry": "../graphs/sdf_button.json"
+    },
+    "window": {
+        "title": "SDF Button Demo",
+        "width": 800,
+        "height": 600,
+        "resizable": true,
+        "vsync": true
+    }
+}
