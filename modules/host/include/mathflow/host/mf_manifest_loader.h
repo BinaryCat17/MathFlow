@@ -1,7 +1,7 @@
 #ifndef MF_APP_LOADER_H
 #define MF_APP_LOADER_H
 
-#include <mathflow/host/mf_host.h>
+#include <mathflow/host/mf_host_desc.h>
 
 /**
  * @brief Loads an application manifest (.mfapp) and populates the host descriptor.

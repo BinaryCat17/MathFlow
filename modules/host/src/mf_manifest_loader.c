@@ -1,4 +1,4 @@
-#include <mathflow/host/mf_app_loader.h>
+#include <mathflow/host/mf_manifest_loader.h>
 #include <cjson/cJSON.h>
 #include <stdio.h>
 #include <stdlib.h>

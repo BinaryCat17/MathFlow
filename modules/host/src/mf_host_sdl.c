@@ -1,4 +1,4 @@
-#include <mathflow/host/mf_host.h>
+#include <mathflow/host/mf_host_sdl.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/vm/mf_vm.h>
 #include <mathflow/base/mf_platform.h>

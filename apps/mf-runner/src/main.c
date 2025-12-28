@@ -2,7 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <mathflow/engine/mf_engine.h>
-#include <mathflow/host/mf_app_loader.h>
+#include <mathflow/host/mf_manifest_loader.h>
 
 static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     if (!t || !t->data) {

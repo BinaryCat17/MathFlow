@@ -1,5 +1,5 @@
-#include <mathflow/host/mf_host.h>
-#include <mathflow/host/mf_app_loader.h>
+#include <mathflow/host/mf_host_sdl.h>
+#include <mathflow/host/mf_manifest_loader.h>
 #include <stdio.h>
 #include <string.h>
 

@@ -1,7 +1,6 @@
-#ifndef MF_HOST_H
-#define MF_HOST_H
+#ifndef MF_HOST_DESC_H
+#define MF_HOST_DESC_H
 
-#include <stdint.h>
 #include <stdbool.h>
 
 // Execution strategy for the runtime
@@ -32,10 +31,4 @@ typedef struct mf_host_desc {
     bool resizable;
 } mf_host_desc;
 
-// Runs the standard MathFlow Host Loop.
-// This function initializes SDL, creates a window, loads the graph,
-// and runs the loop until the user closes the window.
-// Returns 0 on success, non-zero on error.
-int mf_host_run(const mf_host_desc* desc);
-
-#endif // MF_HOST_H
+#endif // MF_HOST_DESC_H

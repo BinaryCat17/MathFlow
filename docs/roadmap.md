@@ -8,13 +8,44 @@
 ---
 
 ## Phase 16: Architecture Enforcement (CMake Modularization)
-**Objective:** Make the codebase physically match the Architecture Diagram by splitting the monolithic `CMakeLists.txt` into strict per-module files. This enforces visibility rules (Private/Public) and prevents architectural drift (e.g., lower layers accidentally depending on upper layers).
+**Objective:** Decompose the monolithic `CMakeLists.txt` into strict per-module build files using Modern CMake practices (Namespacing, Alias Targets). This enforces visibility rules and breaks architectural spaghetti.
 
-- [ ] **Step 1: Leaf Modules:** Create `CMakeLists.txt` for `isa` (Interface), `base`, and `ops`.
-- [ ] **Step 2: Core Modules:** Create build files for `vm` and `backend_cpu`.
-- [ ] **Step 3: Dependency Break (Compiler):** Investigate and remove `mf_compiler`'s dependency on `mf_vm`. Move shared logic (e.g. tensor size calc) to `isa` or `base`.
-- [ ] **Step 4: Integration:** Create build files for `engine`, `host`, and `apps`.
-- [ ] **Step 5: Root Cleanup:** Replace root build logic with simple `add_subdirectory` calls.
+> **Rule:** All targets must be exported as `MathFlow::module_name`.
+> **Rule:** `target_include_directories` must strictly separate `PUBLIC` (interface) and `PRIVATE` (impl) paths.
+
+- [x] **Step 1: Foundation (The Base):**
+    - Create `modules/base/CMakeLists.txt` (`MathFlow::base`).
+    - Create `modules/isa/CMakeLists.txt` (`MathFlow::isa`).
+    - *Constraint:* These must depend ONLY on system libs (libc, pthreads).
+- [x] **Step 2: Core Decoupling (The Compiler):**
+    - Create `modules/compiler/CMakeLists.txt`.
+    - **Fix:** Remove the legacy `target_link_libraries(..., mf_vm)` dependency. The compiler produces ISA binaries and should not depend on the Runtime.
+- [x] **Step 3: The Engine Room (VM & Ops):**
+    - Create `modules/vm/CMakeLists.txt`.
+    - Create `modules/ops/CMakeLists.txt`.
+    - *Note:* Currently `ops` depends on `vm` (for `mf_vm_map_tensor`). This circular dependency is technical debt but permissible for this phase.
+- [x] **Step 4: Integration (Host & Apps):**
+    - Create `modules/host/CMakeLists.txt` (manages SDL2 dependency).
+    - Create `apps/mf-runner/CMakeLists.txt`.
+    - Refactor root `CMakeLists.txt` to simply `add_subdirectory()` these targets.
+- [x] **Step 5: Validation:**
+    - Verify that `apps` cannot accidentally include internal headers from `compiler` or `vm`.
+
+## Phase 16.5: Kernel API Refactoring (Strict Layering)
+**Objective:** Eliminate the circular dependency `Ops -> VM`. The Math Kernels (`ops`) should be pure functions or depend only on a lightweight context, not the full Virtual Machine state.
+
+- [ ] **Step 1: Kernel Context:** Define a generic `mf_kernel_ctx` interface in `isa` (or `base`) for memory allocation and error reporting.
+- [ ] **Step 2: Refactor Ops:** Rewrite core math kernels to accept `mf_tensor*` directly or `mf_kernel_ctx`, removing all `#include <mathflow/vm/...>`.
+- [ ] **Step 3: Update Backend:** Adapt the `mf_backend_cpu` dispatch table to bridge the VM state to the new Kernel API.
+- [ ] **Step 4: Cleanup:** Remove `target_link_libraries(mf_ops ... mf_vm)` from CMake.
+
+## Phase 16.6: Runtime Purity (Detach Compiler)
+**Objective:** The `mf_engine` should be a pure Runtime execution environment, capable of running on constrained devices without the overhead of a JSON parser or Compiler. Compilation logic must move up to the Host layer.
+
+- [ ] **Step 1: Refactor Loading:** Move `mf_engine_load_graph_from_json` logic out of `mf_engine` and into `mf_host` (or a helper utility).
+- [ ] **Step 2: Binary Only:** Ensure `mf_engine` API only accepts `mf_program*` (binary data).
+- [ ] **Step 3: Headless Runtime:** Implement `mf_host_run_headless` (or similar) in `host_core` to encapsulate the execution loop for CLI apps, matching the symmetry of `mf_host_run`.
+- [ ] **Step 4: Build Cleanup:** Remove `target_link_libraries(mf_engine ... mf_compiler)` from CMake.
 
 ## Phase 17: UI Widget System
 **Objective:** Implement a basic Widget Library (Button, Slider, Text) using the new Sub-Graph system.
