@@ -3,6 +3,7 @@ add_library(mf_compiler STATIC
     src/mf_json_parser.c
     src/mf_semantics.c
     src/mf_codegen.c
+    src/mf_graph_utils.c
 )
 add_library(MathFlow::compiler ALIAS mf_compiler)
 

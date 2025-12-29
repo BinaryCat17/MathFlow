@@ -3,7 +3,7 @@
     { "id": "u_Time", "type": "Input", "data": { "value": 0.0 } },
     { "id": "u_Resolution", "type": "Input", "data": { "value": [800.0, 600.0] } },
     { "id": "u_Mouse", "type": "Input", "data": { "value": [0.0, 0.0, 0.0, 0.0] } },
-    { "id": "half", "type": "Input", "data": { "value": 0.5 } },
+    { "id": "half", "type": "Const", "data": { "value": 0.5 } },
 
     { "id": "sine_val", "type": "Sin" },
     { "id": "scale_val", "type": "Mul" },

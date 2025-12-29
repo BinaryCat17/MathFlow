@@ -74,6 +74,7 @@ typedef enum {
     // Generators
     MF_OP_RANGE = 260, // Output: [0, 1, 2, ... N-1]
     MF_OP_INDEX = 261, // Output: Global Index along Axis. Args: [Dest, AxisConst, -]
+    MF_OP_RESOLUTION = 262, // Output: Scalar Size of Axis. Args: [Dest, AxisConst, -]
 
     // Algorithms
     MF_OP_CUMSUM = 270, // Output[i] = Sum(Input[0]...Input[i])

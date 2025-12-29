@@ -1,7 +1,7 @@
 {
   "nodes": [
-    { "id": "init_val", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "step", "type": "Input", "data": { "value": 1.0 } },
+    { "id": "init_val", "type": "Const", "data": { "value": 0.0 } },
+    { "id": "step", "type": "Const", "data": { "value": 1.0 } },
     { "id": "counter", "type": "Memory", "init": 0.0 },
     { "id": "next_val", "type": "Add" }
   ],

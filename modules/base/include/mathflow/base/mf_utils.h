@@ -1,0 +1,45 @@
+#ifndef MF_UTILS_H
+#define MF_UTILS_H
+
+#include <mathflow/base/mf_memory.h>
+#include <stdbool.h>
+
+// --- Hashing ---
+
+u32 mf_fnv1a_hash(const char* str);
+
+// --- String / Path Utils ---
+
+// Duplicates string into arena
+char* mf_arena_strdup(mf_arena* arena, const char* str);
+
+// Sprintf into arena
+char* mf_arena_sprintf(mf_arena* arena, const char* fmt, ...);
+
+// Extract directory from path (e.g. "a/b/c.json" -> "a/b")
+char* mf_path_get_dir(const char* path, mf_arena* arena);
+
+// Join directory and file (handling separators)
+char* mf_path_join(const char* dir, const char* file, mf_arena* arena);
+
+// Read entire file into arena memory (null-terminated)
+char* mf_file_read(const char* path, mf_arena* arena);
+
+// --- String Map (Key -> U32) ---
+
+typedef struct {
+    const char* key;
+    u32 value;
+} mf_map_entry;
+
+typedef struct {
+    mf_map_entry* entries;
+    size_t capacity;
+    size_t count;
+} mf_str_map;
+
+void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena);
+void mf_map_put(mf_str_map* map, const char* key, u32 value);
+bool mf_map_get(mf_str_map* map, const char* key, u32* out_val);
+
+#endif // MF_UTILS_H

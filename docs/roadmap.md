@@ -37,25 +37,46 @@
     - **Backend:** CPU Backend calculates offsets per tile and populates the context.
     - **Result:** The graph becomes resolution-independent and fully parallelizable without external "magic" buffers.
 
-## Phase 17.5: Host Cleanup & Modernization
+## Phase 17.5: Host Cleanup & Modernization (Completed)
 **Objective:** Clean up the Host code (`mf_host_sdl.c`) to fully utilize the new Phase 17 architecture. Remove legacy "Coordinate Buffer" logic and switch to the new Tiled Dispatch API.
 
-- [ ] **Step 1: Remove Legacy Host Logic:** Delete the code in `mf_host_sdl.c` that manually allocates and fills `u_FragX` / `u_FragY` buffers. The Graph now handles this internally via `Index` ops.
-- [ ] **Step 2: Switch to Tiled Dispatch:** Update `mf_host_run` to call `mf_engine_dispatch(engine, width, height)` instead of the old hacky `dispatch(1, num_tiles)`.
-- [ ] **Step 3: Direct Texture Output:** Optimize the write-back path. Instead of `float->byte` conversion loop, can we render directly to `u8` tensors? Or make `convert_to_pixels` part of the engine via a `Color` node?
-- [ ] **Step 4: Intrinsic Resolution:** Introduce `MF_OP_RESOLUTION` to allow graphs to query canvas size without Host `u_Resolution` uniforms.
+- [x] **Step 1: Remove Legacy Host Logic:** Delete the code in `mf_host_sdl.c` that manually allocates and fills `u_FragX` / `u_FragY` buffers. The Graph now handles this internally via `Index` ops.
+- [x] **Step 2: Switch to Tiled Dispatch:** Update `mf_host_run` to call `mf_engine_dispatch(engine, width, height)` instead of the old hacky `dispatch(1, num_tiles)`.
+- [x] **Step 3: Direct Texture Output:** Optimize the write-back path. Instead of `float->byte` conversion loop, can we render directly to `u8` tensors? Or make `convert_to_pixels` part of the engine via a `Color` node?
+- [x] **Step 4: Intrinsic Resolution:** Introduce `MF_OP_RESOLUTION` to allow graphs to query canvas size without Host `u_Resolution` uniforms.
 
-## Phase 18: Advanced State Management (Double Buffering)
-**Objective:** Enable parallel execution for graphs with state (Memory Nodes) by implementing a double-buffering mechanism. This allows "Stateful Shaders" (e.g. Game of Life, fluid sim) to run efficiently on the CPU/GPU without race conditions.
+## Phase 17.6: System Logging & Error Handling
+**Objective:** Replace raw `printf` calls with a structured logging system in `base`. Implement centralized error reporting for Compiler and Runtime to support GUI integration.
 
-- [ ] **Step 1: Memory Model Update:** Update `mf_vm` to handle two sets of buffers for Memory Nodes (Read-Previous / Write-Current).
-- [ ] **Step 2: Buffer Swap:** Implement `mf_engine_swap_buffers()` to be called at the end of a frame.
-- [ ] **Step 3: Unified Dispatch:** Remove the hardcoded `if (1x1)` check in `mf_engine_dispatch`. Move the execution strategy logic into the Backend. The Backend should intelligently handle single-threaded stateful execution vs multi-threaded stateless execution, unifying the architecture.
-- [ ] **Step 4: Auto-Parallelize:** Update Engine logic to select strategy:
-    - **Logic:** If `workload_size > threshold` AND (`Graph is Pure` OR `Double Buffering Active`) -> **Parallel**.
-        - **Goal:** The Host simply requests "Run on this domain", and the Engine utilizes available cores efficiently without manual flags.
-    
-    ## Phase 19: Smart VM Optimization (Dependency Masking)
+- [ ] **Step 1: Logging API (Base):** Implement `mf_log.h` with levels (INFO, WARN, ERROR) and callback support.
+- [ ] **Step 2: Compiler Integration:** Replace `printf("Error...")` in Compiler with `MF_LOG_ERROR` and source tracking.
+- [ ] **Step 3: Runtime Integration:** Add logging to `Loader` and `Backend` initialization. Ensure thread-safety for worker threads.
+
+## Phase 17.7: VM-Backend Separation (Pure Data VM) (Completed)
+**Objective:** Transform `modules/vm` into a pure state container (Data) without execution logic. Move the reference interpreter loop (`mf_vm_exec`) out of `modules/vm` and into `modules/backend_cpu` as a private implementation detail. This ensures the VM module is a passive data structure, allowing different backends (CPU, JIT, GPU) to handle execution logic independently.
+
+- [x] **Step 1: Move Interpreter Logic:** Move the execution loop code from `mf_vm.c` to a new internal helper in `modules/backend_cpu` (e.g., `mf_cpu_interpreter`).
+- [x] **Step 2: Purify VM Struct:** Remove `mf_context` and `mf_backend_dispatch_table` dependencies from `mf_vm`. The VM should only manage Registers, Memory, and Allocators.
+- [x] **Step 3: Update Backend Interface:** Update `mf_backend_cpu` to accept `mf_program` (Code) and `mf_vm` (State) explicitly during dispatch, rather than relying on the VM to know about the program code.
+
+## Phase 18: Advanced State Management (Ping-Pong) (Completed)
+**Objective:** Enable robust state persistence without race conditions. The Compiler transforms high-level `Memory` nodes into explicit Read/Write register pairs linked via a `StateTable`. The Engine manages Double Buffering (Ping-Pong) for these registers, keeping the VM stateless.
+
+- [x] **Step 1: Compiler State Logic:**
+    - Restore `MF_NODE_MEMORY` in Parser.
+    - Update Compiler to split `Memory` nodes into two registers:
+        - **Read Register:** Acts as an Input for the current frame.
+        - **Write Register:** Acts as an Output for the next frame.
+    - Generate a `StateTable` in the program binary mapping `ReadReg <-> WriteReg`.
+- [x] **Step 2: Engine State Manager:**
+    - Update `mf_engine` to parse the `StateTable`.
+    - Implement Double Buffering: Allocate two buffers per state variable.
+    - In `mf_engine_dispatch`, bind the correct buffers (Ping/Pong) to the VM registers before execution.
+- [x] **Step 3: Cleanup:**
+    - Ensure no "magic" updates happen inside the VM execution loop.
+    - Verify thread safety (Parallel workers read from 'Read' and write to 'Write').
+
+## Phase 19: Smart VM Optimization (Dependency Masking)
     **Objective:** Enable a single graph to handle heterogeneous outputs (Image, Audio, Physics) with different execution domains (2D vs 1D) without introducing `OP_KERNEL`. We use **Dependency Masking** to selectively execute only the necessary parts of the bytecode for a specific output.
     
     - [ ] **Step 1: Dependency Analysis Pass:** Implement a backward-pass analyzer in the Compiler/Loader. It tags every instruction with a bitmask indicating which Outputs it contributes to.

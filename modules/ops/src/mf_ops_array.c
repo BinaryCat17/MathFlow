@@ -152,10 +152,36 @@ static void op_index(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 sr
     }
 }
 
+// --- Op: Resolution (Domain Size) ---
+// Src1: Axis (0=Height, 1=Width)
+// Dest: Scalar Size
+static void op_resolution(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* axis_t = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+    if (!dst || !axis_t) return;
+
+    int axis = 0;
+    if (axis_t->dtype == MF_DTYPE_F32) axis = (int)((f32*)axis_t->data)[0];
+    else if (axis_t->dtype == MF_DTYPE_I32) axis = ((int32_t*)axis_t->data)[0];
+    
+    // Output: Scalar [1]
+    dst->dtype = MF_DTYPE_F32;
+    int32_t shape[] = { 1 };
+    if (!ctx->resize_tensor(ctx->impl, dst, shape, 0)) return; // 0 dimensions = scalar
+
+    f32* d = (f32*)dst->data;
+    if (axis >= 0 && axis < 3) {
+        d[0] = (f32)ctx->global_size[axis];
+    } else {
+        d[0] = 0.0f;
+    }
+}
+
 // --- Registration ---
 void mf_ops_array_register(mf_backend_dispatch_table* table) {
     table->op_table[MF_OP_RANGE] = op_range;
     table->op_table[MF_OP_INDEX] = op_index;
+    table->op_table[MF_OP_RESOLUTION] = op_resolution;
     table->op_table[MF_OP_CUMSUM] = op_cumsum;
     table->op_table[MF_OP_COMPRESS] = op_compress;
 }

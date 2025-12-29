@@ -13,6 +13,7 @@
 
 typedef struct {
     mf_thread_pool* pool;
+    mf_op_func op_table[MF_OP_LIMIT];
 } mf_backend_cpu_state;
 
 typedef struct {
@@ -25,8 +26,9 @@ typedef struct {
 } mf_backend_cpu_worker_state;
 
 typedef struct {
-    const mf_context* ctx;
+    const mf_program* program;
     const mf_vm* main_vm;
+    mf_op_func* op_table;
     u32 width;  // Total Screen Width
     u32 height; // Total Screen Height
     u32 tiles_x;
@@ -56,6 +58,43 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
     mf_backend_cpu_worker_state* state = (mf_backend_cpu_worker_state*)thread_local_data;
     free(state->heap_mem);
     free(state);
+}
+
+// --- Interpreter Loop (The Engine) ---
+
+static void impl_error(void* impl, int error_code) {
+    mf_vm* vm = (mf_vm*)impl;
+    vm->error = (mf_vm_error)error_code;
+}
+
+static void mf_cpu_exec(mf_vm* vm, const mf_program* program, mf_op_func* op_table) {
+    if (!program || !vm || !op_table) return;
+
+    // Setup Kernel Context
+    mf_kernel_ctx kernel_ctx = {
+        .impl = vm,
+        .map_tensor = (mf_tensor* (*)(void*, u16, mf_access_mode))mf_vm_map_tensor,
+        .resize_tensor = (bool (*)(void*, mf_tensor*, const int32_t*, uint8_t))mf_vm_resize_tensor,
+        .error = impl_error,
+        .batch_size = vm->batch_size
+    };
+    // Copy Intrinsics
+    memcpy(kernel_ctx.global_offset, vm->global_offset, sizeof(vm->global_offset));
+    memcpy(kernel_ctx.local_size, vm->local_size, sizeof(vm->local_size));
+    memcpy(kernel_ctx.global_size, vm->global_size, sizeof(vm->global_size));
+
+    // Execution Loop
+    size_t code_count = program->meta.instruction_count;
+    mf_instruction* code = program->code;
+
+    for (size_t i = 0; i < code_count; ++i) {
+        if (vm->error != MF_ERROR_NONE) break;
+
+        mf_instruction inst = code[i];
+        if (op_table[inst.opcode]) {
+            op_table[inst.opcode](&kernel_ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
+        }
+    }
 }
 
 // --- Propagation Logic ---
@@ -121,8 +160,6 @@ static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
             // Or if resolved as 1D: [Batch]
             
             size_t batch_size = active_w * active_h;
-            // First dim of worker should match batch_size? 
-            // Ops usually output [Batch, D] or [Batch]
             
             int elem_dims = main_t->ndim - 2; // Dims after H, W
             size_t elem_size = mf_dtype_size(main_t->dtype);
@@ -178,8 +215,8 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_arena_reset(&state->reg_arena);
     mf_arena_reset(&state->temp_arena); // Reset temp memory for this job
     
-    mf_vm_init(&state->vm, batch->ctx, (mf_allocator*)&state->temp_arena);
-    mf_vm_reset(&state->vm, &state->reg_arena);
+    mf_vm_init(&state->vm, (mf_allocator*)&state->temp_arena);
+    mf_vm_reset(&state->vm, batch->program, &state->reg_arena);
     
     // 3. Setup Virtual Batching
     state->vm.batch_size = batch_size;
@@ -192,12 +229,17 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     state->vm.local_size[0] = active_h;
     state->vm.local_size[1] = active_w;
     state->vm.local_size[2] = 1;
+
+    // Setup Global Size (Domain)
+    state->vm.global_size[0] = batch->height;
+    state->vm.global_size[1] = batch->width;
+    state->vm.global_size[2] = 1;
     
     // 4. Propagate Inputs
     prepare_inputs(state, batch, job_idx);
     
     // 5. Exec
-    mf_vm_exec(&state->vm);
+    mf_cpu_exec(&state->vm, batch->program, batch->op_table);
     
     // 6. Commit Outputs
     commit_outputs(state, batch, tile_x, tile_y, active_w, active_h);
@@ -209,11 +251,24 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
 
 static void mf_backend_cpu_dispatch(
     void* backend_state,
-    const struct mf_context* ctx,
-    const struct mf_vm* main_vm,
+    const struct mf_program* program,
+    struct mf_vm* main_vm,
     u32 count_x, u32 count_y
 ) {
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
+    
+    // Optimization: Script Mode (Single Threaded, In-Place)
+    if (count_x == 1 && count_y == 1) {
+        if (main_vm && program) {
+            main_vm->batch_size = 1;
+            main_vm->global_offset[0] = 0; main_vm->global_offset[1] = 0; main_vm->global_offset[2] = 0;
+            main_vm->global_size[0] = 1; main_vm->global_size[1] = 1; main_vm->global_size[2] = 1;
+            main_vm->local_size[0] = 1; main_vm->local_size[1] = 1; main_vm->local_size[2] = 1;
+            
+            mf_cpu_exec(main_vm, program, state->op_table);
+        }
+        return;
+    }
     
     u32 tiles_x = (count_x + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
     u32 tiles_y = (count_y + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
@@ -222,8 +277,9 @@ static void mf_backend_cpu_dispatch(
     if (total_jobs == 0) return;
 
     mf_cpu_parallel_batch batch = {
-        .ctx = ctx,
+        .program = program,
         .main_vm = main_vm,
+        .op_table = state->op_table,
         .width = count_x,
         .height = count_y,
         .tiles_x = tiles_x,
@@ -271,7 +327,17 @@ void mf_backend_cpu_init(mf_backend_dispatch_table* table, int num_threads) {
     table->shutdown = mf_backend_cpu_shutdown;
     table->dispatch = mf_backend_cpu_dispatch;
     
-    // Register Operations
+    // Register Operations directly into our state table
+    // Wait, mf_ops_core_register expects mf_backend_dispatch_table*
+    // So we populate the public table, then copy to our internal state?
+    // Actually, dispatch table ALREADY has op_table.
+    // But since we want to pass op_table explicitly to cpu_exec, we should use the one from state.
+    // Or just use table->op_table.
+    
+    // Standard ops registration fills table->op_table
     mf_ops_core_register(table);
     mf_ops_array_register(table);
+    
+    // Copy to internal state for thread safety if table is transient (it usually isn't)
+    memcpy(state->op_table, table->op_table, sizeof(state->op_table));
 }

@@ -97,58 +97,23 @@ int mf_host_run(const mf_host_desc* desc) {
     mf_tensor* t_time = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Time"), MF_ACCESS_WRITE);
     mf_tensor* t_res  = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Resolution"), MF_ACCESS_WRITE);
     mf_tensor* t_mouse = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Mouse"), MF_ACCESS_WRITE);
-    
-    mf_tensor* t_fragx = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_FragX"), MF_ACCESS_WRITE);
-    mf_tensor* t_fragy = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_FragY"), MF_ACCESS_WRITE);
     mf_tensor* t_out   = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "out_Color"), MF_ACCESS_READ);
-
-    // --- Static Initialization (Tiling) ---
-    // We split the image into vertical strips (tiles) equal to num_threads.
-    // This allows efficient vectorization within each thread (processing arrays of pixels).
     
-    int num_tiles = (desc->num_threads > 0) ? desc->num_threads : 4;
-    // Ensure height is divisible or handle remainder. For prototype, simply floor.
-    // Ideally: tile_h = height / num_tiles.
-    
-    int tile_h = desc->height / num_tiles; 
-    int total_pixels = num_tiles * tile_h * desc->width; // Might lose bottom lines if not divisible
-    int pixels_per_tile = tile_h * desc->width;
-    
-    if (t_fragx && t_fragy) {
-        // Shape: [num_tiles, pixels_per_tile]
-        // Worker will receive [pixels_per_tile]
-        int32_t shape[] = { num_tiles, pixels_per_tile };
-        mf_engine_resize_tensor(engine, t_fragx, shape, 2);
-        mf_engine_resize_tensor(engine, t_fragy, shape, 2);
-        
-        // Fill Coordinates
-        f32* dx = (f32*)t_fragx->data;
-        f32* dy = (f32*)t_fragy->data;
-        
-        for (int t = 0; t < num_tiles; ++t) {
-            int y_base = t * tile_h;
-            for (int y = 0; y < tile_h; ++y) {
-                for (int x = 0; x < desc->width; ++x) {
-                    int idx = (t * pixels_per_tile) + (y * desc->width + x);
-                    dx[idx] = (f32)x + 0.5f;
-                    dy[idx] = (f32)(y_base + y) + 0.5f;
-                }
-            }
+    // Set Resolution Uniform (Legacy support for graphs using u_Resolution)
+    if (t_res && t_res->data) {
+        // Resize if needed or just update data
+        if (t_res->size >= 2) {
+             f32* d = (f32*)t_res->data;
+             d[0] = (f32)desc->width;
+             d[1] = (f32)desc->height;
         }
     }
     
-    // Resize Output to match
+    // Resize Output to match Screen Size
     if (t_out) {
-        // Shape: [num_tiles, pixels_per_tile, 4]
-        int32_t shape[] = { num_tiles, pixels_per_tile, 4 };
+        // Shape: [Height, Width, 4] (Row-Major for SDL Texture)
+        int32_t shape[] = { desc->height, desc->width, 4 };
         mf_engine_resize_tensor(engine, t_out, shape, 3);
-    }
-    
-    // Set Resolution Uniform
-    if (t_res && t_res->data) {
-        f32* d = (f32*)t_res->data;
-        d[0] = (f32)desc->width;
-        d[1] = (f32)desc->height;
     }
 
     u32* frame_buffer = malloc(desc->width * desc->height * 4);
@@ -178,9 +143,9 @@ int mf_host_run(const mf_host_desc* desc) {
         }
 
         // Dispatch!
-        // We use 1D dispatch over tiles.
-        // Worker will see: [pixels_per_tile, 4] -> Vectorized processing
-        mf_engine_dispatch(engine, 1, num_tiles);
+        // New API: Run on the domain of the screen [Width, Height]
+        // The engine/backend handles tiling automatically.
+        mf_engine_dispatch(engine, desc->width, desc->height);
         
         // Read Back
         if (t_out) {

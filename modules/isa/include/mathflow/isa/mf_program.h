@@ -6,9 +6,15 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 5        // Symbol Table support
+#define MF_BINARY_VERSION 6        // State Table support
 
 #define MF_MAX_SYMBOL_NAME 64
+
+// State Link: Maps a Read Register (Input) to a Write Register (Output)
+typedef struct {
+    uint32_t read_reg;  // Register to read FROM in current frame
+    uint32_t write_reg; // Register to write TO for next frame
+} mf_bin_state_link;
 
 // Map Name -> Register Index
 typedef struct {
@@ -41,8 +47,9 @@ typedef struct {
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
     u32 symbol_count;      // Number of named I/O entries
+    u32 state_count;       // Number of state links (Memory Nodes)
     
-    u32 reserved[7];       
+    u32 reserved[6];       
 } mf_bin_header;
 
 // In-memory representation
@@ -57,6 +64,8 @@ typedef struct mf_program {
     mf_tensor* tensors; 
     
     mf_bin_symbol* symbols;
+    
+    mf_bin_state_link* state_table;
 } mf_program;
 
 #endif // MF_PROGRAM_H

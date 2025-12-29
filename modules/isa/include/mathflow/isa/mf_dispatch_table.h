@@ -6,7 +6,7 @@
 
 // Forward declarations
 struct mf_vm;
-struct mf_context;
+struct mf_program;
 
 // The Dispatch Table
 // Connects the VM Opcodes to the Kernel Implementations.
@@ -25,14 +25,14 @@ typedef void (*mf_hook_map)(void* impl, mf_tensor* tensor, mf_access_mode mode);
  * Handles the execution of a program over a N-dimensional domain.
  * 
  * @param backend_state Internal state of the backend (e.g. thread pool).
- * @param ctx Shared program context.
+ * @param program The program to execute (Code/Prototypes).
  * @param main_vm Pointer to the Main VM (Source of Truth).
  * @param count_x, count_y Dimensions of the dispatch.
  */
 typedef void (*mf_backend_dispatch_func)(
     void* backend_state,
-    const struct mf_context* ctx,
-    const struct mf_vm* main_vm,
+    const struct mf_program* program,
+    struct mf_vm* main_vm,
     u32 count_x, u32 count_y
 );
 

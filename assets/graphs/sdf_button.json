@@ -1,25 +1,25 @@
 {
   "nodes": [
-    { "id": "u_ResX", "type": "Input", "data": { "value": 800.0 } },
-    { "id": "u_ResY", "type": "Input", "data": { "value": 600.0 } },
+    { "id": "u_ResX", "type": "Resolution" },
+    { "id": "u_ResY", "type": "Resolution" },
     { "id": "u_MouseX", "type": "Input", "data": { "value": 400.0 } },
     { "id": "u_MouseY", "type": "Input", "data": { "value": 300.0 } },
     
-    { "id": "const_axis_0", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "const_axis_1", "type": "Input", "data": { "value": 1.0 } },
+    { "id": "const_axis_0", "type": "Const", "data": { "value": 0.0 } },
+    { "id": "const_axis_1", "type": "Const", "data": { "value": 1.0 } },
 
     { "id": "u_FragX", "type": "Index" },
     { "id": "u_FragY", "type": "Index" },
 
     { "id": "u_Aspect", "type": "Input", "data": { "value": 1.33 } },
     
-    { "id": "const_05", "type": "Input", "data": { "value": 0.5 } },
-    { "id": "const_1", "type": "Input", "data": { "value": 1.0 } },
-    { "id": "const_2", "type": "Input", "data": { "value": 2.0 } },
-    { "id": "const_radius", "type": "Input", "data": { "value": 0.3 } },
+    { "id": "const_05", "type": "Const", "data": { "value": 0.5 } },
+    { "id": "const_1", "type": "Const", "data": { "value": 1.0 } },
+    { "id": "const_2", "type": "Const", "data": { "value": 2.0 } },
+    { "id": "const_radius", "type": "Const", "data": { "value": 0.3 } },
     
-    { "id": "bg_color", "type": "Input", "data": { "value": 0.5 } },
-    { "id": "fg_color", "type": "Input", "data": { "value": 1.0 } },
+    { "id": "bg_color", "type": "Const", "data": { "value": 0.5 } },
+    { "id": "fg_color", "type": "Const", "data": { "value": 1.0 } },
 
     { "id": "x_norm", "type": "Div" },
     { "id": "x_centered", "type": "Sub" },
@@ -43,8 +43,8 @@
     { "id": "dist", "type": "Length" },
     { "id": "sdf", "type": "Sub" }, 
 
-    { "id": "edge0", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "edge1", "type": "Input", "data": { "value": -0.01 } },
+    { "id": "edge0", "type": "Const", "data": { "value": 0.0 } },
+    { "id": "edge1", "type": "Const", "data": { "value": -0.01 } },
     { "id": "aa_edges", "type": "Join" },
     
     { "id": "out_Color", "type": "SmoothStep" }
@@ -52,6 +52,9 @@
   "links": [
     { "src": "const_axis_1", "src_port": 0, "dst": "u_FragX", "dst_port": 0 },
     { "src": "const_axis_0", "src_port": 0, "dst": "u_FragY", "dst_port": 0 },
+
+    { "src": "const_axis_1", "src_port": 0, "dst": "u_ResX", "dst_port": 0 },
+    { "src": "const_axis_0", "src_port": 0, "dst": "u_ResY", "dst_port": 0 },
 
     { "src": "u_FragX", "src_port": 0, "dst": "x_norm", "dst_port": 0 },
     { "src": "u_ResX", "src_port": 0, "dst": "x_norm", "dst_port": 1 },

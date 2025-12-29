@@ -2,32 +2,32 @@
   "nodes": [
     { 
       "id": "prices", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": [100.0, 500.0, 1200.0, 50.0, 2000.0] } 
     },
     { 
       "id": "quantities", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": [10.0, 2.0, 1.0, 100.0, 5.0] } 
     },
     { 
       "id": "categories", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": ["Food", "Electronics", "Electronics", "Food", "Electronics"] } 
     },
     { 
       "id": "tax_rate", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": 1.2 } 
     },
     { 
       "id": "target_cat", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": "Electronics" } 
     },
     { 
       "id": "threshold", 
-      "type": "Input", 
+      "type": "Const", 
       "data": { "value": 1000.0 } 
     },
     { "id": "calc_total", "type": "Mul" },

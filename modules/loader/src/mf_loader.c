@@ -62,6 +62,15 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     memcpy(prog->symbols, data + offset, sizeof(mf_bin_symbol) * head->symbol_count);
     offset += sizeof(mf_bin_symbol) * head->symbol_count;
 
+    // State Table
+    if (head->state_count > 0) {
+        prog->state_table = MF_ARENA_PUSH(arena, mf_bin_state_link, head->state_count);
+        memcpy(prog->state_table, data + offset, sizeof(mf_bin_state_link) * head->state_count);
+        offset += sizeof(mf_bin_state_link) * head->state_count;
+    } else {
+        prog->state_table = NULL;
+    }
+
     // Tensor Descriptors
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
     
@@ -85,7 +94,9 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     // Data Blob
     size_t desc_start_offset = sizeof(mf_bin_header) + 
                                sizeof(mf_instruction) * head->instruction_count +
-                               sizeof(mf_bin_symbol) * head->symbol_count;
+                               sizeof(mf_bin_symbol) * head->symbol_count + 
+                               sizeof(mf_bin_state_link) * head->state_count;
+
     size_t data_start_offset = desc_start_offset + sizeof(mf_bin_tensor_desc) * head->tensor_count;
     offset = data_start_offset;
 

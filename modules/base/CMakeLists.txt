@@ -2,6 +2,7 @@ add_library(mf_base STATIC
     src/mf_memory.c
     src/mf_platform.c
     src/mf_thread_pool.c
+    src/mf_utils.c
 )
 add_library(MathFlow::base ALIAS mf_base)
 

@@ -237,11 +237,17 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
 
         case MF_NODE_RANGE:
         case MF_NODE_INDEX:
+        case MF_NODE_RESOLUTION:
             // Output is 1D Array of F32. Size is dynamic (determined by input value or batch context).
             out->dtype = MF_DTYPE_F32; 
             out->ndim = 1;
             out->shape[0] = 0; // Dynamic
             out->size = 0;
+            // Correction for Resolution: It is always scalar [1].
+            if (node->type == MF_NODE_RESOLUTION) {
+                out->ndim = 0;
+                out->size = 1;
+            }
             break;
 
         case MF_NODE_CUMSUM:
@@ -259,9 +265,6 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             break;
 
         case MF_NODE_MEMORY:
-            // Memory node output shape is initially defined by its 'init' value.
-            // If an input is connected, it may trigger a resize during execution
-            // if the input shape differs from the initial state.
             *out = node->constant;
             break;
 

@@ -1,46 +1,8 @@
 #include "mf_compiler_internal.h"
+#include <mathflow/base/mf_utils.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-// --- Path Helpers ---
-
-static char* get_dir(const char* path, mf_arena* arena) {
-    // Find last slash
-    const char* last_slash = strrchr(path, '/');
-#ifdef _WIN32
-    const char* last_bslash = strrchr(path, '\\');
-    if (last_bslash > last_slash) last_slash = last_bslash;
-#endif
-
-    if (!last_slash) return arena_strdup(arena, ".");
-
-    size_t len = last_slash - path;
-    char* dir = MF_ARENA_PUSH(arena, char, len + 1);
-    memcpy(dir, path, len);
-    dir[len] = '\0';
-    return dir;
-}
-
-static char* join_path(const char* dir, const char* file, mf_arena* arena) {
-    // If file is absolute, return file
-    // Simple absolute check (Linux/Win)
-    if (file[0] == '/' || file[0] == '\\' || (strlen(file) > 2 && file[1] == ':')) {
-        return arena_strdup(arena, file);
-    }
-
-    size_t len1 = strlen(dir);
-    size_t len2 = strlen(file);
-    char* path = MF_ARENA_PUSH(arena, char, len1 + len2 + 2);
-    
-    // Check if dir already has trailing slash
-    bool slash = (dir[len1-1] == '/' || dir[len1-1] == '\\');
-    
-    if (slash) sprintf(path, "%s%s", dir, file);
-    else sprintf(path, "%s/%s", dir, file);
-    
-    return path;
-}
 
 // --- Node Type Mapping ---
 
@@ -51,7 +13,9 @@ typedef struct {
 
 static const mf_node_map_entry NODE_MAP[] = {
     // --- Core ---
+    {"Const", MF_NODE_CONST},
     {"Input", MF_NODE_INPUT},
+    {"Output", MF_NODE_OUTPUT},
     
     // --- Arithmetic ---
     {"Add", MF_NODE_ADD},
@@ -96,6 +60,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     // --- Array Ops ---
     {"Range", MF_NODE_RANGE},
     {"Index", MF_NODE_INDEX},
+    {"Resolution", MF_NODE_RESOLUTION},
     {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS},
 
@@ -117,84 +82,6 @@ static mf_node_type mf_node_type_from_string(const char* type) {
         }
     }
     return MF_NODE_UNKNOWN;
-}
-
-// --- String Map Utils ---
-
-static u32 fnv1a_hash(const char* str) {
-    u32 hash = 2166136261u;
-    while (*str) {
-        hash ^= (u8)*str++;
-        hash *= 16777619u;
-    }
-    return hash;
-}
-
-void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena) {
-    map->capacity = capacity;
-    map->count = 0;
-    map->entries = MF_ARENA_PUSH(arena, mf_map_entry, capacity);
-    memset(map->entries, 0, sizeof(mf_map_entry) * capacity);
-}
-
-void mf_map_put(mf_str_map* map, const char* key, u32 value) {
-    u32 hash = fnv1a_hash(key);
-    size_t idx = hash % map->capacity;
-    while (map->entries[idx].key != NULL) {
-        if (strcmp(map->entries[idx].key, key) == 0) {
-            map->entries[idx].value = value; 
-            return;
-        }
-        idx = (idx + 1) % map->capacity;
-    }
-    map->entries[idx].key = key;
-    map->entries[idx].value = value;
-    map->count++;
-}
-
-bool mf_map_get(mf_str_map* map, const char* key, u32* out_val) {
-    u32 hash = fnv1a_hash(key);
-    size_t idx = hash % map->capacity;
-    while (map->entries[idx].key != NULL) {
-        if (strcmp(map->entries[idx].key, key) == 0) {
-            *out_val = map->entries[idx].value;
-            return true;
-        }
-        idx = (idx + 1) % map->capacity;
-    }
-    return false;
-}
-
-char* arena_strdup(mf_arena* arena, const char* str) {
-    size_t len = strlen(str);
-    char* copy = MF_ARENA_PUSH(arena, char, len + 1);
-    strcpy(copy, str);
-    return copy;
-}
-
-static char* arena_sprintf(mf_arena* arena, const char* fmt, const char* arg1, const char* arg2) {
-    // Simple helper for "arg1::arg2"
-    size_t len = strlen(arg1) + strlen(arg2) + 2; 
-    char* buf = MF_ARENA_PUSH(arena, char, len + 3); 
-    sprintf(buf, "%s::%s", arg1, arg2);
-    return buf;
-}
-
-// --- IO Helper ---
-static char* read_file(const char* path, mf_arena* arena) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char* buf = MF_ARENA_PUSH(arena, char, len + 1);
-    if (fread(buf, 1, len, f) != len) {
-        fclose(f);
-        return NULL;
-    }
-    buf[len] = 0;
-    fclose(f);
-    return buf;
 }
 
 // --- Tensor Parsing ---
@@ -222,7 +109,7 @@ void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
         t->size = 1;
         t->capacity_bytes = sizeof(int32_t);
         t->data = MF_ARENA_PUSH(arena, int32_t, 1);
-        *((int32_t*)t->data) = (int32_t)fnv1a_hash(val->valuestring);
+        *((int32_t*)t->data) = (int32_t)mf_fnv1a_hash(val->valuestring);
     }
     else if (cJSON_IsArray(val)) {
         int count = cJSON_GetArraySize(val);
@@ -255,7 +142,7 @@ void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
             int i = 0;
             cJSON* item = NULL;
             cJSON_ArrayForEach(item, val) {
-                if (cJSON_IsString(item)) data[i++] = (int32_t)fnv1a_hash(item->valuestring);
+                if (cJSON_IsString(item)) data[i++] = (int32_t)mf_fnv1a_hash(item->valuestring);
                 else data[i++] = 0;
             }
         }
@@ -286,7 +173,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
         mf_ir_node* ir_node = &out_ir->nodes[i];
         
         cJSON* j_id = cJSON_GetObjectItem(node, "id");
-        if (cJSON_IsString(j_id)) ir_node->id = arena_strdup(arena, j_id->valuestring);
+        if (cJSON_IsString(j_id)) ir_node->id = mf_arena_strdup(arena, j_id->valuestring);
         else ir_node->id = "unknown";
         
         mf_map_put(&map, ir_node->id, i);
@@ -297,7 +184,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
         // Data Parsing
         cJSON* data = cJSON_GetObjectItem(node, "data");
         
-        if (ir_node->type == MF_NODE_INPUT && data) {
+        if ((ir_node->type == MF_NODE_INPUT || ir_node->type == MF_NODE_CONST) && data) {
             cJSON* val = cJSON_GetObjectItem(data, "value");
             if (val) parse_constant_tensor(val, &ir_node->constant, arena);
         }
@@ -317,10 +204,10 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
             if (path_val && cJSON_IsString(path_val)) {
                 // If base_path is provided, resolve relative paths
                 if (base_path) {
-                    char* dir = get_dir(base_path, arena);
-                    ir_node->sub_graph_path = join_path(dir, path_val->valuestring, arena);
+                    char* dir = mf_path_get_dir(base_path, arena);
+                    ir_node->sub_graph_path = mf_path_join(dir, path_val->valuestring, arena);
                 } else {
-                    ir_node->sub_graph_path = arena_strdup(arena, path_val->valuestring);
+                    ir_node->sub_graph_path = mf_arena_strdup(arena, path_val->valuestring);
                 }
             }
         }
@@ -342,6 +229,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
     if (links) {
         int l_count = cJSON_GetArraySize(links);
         out_ir->links = MF_ARENA_PUSH(arena, mf_ir_link, l_count);
+        memset(out_ir->links, 0, sizeof(mf_ir_link) * l_count); // Ensure clean state
         out_ir->link_count = l_count;
         out_ir->link_cap = l_count;
 
@@ -354,12 +242,18 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
             char key[64];
             if (cJSON_IsString(j_src)) snprintf(key, 64, "%s", j_src->valuestring);
             else key[0] = '\0';
-            mf_map_get(&map, key, &ir_link->src_node_idx);
+            
+            if (!mf_map_get(&map, key, &ir_link->src_node_idx)) {
+                printf("Error: Link source node '%s' not found.\n", key);
+            }
 
             cJSON* j_dst = cJSON_GetObjectItem(link, "dst");
             if (cJSON_IsString(j_dst)) snprintf(key, 64, "%s", j_dst->valuestring);
             else key[0] = '\0';
-            mf_map_get(&map, key, &ir_link->dst_node_idx);
+            
+            if (!mf_map_get(&map, key, &ir_link->dst_node_idx)) {
+                 printf("Error: Link dest node '%s' not found.\n", key);
+            }
 
             ir_link->src_port = (u32)cJSON_GetObjectItem(link, "src_port")->valueint;
             ir_link->dst_port = (u32)cJSON_GetObjectItem(link, "dst_port")->valueint;
@@ -428,7 +322,7 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             // LOAD SUBGRAPH
             if (!node->sub_graph_path) continue;
             
-            char* json_content = read_file(node->sub_graph_path, arena);
+            char* json_content = mf_file_read(node->sub_graph_path, arena);
             if (!json_content) {
                 printf("Error: Could not read subgraph %s\n", node->sub_graph_path);
                 continue;
@@ -443,19 +337,19 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
                 mf_ir_node* c_node = &child_ir.nodes[k];
                 
                 // 1. Generate Prefixed ID
-                char* new_id = arena_sprintf(arena, "%s::%s", node->id, c_node->id);
+                char* new_id = mf_arena_sprintf(arena, "%s::%s", node->id, c_node->id);
                 
                 // 2. Register Ports (Exports)
                 if (c_node->type == MF_NODE_EXPORT_INPUT) {
                     i32 port_idx = *((i32*)c_node->constant.data);
                     char port_key[128];
                     snprintf(port_key, 128, "%s:i%d", node->id, port_idx); 
-                    mf_map_put(&port_map, arena_strdup(arena, port_key), 0); 
+                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), 0); 
                     
                     c_node->id = new_id;
                     mf_map_put(&global_map, new_id, current_idx);
                     
-                    mf_map_put(&port_map, arena_strdup(arena, port_key), current_idx); 
+                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), current_idx); 
                     
                     APPEND_NODE(*c_node);
                     current_idx++;
@@ -467,7 +361,7 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
                     
                     c_node->id = new_id;
                     mf_map_put(&global_map, new_id, current_idx);
-                    mf_map_put(&port_map, arena_strdup(arena, port_key), current_idx);
+                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), current_idx);
                     
                     APPEND_NODE(*c_node);
                     current_idx++;
@@ -562,7 +456,7 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
 // --- Main Entry Point ---
 
 bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena) {
-    char* json_content = read_file(json_path, arena);
+    char* json_content = mf_file_read(json_path, arena);
     if (!json_content) {
         printf("Error: Could not read file %s\n", json_path);
         return false;

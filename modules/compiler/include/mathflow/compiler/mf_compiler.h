@@ -10,8 +10,10 @@
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-    // Inputs (Constants)
-    MF_NODE_INPUT,  // Any constant tensor input
+    // Data Sources/Sinks
+    MF_NODE_CONST,  // Internal constant (literal)
+    MF_NODE_INPUT,  // External runtime parameter (Host -> Graph)
+    MF_NODE_OUTPUT, // External result (Graph -> Host)
     
     // Arithmetic
     MF_NODE_ADD,
@@ -64,9 +66,10 @@ typedef enum {
     // Array Ops
     MF_NODE_RANGE,
     MF_NODE_INDEX, // Intrinsic Coordinate Generator
+    MF_NODE_RESOLUTION,
     MF_NODE_CUMSUM,
     MF_NODE_COMPRESS,
-
+    
     // State
     MF_NODE_MEMORY,
 

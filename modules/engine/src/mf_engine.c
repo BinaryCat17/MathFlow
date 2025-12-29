@@ -34,10 +34,8 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
         engine->backend = desc->backend;
     }
 
-    // 4. VM (Initialize but don't reset until bind)
-    // Note: VM needs context, which is set in bind.
-    // However, vm_init stores the pointers.
-    mf_vm_init(&engine->vm, &engine->ctx, (mf_allocator*)&engine->heap);
+    // 4. VM (Initialize without context)
+    mf_vm_init(&engine->vm, (mf_allocator*)&engine->heap);
 
     return engine;
 }
@@ -45,7 +43,7 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
 void mf_engine_destroy(mf_engine* engine) {
     if (!engine) return;
 
-    mf_vm_shutdown(&engine->vm);
+    mf_engine_reset(engine); // Clean up state buffers first
     
     // Shutdown Backend
     if (engine->backend.shutdown) {
@@ -61,10 +59,20 @@ void mf_engine_destroy(mf_engine* engine) {
 void mf_engine_reset(mf_engine* engine) {
     if (!engine) return;
 
-    // 1. Shutdown VM (clears registers pointer, etc)
+    // 1. Clean State Buffers
+    if (engine->state_buffers && engine->program) {
+        for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
+            free(engine->state_buffers[i].buffer_a);
+            free(engine->state_buffers[i].buffer_b);
+        }
+        // Array itself is in Arena, so it will be freed below
+        engine->state_buffers = NULL;
+    }
+
+    // 2. Shutdown VM (clears registers pointer, etc)
     mf_vm_shutdown(&engine->vm);
     
-    // 2. Reset Allocators
+    // 3. Reset Allocators
     // Arena reset is fast (pos = 0)
     mf_arena_reset(&engine->arena);
     
@@ -74,13 +82,11 @@ void mf_engine_reset(mf_engine* engine) {
         mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
     }
     
-    // 3. Clear Program State
+    // 4. Clear Program State
     engine->program = NULL;
-    memset(&engine->ctx, 0, sizeof(mf_context));
     
-    // 4. Re-init VM (restore allocator pointers)
-    // Note: context is now empty, but will be filled on next bind_program
-    mf_vm_init(&engine->vm, &engine->ctx, (mf_allocator*)&engine->heap);
+    // 5. Re-init VM (restore allocator pointers)
+    mf_vm_init(&engine->vm, (mf_allocator*)&engine->heap);
 }
 
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
@@ -93,11 +99,42 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
 
     engine->program = prog;
     
-    // Setup Context
-    mf_context_init(&engine->ctx, engine->program, &engine->backend);
+    // Setup Context - Removed
+    // mf_context_init(&engine->ctx, engine->program, &engine->backend);
     
     // Reset VM (Allocates registers in the Heap using the Arena for descriptors)
-    mf_vm_reset(&engine->vm, &engine->arena);
+    // Pass program so VM can allocate registers
+    mf_vm_reset(&engine->vm, engine->program, &engine->arena);
+    
+    // Alloc State Buffers (Double Buffering)
+    u32 state_count = prog->meta.state_count;
+    engine->frame_index = 0;
+    
+    if (state_count > 0 && prog->state_table) {
+        engine->state_buffers = MF_ARENA_PUSH(&engine->arena, mf_state_buffer, state_count);
+        
+        for (u32 i = 0; i < state_count; ++i) {
+            mf_bin_state_link* link = &prog->state_table[i];
+            
+            if (link->read_reg >= prog->meta.tensor_count) continue;
+            mf_tensor* t_proto = &prog->tensors[link->read_reg];
+            
+            size_t bytes = mf_tensor_size_bytes(t_proto);
+            if (bytes == 0) bytes = 4; // Safety
+
+            engine->state_buffers[i].size = bytes;
+            engine->state_buffers[i].buffer_a = malloc(bytes);
+            engine->state_buffers[i].buffer_b = malloc(bytes);
+            
+            if (t_proto->data) {
+                memcpy(engine->state_buffers[i].buffer_a, t_proto->data, bytes);
+                memset(engine->state_buffers[i].buffer_b, 0, bytes);
+            } else {
+                memset(engine->state_buffers[i].buffer_a, 0, bytes);
+                memset(engine->state_buffers[i].buffer_b, 0, bytes);
+            }
+        }
+    }
 }
 
 // --- Dispatch Bridge ---
@@ -108,25 +145,54 @@ void mf_engine_dispatch(
 ) {
     if (!engine) return;
     
-    // Smart Mode Selection
-    // 1x1 -> Stateful Run on Main VM
-    // NxM -> Stateless/Parallel Run on Backend
-    if (count_x == 1 && count_y == 1) {
-        // Stateful execution (Script Mode)
-        // No setup/finish needed, the Host writes directly to engine registers via map_tensor
-        mf_vm_exec(&engine->vm);
-    } else {
-        // Parallel execution (Shader Mode)
-        // Delegates to Backend which will propagate state from the Main VM
-        if (!engine->backend.dispatch) return;
+    // Update Global Size (for Resolution Ops)
+    engine->vm.global_size[0] = count_y; // H
+    engine->vm.global_size[1] = count_x; // W
+    engine->vm.global_size[2] = 1;
+
+    // Apply Double Buffering (Ping-Pong)
+    if (engine->state_buffers && engine->program && engine->program->meta.state_count > 0) {
+        bool is_even = (engine->frame_index % 2 == 0);
         
+        for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
+            mf_bin_state_link* link = &engine->program->state_table[i];
+            mf_state_buffer* buf = &engine->state_buffers[i];
+            
+            // Swap Buffers
+            void* prev = is_even ? buf->buffer_a : buf->buffer_b;
+            void* next = is_even ? buf->buffer_b : buf->buffer_a;
+            
+            mf_tensor* t_read = &engine->vm.registers[link->read_reg];
+            mf_tensor* t_write = &engine->vm.registers[link->write_reg];
+            
+            // Update Read Register
+            if (t_read->flags & MF_TENSOR_OWNS_DATA) {
+                if (engine->vm.allocator) engine->vm.allocator->free(engine->vm.allocator, t_read->data);
+                t_read->flags &= ~MF_TENSOR_OWNS_DATA;
+            }
+            t_read->data = prev;
+            t_read->capacity_bytes = buf->size;
+             
+            // Update Write Register
+            if (t_write->flags & MF_TENSOR_OWNS_DATA) {
+                if (engine->vm.allocator) engine->vm.allocator->free(engine->vm.allocator, t_write->data);
+                t_write->flags &= ~MF_TENSOR_OWNS_DATA;
+            }
+            t_write->data = next;
+            t_write->capacity_bytes = buf->size;
+        }
+    }
+
+    if (engine->backend.dispatch) {
         engine->backend.dispatch(
             engine->backend.state,
-            &engine->ctx,
+            engine->program,
             &engine->vm,
             count_x, count_y
         );
     }
+    
+    engine->frame_index++;
 }
 
 // --- State Access ---
@@ -134,12 +200,12 @@ void mf_engine_dispatch(
 int32_t mf_engine_find_register(mf_engine* engine, const char* name) {
     if (!engine || !engine->program) return -1;
     
-    const mf_context* ctx = &engine->ctx;
-    if (!ctx->symbols) return -1;
+    const mf_program* prog = engine->program;
+    if (!prog->symbols) return -1;
 
-    for (size_t i = 0; i < ctx->symbol_count; ++i) {
-        if (strcmp(ctx->symbols[i].name, name) == 0) {
-            return (int32_t)ctx->symbols[i].register_idx;
+    for (size_t i = 0; i < prog->meta.symbol_count; ++i) {
+        if (strcmp(prog->symbols[i].name, name) == 0) {
+            return (int32_t)prog->symbols[i].register_idx;
         }
     }
     return -1;
@@ -173,10 +239,11 @@ void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, vo
         mf_tensor* t = &engine->vm.registers[i];
         const char* name = NULL;
         
-        if (engine->ctx.symbols) {
-            for (size_t s = 0; s < engine->ctx.symbol_count; ++s) {
-                if (engine->ctx.symbols[s].register_idx == i) {
-                    name = engine->ctx.symbols[s].name;
+        if (engine->program && engine->program->symbols) {
+             const mf_program* prog = engine->program;
+            for (size_t s = 0; s < prog->meta.symbol_count; ++s) {
+                if (prog->symbols[s].register_idx == i) {
+                    name = prog->symbols[s].name;
                     break;
                 }
             }

@@ -6,6 +6,13 @@
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/isa/mf_dispatch_table.h>
 
+// Internal State Buffer Pair
+typedef struct {
+    void* buffer_a;
+    void* buffer_b;
+    size_t size;
+} mf_state_buffer;
+
 // The concrete implementation of the Engine.
 // Combines Static Resources (Code) and Execution State (Data).
 struct mf_engine {
@@ -14,12 +21,15 @@ struct mf_engine {
     void* arena_buffer;
     mf_program* program;
     mf_backend_dispatch_table backend;
-    mf_context ctx;
 
     // Execution State (Single Source of Truth)
     mf_vm vm;
     mf_heap heap;
     void* heap_buffer;
+    
+    // State Management (Double Buffering)
+    mf_state_buffer* state_buffers;
+    uint64_t frame_index;
 };
 
 #endif // MF_ENGINE_INTERNAL_H
