@@ -1,9 +1,17 @@
 #ifndef MF_OPS_CORE_H
 #define MF_OPS_CORE_H
 
-#include <mathflow/isa/mf_dispatch_table.h>
+#include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/base/mf_types.h>
 
-// Registers Core Math operations (Add, Sub, Sin, Cos, etc.) to the dispatch table.
-void mf_ops_core_register(mf_backend_dispatch_table* table);
+struct mf_exec_ctx;
+
+/**
+ * @brief Function signature for a MathFlow Operation Kernel (CPU Interpreter).
+ */
+typedef void (*mf_op_func)(struct mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx);
+
+// Registers all available operations to the table.
+void mf_ops_fill_table(mf_op_func* table);
 
 #endif // MF_OPS_CORE_H

@@ -1,5 +1,5 @@
 #include <mathflow/ops/mf_ops_core.h>
-#include <mathflow/ops/mf_kernel_utils.h>
+#include "mf_kernel_utils.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_math.h>
 #include "mf_ops_internal.h"
@@ -7,17 +7,17 @@
 #include <math.h>
 
 // Dot(a, b) -> Sum(a*b) along last axis
-static void op_dot(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_dot(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     if (a->size != b->size) return; 
 
     int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
     
-    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, out_ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, out_ndim)) return;
     dst->dtype = MF_DTYPE_F32;
 
     f32* A = (f32*)a->data; 
@@ -37,13 +37,13 @@ static void op_dot(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2
 }
 
 // Length(a) -> Sqrt(Dot(a, a))
-static void op_length(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_length(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
 
     int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
-    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, out_ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, out_ndim)) return;
     dst->dtype = MF_DTYPE_F32;
 
     f32* A = (f32*)a->data; 
@@ -62,17 +62,17 @@ static void op_length(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
     }
 }
 
-static void op_matmul(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_matmul(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     int dim = (int)sqrtf((float)a->size); 
     if (dim * dim != a->size) return; 
     
     dst->dtype = a->dtype;
-    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
 
     // Fast Path
     if (dim == 4 && a->size == 16) {
@@ -101,13 +101,13 @@ static void op_matmul(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
     }
 }
 
-static void op_transpose(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_transpose(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return; 
     
     dst->dtype = a->dtype;
-    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
     
     int dim = (int)sqrtf((float)a->size);
     
@@ -130,13 +130,13 @@ static void op_transpose(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u1
     for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) out[c * dim + r] = src[r * dim + c];
 }
 
-static void op_inverse(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_inverse(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
     
     dst->dtype = a->dtype;
-    if (!ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
 
     int dim = (int)sqrtf((float)a->size);
     
@@ -159,10 +159,10 @@ static void op_inverse(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 
 }
 
 // Join(a, b) -> [..., 2] where ... is the common shape
-static void op_join(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_join(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
 
     size_t size = 1;
@@ -178,7 +178,7 @@ static void op_join(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src
     dst->size = size * 2;
     dst->dtype = a->dtype; 
 
-    if (!ctx->resize_tensor(ctx->impl, dst, dst->shape, dst->ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, dst->shape, dst->ndim)) return;
     
     f32* A = (f32*)a->data; 
     f32* B = (f32*)b->data; 
@@ -190,11 +190,11 @@ static void op_join(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src
     }
 }
 
-void mf_ops_register_matrix(mf_backend_dispatch_table* table) {
-    table->op_table[MF_OP_DOT] = op_dot;
-    table->op_table[MF_OP_LENGTH] = op_length;
-    table->op_table[MF_OP_MATMUL] = op_matmul; 
-    table->op_table[MF_OP_TRANSPOSE] = op_transpose; 
-    table->op_table[MF_OP_INVERSE] = op_inverse;
-    table->op_table[MF_OP_JOIN] = op_join;
+void mf_ops_register_matrix(mf_op_func* table) {
+    table[MF_OP_DOT] = op_dot;
+    table[MF_OP_LENGTH] = op_length;
+    table[MF_OP_MATMUL] = op_matmul; 
+    table[MF_OP_TRANSPOSE] = op_transpose; 
+    table[MF_OP_INVERSE] = op_inverse;
+    table[MF_OP_JOIN] = op_join;
 }

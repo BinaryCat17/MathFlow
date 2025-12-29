@@ -164,6 +164,9 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
 void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
     if (!engine || !engine->program) return;
     
+    // Reset error state
+    engine->state.error_code = 0;
+    
     engine->global_size[0] = count_y;
     engine->global_size[1] = count_x;
     engine->global_size[2] = 1;
@@ -226,8 +229,8 @@ bool mf_engine_resize_tensor(mf_engine* engine, mf_tensor* tensor, const int32_t
 }
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
-    (void)engine;
-    return MF_ENGINE_ERR_NONE; // Errors are now per-dispatch context
+    if (!engine) return MF_ENGINE_ERR_NONE;
+    return (mf_engine_error)engine->state.error_code;
 }
 
 void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, void* user_data) {

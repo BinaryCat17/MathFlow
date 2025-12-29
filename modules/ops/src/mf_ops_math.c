@@ -1,16 +1,17 @@
 #include <mathflow/ops/mf_ops_core.h>
-#include <mathflow/ops/mf_kernel_utils.h>
+#include "mf_kernel_utils.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_math.h>
+#include <mathflow/isa/mf_exec_ctx.h>
 #include "mf_ops_internal.h"
 #include <math.h>
 
 // --- Arithmetic ---
 
-static void op_add(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_add(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
@@ -39,10 +40,10 @@ MF_KERNEL_UNARY(sqrt, sqrtf)
 
 // --- Min/Max ---
 
-static void op_min(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_min(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
@@ -54,10 +55,10 @@ static void op_min(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2
     }
 }
 
-static void op_max(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_max(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data;
@@ -71,10 +72,10 @@ static void op_max(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2
 
 // --- GLSL Helpers ---
 
-static void op_smoothstep(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* val = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* edges = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_smoothstep(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* val = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* edges = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !val || !edges) return;
     
     if (!mf_utils_resolve_unary_shape(ctx, dst, val)) return; 
@@ -99,10 +100,10 @@ static void op_smoothstep(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u
     }
 }
 
-static void op_step(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* edge = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* x = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_step(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* edge = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* x = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !edge || !x) return;
     
     if (!mf_utils_resolve_binary_shape(ctx, dst, edge, x)) return;
@@ -118,24 +119,46 @@ static void op_step(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src
     }
 }
 
-void mf_ops_register_math(mf_backend_dispatch_table* table) {
-    table->op_table[MF_OP_ADD] = op_add; 
-    table->op_table[MF_OP_SUB] = op_sub; 
-    table->op_table[MF_OP_MUL] = op_mul; 
-    table->op_table[MF_OP_DIV] = op_div;
+void mf_ops_register_math(mf_op_func* table) {
+
+    table[MF_OP_ADD] = op_add; 
+
+    table[MF_OP_SUB] = op_sub; 
+
+    table[MF_OP_MUL] = op_mul; 
+
+    table[MF_OP_DIV] = op_div;
+
     
-    table->op_table[MF_OP_SIN] = op_sin; 
-    table->op_table[MF_OP_COS] = op_cos; 
-    table->op_table[MF_OP_FLOOR] = op_floor; 
-    table->op_table[MF_OP_CEIL] = op_ceil;
-    table->op_table[MF_OP_ABS] = op_abs; 
-    table->op_table[MF_OP_SQRT] = op_sqrt; 
-    table->op_table[MF_OP_ATAN2] = op_atan2; 
-    table->op_table[MF_OP_POW] = op_pow;
+
+    table[MF_OP_SIN] = op_sin; 
+
+    table[MF_OP_COS] = op_cos; 
+
+    table[MF_OP_FLOOR] = op_floor; 
+
+    table[MF_OP_CEIL] = op_ceil; 
+
+    table[MF_OP_ABS] = op_abs; 
+
+    table[MF_OP_SQRT] = op_sqrt; 
+
+    table[MF_OP_ATAN2] = op_atan2; 
+
+    table[MF_OP_POW] = op_pow; 
+
     
-    table->op_table[MF_OP_MIN] = op_min; 
-    table->op_table[MF_OP_MAX] = op_max;
+
+    table[MF_OP_MIN] = op_min; 
+
+    table[MF_OP_MAX] = op_max; 
+
     
-    table->op_table[MF_OP_SMOOTHSTEP] = op_smoothstep;
-    table->op_table[MF_OP_STEP] = op_step;
+
+    table[MF_OP_SMOOTHSTEP] = op_smoothstep; 
+
+    table[MF_OP_STEP] = op_step; 
+
 }
+
+

@@ -1,5 +1,5 @@
 add_library(mf_isa STATIC
-    src/mf_exec_ctx.c
+    src/mf_tensor.c
 )
 add_library(MathFlow::isa ALIAS mf_isa)
 

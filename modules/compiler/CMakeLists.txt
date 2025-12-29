@@ -12,7 +12,6 @@ target_include_directories(mf_compiler
     PRIVATE src
 )
 
-# FIXED: Removed dependency on mf_vm. 
 # Compiler only needs ISA definitions and cJSON for parsing.
 target_link_libraries(mf_compiler 
     PUBLIC 

@@ -1,24 +1,24 @@
 #ifndef MF_KERNEL_UTILS_H
 #define MF_KERNEL_UTILS_H
 
-#include <mathflow/isa/mf_kernel_ctx.h>
+#include <mathflow/isa/mf_exec_ctx.h>
 #include <mathflow/isa/mf_tensor.h>
 #include <math.h>
 #include <string.h>
 
 // --- Helper: Shape Resolution (Inline) ---
 
-static inline bool mf_utils_resolve_binary_shape(const mf_kernel_ctx* ctx, mf_tensor* dst, const mf_tensor* a, const mf_tensor* b) {
+static inline bool mf_utils_resolve_binary_shape(mf_exec_ctx* ctx, mf_tensor* dst, const mf_tensor* a, const mf_tensor* b) {
     if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
 
     // Use larger input as shape source (simple broadcasting)
     const mf_tensor* shape_src = (a->size >= b->size) ? a : b;
-    return ctx->resize_tensor(ctx->impl, dst, shape_src->shape, shape_src->ndim);
+    return mf_exec_ctx_resize_tensor(ctx, dst, shape_src->shape, shape_src->ndim);
 }
 
-static inline bool mf_utils_resolve_unary_shape(const mf_kernel_ctx* ctx, mf_tensor* dst, const mf_tensor* a) {
+static inline bool mf_utils_resolve_unary_shape(mf_exec_ctx* ctx, mf_tensor* dst, const mf_tensor* a) {
     if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
-    return ctx->resize_tensor(ctx->impl, dst, a->shape, a->ndim);
+    return mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim);
 }
 
 // --- Macros: Kernel Definitions ---
@@ -26,10 +26,10 @@ static inline bool mf_utils_resolve_unary_shape(const mf_kernel_ctx* ctx, mf_ten
 // Helper for generic binary ops (C = A op B)
 // Supports scalar broadcasting (if size==1)
 #define MF_KERNEL_BINARY(NAME, OP) \
-static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE); \
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ); \
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ); \
+static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
     size_t sz_a = a->size; size_t sz_b = b->size; \
@@ -39,10 +39,10 @@ static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
 
 // Helper for function-based binary ops (C = func(A, B))
 #define MF_KERNEL_BINARY_FUNC(NAME, FUNC) \
-static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE); \
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ); \
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ); \
+static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
     size_t sz_a = a->size; size_t sz_b = b->size; \
@@ -52,9 +52,9 @@ static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
 
 // Helper for unary ops (C = func(A))
 #define MF_KERNEL_UNARY(NAME, FUNC) \
-static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE); \
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ); \
+static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
     if (!dst || !a) return; \
     if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return; \
     f32* da = (f32*)a->data; f32* dd = (f32*)dst->data; \
@@ -63,10 +63,10 @@ static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
 
 // Helper for comparison ops (C = A op B), Output is always U8 (bool)
 #define MF_KERNEL_COMPARE(NAME, OP) \
-static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE); \
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ); \
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ); \
+static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     dst->dtype = MF_DTYPE_U8; /* Force Bool Output */ \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
@@ -82,10 +82,10 @@ static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
 
 // Helper for logic ops (C = A op B), Input/Output U8
 #define MF_KERNEL_LOGIC(NAME, OP) \
-static void op_##NAME(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE); \
-    mf_tensor* a = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ); \
-    mf_tensor* b = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ); \
+static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     dst->dtype = MF_DTYPE_U8; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \

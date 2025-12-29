@@ -13,7 +13,6 @@ target_include_directories(mf_ops
     PRIVATE src
 )
 
-# TODO: Break dependency on VM. Ops should be pure math kernels.
 target_link_libraries(mf_ops 
     PUBLIC 
         MathFlow::isa

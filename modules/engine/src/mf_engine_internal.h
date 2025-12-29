@@ -4,7 +4,7 @@
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/isa/mf_state.h>
 #include <mathflow/isa/mf_program.h>
-#include <mathflow/isa/mf_dispatch_table.h>
+#include <mathflow/isa/mf_backend.h>
 
 // Internal State Buffer Pair
 typedef struct {
@@ -20,7 +20,7 @@ struct mf_engine {
     mf_arena arena;
     void* arena_buffer;
     mf_program* program;
-    mf_backend_dispatch_table backend;
+    mf_backend backend;
 
     // Execution State (Single Source of Truth)
     mf_state state;

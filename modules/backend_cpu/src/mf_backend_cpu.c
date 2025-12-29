@@ -1,6 +1,5 @@
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
 #include <mathflow/ops/mf_ops_core.h>
-#include <mathflow/ops/mf_ops_array.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/isa/mf_state.h>
 #include <mathflow/isa/mf_exec_ctx.h>
@@ -63,26 +62,8 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 
 // --- Interpreter Loop ---
 
-static void impl_error(void* impl, int error_code) {
-    mf_exec_ctx* ctx = (mf_exec_ctx*)impl;
-    ctx->error = (mf_exec_error)error_code;
-}
-
 static void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table) {
     if (!program || !ctx || !op_table) return;
-
-    // Setup Kernel Context
-    mf_kernel_ctx kernel_ctx = {
-        .impl = ctx,
-        .map_tensor = (mf_tensor* (*)(void*, u16, mf_access_mode))mf_exec_ctx_map_tensor,
-        .resize_tensor = (bool (*)(void*, mf_tensor*, const int32_t*, uint8_t))mf_exec_ctx_resize_tensor,
-        .error = impl_error,
-        .batch_size = ctx->batch_size
-    };
-    // Copy Intrinsics
-    memcpy(kernel_ctx.global_offset, ctx->global_offset, sizeof(ctx->global_offset));
-    memcpy(kernel_ctx.local_size, ctx->local_size, sizeof(ctx->local_size));
-    memcpy(kernel_ctx.global_size, ctx->global_size, sizeof(ctx->global_size));
 
     // Execution Loop
     size_t code_count = program->meta.instruction_count;
@@ -93,7 +74,7 @@ static void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func*
 
         mf_instruction inst = code[i];
         if (op_table[inst.opcode]) {
-            op_table[inst.opcode](&kernel_ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
+            op_table[inst.opcode](ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
         }
     }
 }
@@ -226,8 +207,14 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     // 5. Exec
     mf_cpu_exec(&state->ctx, batch->program, batch->op_table);
     
+    if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
+        batch->main_state->error_code = (int32_t)state->ctx.error;
+    }
+    
     // 6. Commit Outputs
-    commit_outputs(state, batch, tile_x, tile_y, active_w, active_h);
+    if (state->ctx.error == MF_ERROR_NONE) {
+        commit_outputs(state, batch, tile_x, tile_y, active_w, active_h);
+    }
 }
 
 // --- Backend API ---
@@ -252,6 +239,10 @@ static void mf_backend_cpu_dispatch(
             stack_ctx.local_size[0] = 1; stack_ctx.local_size[1] = 1; stack_ctx.local_size[2] = 1;
             
             mf_cpu_exec(&stack_ctx, program, state->op_table);
+            
+            if (stack_ctx.error != MF_ERROR_NONE) {
+                main_state->error_code = (int32_t)stack_ctx.error;
+            }
         }
         return;
     }
@@ -295,8 +286,8 @@ static void mf_backend_cpu_shutdown(void* backend_state) {
     free(state);
 }
 
-void mf_backend_cpu_init(mf_backend_dispatch_table* table, int num_threads) {
-    memset(table, 0, sizeof(mf_backend_dispatch_table));
+void mf_backend_cpu_init(mf_backend* backend, int num_threads) {
+    memset(backend, 0, sizeof(mf_backend));
     
     mf_backend_cpu_state* state = calloc(1, sizeof(mf_backend_cpu_state));
     
@@ -308,12 +299,10 @@ void mf_backend_cpu_init(mf_backend_dispatch_table* table, int num_threads) {
     };
     state->pool = mf_thread_pool_create(&pool_desc);
     
-    table->state = state;
-    table->shutdown = mf_backend_cpu_shutdown;
-    table->dispatch = mf_backend_cpu_dispatch;
+    // Fill the internal operation table for the interpreter
+    mf_ops_fill_table(state->op_table);
     
-    mf_ops_core_register(table);
-    mf_ops_array_register(table);
-    
-    memcpy(state->op_table, table->op_table, sizeof(state->op_table));
+    backend->state = state;
+    backend->shutdown = mf_backend_cpu_shutdown;
+    backend->dispatch = mf_backend_cpu_dispatch;
 }

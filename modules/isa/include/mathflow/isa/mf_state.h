@@ -12,6 +12,10 @@ typedef struct mf_state {
     mf_tensor* registers;
     size_t register_count;
     mf_allocator* allocator;
+    
+    // Error flag set by execution contexts.
+    // 0 = No Error. Uses mf_exec_error codes.
+    volatile int32_t error_code;
 } mf_state;
 
 #endif // MF_STATE_H

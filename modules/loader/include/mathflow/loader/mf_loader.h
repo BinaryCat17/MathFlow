@@ -2,7 +2,7 @@
 #define MF_LOADER_H
 
 #include <mathflow/base/mf_types.h>
-#include <mathflow/isa/mf_dispatch_table.h>
+#include <mathflow/isa/mf_backend.h>
 // Forward declarations
 typedef struct mf_engine mf_engine;
 
@@ -12,10 +12,10 @@ typedef struct mf_engine mf_engine;
  * @brief Initializes the default backend available in the build.
  * Currently hardcoded to CPU backend.
  * 
- * @param table Pointer to the dispatch table to fill.
+ * @param backend Pointer to the backend structure to fill.
  * @param num_threads Number of worker threads (0 = auto).
  */
-void mf_loader_init_backend(mf_backend_dispatch_table* table, int num_threads);
+void mf_loader_init_backend(mf_backend* backend, int num_threads);
 
 // --- Asset Loading ---
 

@@ -4,6 +4,7 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/base/mf_memory.h>
+#include <string.h> // memset
 
 // Forward decl
 typedef struct mf_exec_ctx mf_exec_ctx;
@@ -41,16 +42,27 @@ struct mf_exec_ctx {
     void* user_data;
 };
 
-// --- Execution Context API ---
+// --- Execution Context API (Inlined) ---
 
-// Initialize a context instance (lightweight, no allocations)
-void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size_t reg_count, mf_allocator* allocator);
+static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size_t reg_count, mf_allocator* allocator) {
+    memset(ctx, 0, sizeof(mf_exec_ctx));
+    ctx->registers = registers;
+    ctx->register_count = reg_count;
+    ctx->allocator = allocator;
+}
 
-// --- Accessors ---
-// Returns a pointer to the live tensor in the context.
-mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_access_mode mode);
+static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_access_mode mode) {
+    (void)mode;
+    if (idx >= ctx->register_count) return NULL;
+    return &ctx->registers[idx];
+}
 
-// Resizes a tensor (if allocator is present)
-bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
+static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
+    if (!mf_tensor_resize(tensor, ctx->allocator, new_shape, new_ndim)) {
+        ctx->error = MF_ERROR_OOM;
+        return false;
+    }
+    return true;
+}
 
 #endif // MF_EXEC_CTX_H

@@ -7,10 +7,10 @@
 #include <string.h>
 #include <stdlib.h>
 
-void mf_loader_init_backend(mf_backend_dispatch_table* table, int num_threads) {
-    if (!table) return;
+void mf_loader_init_backend(mf_backend* backend, int num_threads) {
+    if (!backend) return;
     // Hardcoded to CPU for now, but this is the Injection Point for future backends.
-    mf_backend_cpu_init(table, num_threads);
+    mf_backend_cpu_init(backend, num_threads);
 }
 
 static const char* get_filename_ext(const char *filename) {

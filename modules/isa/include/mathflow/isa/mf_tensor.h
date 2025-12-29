@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <mathflow/base/mf_types.h>
+#include <mathflow/base/mf_memory.h>
 
 // Max dimensions supported (Rank)
 #define MF_MAX_DIMS 8
@@ -80,5 +81,19 @@ static inline bool mf_tensor_same_shape(const mf_tensor* a, const mf_tensor* b) 
 static inline size_t mf_tensor_size_bytes(const mf_tensor* t) {
     return t->size * mf_dtype_size(t->dtype);
 }
+
+// --- Tensor Operations ---
+
+/**
+ * @brief Resizes a tensor to a new shape.
+ * Reallocates memory using the provided allocator if necessary.
+ * 
+ * @param tensor The tensor to modify.
+ * @param allocator The allocator to use for memory management.
+ * @param new_shape Array of new dimension sizes.
+ * @param new_ndim Number of dimensions.
+ * @return true if successful (or no change needed), false on OOM.
+ */
+bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const int32_t* new_shape, uint8_t new_ndim);
 
 #endif // MF_TENSOR_H

@@ -84,19 +84,33 @@
     - Ensure no "magic" updates happen inside the VM execution loop.
     - Verify thread safety (Parallel workers read from 'Read' and write to 'Write').
 
-## Phase 19: Smart VM Optimization (Dependency Masking)
-    **Objective:** Enable a single graph to handle heterogeneous outputs (Image, Audio, Physics) with different execution domains (2D vs 1D) without introducing `OP_KERNEL`. We use **Dependency Masking** to selectively execute only the necessary parts of the bytecode for a specific output.
-    
-    - [ ] **Step 1: Dependency Analysis Pass:** Implement a backward-pass analyzer in the Compiler/Loader. It tags every instruction with a bitmask indicating which Outputs it contributes to.
-    - [ ] **Step 2: Selective Execution (Masked VM):** Update `mf_vm_exec` to accept an `execution_mask`. The VM loop skips instructions that don't match the current mask.
-    - [ ] **Step 3: Multi-Domain Dispatch API & Backend Generalization:** Refactor Engine API and Backend Scheduler to support N-Dimensional domains.
-    - **API:** `mf_engine_eval(output_name, const mf_domain_desc* domain)`.
-    - **Backend:** Rewrite `mf_backend_cpu` to handle generic N-D tiling (1D for Audio, 2D for Image, 3D for Compute), replacing the hardcoded 2D loops.
-    - [ ] **Step 4: Sub-Graph Sharing:** Ensure that common logic (e.g., a shared Noise function used by both Audio and Video) is correctly tagged and reusable, avoiding redundant definitions in the IR.
-    
-    ---
-    
-    ## Completed Phases (Archive)
+## Phase 19: Multi-Stream Architecture (Dataflow Engine)
+**Objective:** Transform MathFlow from a single-threaded executor into a true Dataflow Engine capable of running heterogeneous workloads (Audio, Video, Physics) efficiently. We move complexity into the Compiler (Graph Partitioning) and Engine (Scheduling), keeping the Backend simple and fast.
+
+- [ ] **Step 1: Multi-Stream ISA (Contract):**
+    - Update `mf_program` to support multiple instruction streams (Entry Points) sharing a single Register File.
+    - Define `mf_stream_desc` in ISA: contains code range, domain type (1D/2D), and dependencies (e.g., "Video depends on Physics").
+- [ ] **Step 2: Graph Partitioning (Compiler):**
+    - Implement smart graph traversal to identify connected components for each Output Node.
+    - **Extract Shared Subgraphs:** Automatically isolate common logic (e.g., Physics, Time, Noise) into a "Shared Stream" to avoid redundant calculations and state desynchronization.
+    - Generate optimized instruction lists for each stream.
+- [ ] **Step 3: Engine Scheduler (Orchestrator):**
+    - Implement a topological scheduler in `mf_engine`.
+    - `mf_engine_dispatch(stream_id)`: Automatically resolves and executes prerequisite streams (e.g., Run Physics -> Then Run Video).
+    - Manage **Snapshot Isolation**: Ensure that concurrent streams read consistent versions of shared data (Robust Double/Triple Buffering).
+- [ ] **Step 4: Backend Adaptation:**
+    - Update `mf_backend` to accept `mf_stream_desc` instead of raw dimensions.
+    - Backend simply executes the provided instruction slice, oblivious to the larger graph structure.
+
+---
+
+## Completed Phases (Archive)
+
+### Milestone 5: Architecture Purity (Phase 17.6 - 18)
+- **Ops Isolation:** Moved dispatch logic from ISA to Ops. `mf_backend` is now a pure interface.
+- **State Separation:** `mf_state` (Data) is fully decoupled from `mf_exec_ctx` (Execution).
+- **Error Handling:** Implemented robust error propagation from parallel workers to the Engine.
+- **Module Hierarchy:** Established clear layering: Foundation (ISA/Base) -> Implementation (Ops/Backend) -> Core (Engine/Compiler) -> Host.
 
 ### Milestone 4: Architecture Cleanup (Phase 16)
 - **Modularization:** Decomposed monolithic build into `base`, `isa`, `vm`, `compiler`, `engine`, `host`, `backend`.

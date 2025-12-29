@@ -1,14 +1,14 @@
-#include <mathflow/ops/mf_ops_array.h>
-#include <mathflow/ops/mf_kernel_utils.h>
+#include "mf_ops_internal.h"
+#include "mf_kernel_utils.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
 
 // --- Op: Range (Iota) ---
 // Src1: Scalar count (e.g. 5)
 // Dest: Vector [0, 1, 2, 3, 4]
-static void op_range(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* count_tensor = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_range(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !count_tensor) return;
 
     // Determine count
@@ -24,7 +24,7 @@ static void op_range(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 sr
     // Resize Dest
     dst->dtype = MF_DTYPE_F32; // Always F32 for now
     int32_t shape[] = { count };
-    if (!ctx->resize_tensor(ctx->impl, dst, shape, 1)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     // Fill
     f32* d = (f32*)dst->data;
@@ -36,9 +36,9 @@ static void op_range(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 sr
 // --- Op: CumSum (Prefix Sum) ---
 // Src1: Vector [10, 20, 30]
 // Dest: Vector [10, 30, 60]
-static void op_cumsum(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_cumsum(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
     // Shape matches source
@@ -60,10 +60,10 @@ static void op_cumsum(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 s
 // Src1: Data [10, 20, 30]
 // Src2: Mask [1, 0, 1]
 // Dest: [10, 30]
-static void op_compress(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* data = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
-    mf_tensor* mask = ctx->map_tensor(ctx->impl, src2_idx, MF_ACCESS_READ);
+static void op_compress(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* data = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+    mf_tensor* mask = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     
     if (!dst || !data || !mask) return;
 
@@ -85,7 +85,7 @@ static void op_compress(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16
     // Resize Dest
     dst->dtype = data->dtype;
     int32_t new_shape[] = { (int32_t)true_count };
-    if (!ctx->resize_tensor(ctx->impl, dst, new_shape, 1)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, new_shape, 1)) return;
 
     // Pass 2: Copy
     size_t write_idx = 0;
@@ -109,9 +109,9 @@ static void op_compress(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16
 // --- Op: Index (Intrinsic Coordinate) ---
 // Src1: Axis (0=Y, 1=X, etc)
 // Dest: Vector of global coordinates
-static void op_index(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* axis_t = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !axis_t) return;
 
     int axis = 0;
@@ -125,7 +125,7 @@ static void op_index(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 sr
 
     dst->dtype = MF_DTYPE_F32;
     int32_t shape[] = { (int32_t)count };
-    if (!ctx->resize_tensor(ctx->impl, dst, shape, 1)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     f32* d = (f32*)dst->data;
     
@@ -155,9 +155,9 @@ static void op_index(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 sr
 // --- Op: Resolution (Domain Size) ---
 // Src1: Axis (0=Height, 1=Width)
 // Dest: Scalar Size
-static void op_resolution(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = ctx->map_tensor(ctx->impl, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* axis_t = ctx->map_tensor(ctx->impl, src1_idx, MF_ACCESS_READ);
+static void op_resolution(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
+    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !axis_t) return;
 
     int axis = 0;
@@ -167,7 +167,7 @@ static void op_resolution(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u
     // Output: Scalar [1]
     dst->dtype = MF_DTYPE_F32;
     int32_t shape[] = { 1 };
-    if (!ctx->resize_tensor(ctx->impl, dst, shape, 0)) return; // 0 dimensions = scalar
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 0)) return; // 0 dimensions = scalar
 
     f32* d = (f32*)dst->data;
     if (axis >= 0 && axis < 3) {
@@ -178,10 +178,10 @@ static void op_resolution(const mf_kernel_ctx* ctx, u16 dst_idx, u16 src1_idx, u
 }
 
 // --- Registration ---
-void mf_ops_array_register(mf_backend_dispatch_table* table) {
-    table->op_table[MF_OP_RANGE] = op_range;
-    table->op_table[MF_OP_INDEX] = op_index;
-    table->op_table[MF_OP_RESOLUTION] = op_resolution;
-    table->op_table[MF_OP_CUMSUM] = op_cumsum;
-    table->op_table[MF_OP_COMPRESS] = op_compress;
+void mf_ops_array_register(mf_op_func* table) {
+    table[MF_OP_RANGE] = op_range;
+    table[MF_OP_INDEX] = op_index;
+    table[MF_OP_RESOLUTION] = op_resolution;
+    table[MF_OP_CUMSUM] = op_cumsum;
+    table[MF_OP_COMPRESS] = op_compress;
 }

@@ -2,7 +2,7 @@
 #define MF_ENGINE_H
 
 #include <mathflow/isa/mf_tensor.h>
-#include <mathflow/isa/mf_dispatch_table.h>
+#include <mathflow/isa/mf_backend.h>
 #include <mathflow/base/mf_types.h>
 
 // Forward declarations
@@ -24,7 +24,7 @@ typedef struct mf_engine_desc {
 
     // Backend Implementation (Required)
     // The engine copies this table, so it can be on stack.
-    mf_backend_dispatch_table backend;
+    mf_backend backend;
 } mf_engine_desc;
 
 // --- Lifecycle ---

@@ -3,12 +3,12 @@
 MathFlow is a high-performance, **Data-Oriented** computation engine. It treats everything — from physics to UI layout — as mathematical operations on arrays (tensors).
 
 > **Core Philosophy:** "The Graph is a Shader."
-> Whether running on CPU (Interpreter) or GPU (Transpiled), the logic is pure math. The Host Application provides the Canvas and Inputs; the Graph calculates the State and Pixels.
+> The Engine manages Time and State. The Backend executes Logic over Space (Data).
 
 ## 1. System Overview
 
-**Architecture:** Single State Engine.
-The Engine owns the Code (Arena) and the Data (Heap). Execution is unified under a single `dispatch` API. The Engine acts as the **Source of Truth**, and parallel workers are transient consumers of this state.
+**Architecture:** Separated State & Execution.
+The **Engine** owns the persistent Data (`mf_state`). The **Backend** creates ephemeral Execution Contexts (`mf_exec_ctx`) to process this data.
 
 ```mermaid
 flowchart LR
@@ -21,7 +21,7 @@ flowchart LR
     %% Data
     User((User))
     Source["📄 Graph (.json)"]:::file
-    Binary[("💾 Program (.bin)")]:::memory
+    Program[("💾 Program (.bin)")]:::memory
 
     %% Compilation
     subgraph Build ["Phase: Host / Build"]
@@ -33,10 +33,9 @@ flowchart LR
     %% Execution
     subgraph Run ["Phase: Engine Execution"]
         direction TB
-        Engine["🚂 Engine (Source of Truth)"]:::proc
-        VM_Main["🧠 Main VM"]:::memory
+        Engine["🚂 Engine (State & Logic)"]:::proc
         Backend["🔌 Backend (CPU/GPU)"]:::hw
-        Pool["🧵 Workers"]:::proc
+        Ctx["⚡ Exec Context (View)"]:::proc
     end
 
     Input["🖱️ Input"]:::hw
@@ -46,180 +45,171 @@ flowchart LR
     User -- "Edits" --> Source
     Source -- "Loads" --> Loader
     Loader -- "Uses" --> Compiler
-    Compiler -- "Generates" --> Binary
-    Loader -- "Binds Program" --> Engine
+    Compiler -- "Generates" --> Program
+    Loader -- "Binds" --> Engine
     
-    Input -- "Writes Uniforms" --> Engine
     Engine -- "Dispatches" --> Backend
     
-    Backend -- "Propagates State" --> Pool
-    Pool -- "Reads/Slices" --> VM_Main
-    Pool -- "Executes" --> Ops["💪 Kernels"]
+    Backend -- "Creates" --> Ctx
+    Ctx -.-> |Reads/Writes| Engine
+    Ctx -- "Executes" --> Ops["💪 Kernels"]
     
-    Engine -- "Reads Result" --> Screen
+    Input -- "Writes" --> Engine
+    Engine -- "Reads" --> Screen
 ```
 
 ---
 
 ## 2. Core Concepts
 
-### 2.1. Single State Engine
-The `mf_engine` is the "Computer". It creates and owns the entire runtime environment.
-*   **Encapsulation:** It hides the internal VM and Heap behind an opaque handle.
-*   **Single Source of Truth:** All data (tensors) lives in the Engine's Heap. There are no separate "Instance" objects.
+### 2.1. The Engine (Owner)
+The `mf_engine` is the Lifecycle Manager.
+*   **Role:** Single Source of Truth.
+*   **Responsibility:** Allocates memory (`mf_state`), manages Double Buffering (Ping-Pong) for time-dependent simulations, and orchestrates the Backend.
 
-### 2.2. Unified Dispatch & State Propagation
-MathFlow uses a smart dispatch system to handle both Logic (Script) and Graphics (Shader) workloads without explicit mode switching.
+### 2.2. The State (Data)
+`mf_state` is a passive container.
+*   **Content:** Array of Tensor Descriptors (`registers`) and the Raw Memory Heap.
+*   **Behavior:** It does not "run" anything. It just holds the bits.
+*   **Storage:** Currently RAM (CPU), but designed to hold VRAM Handles in the future.
 
-*   **Script Mode (Stateful):**
-    *   **Call:** `mf_engine_dispatch(engine, 1, 1)`
-    *   **Behavior:** Executes on the **Main VM** directly.
-    *   **Use Case:** Game Logic, Physics, CLI Tools, One-shot calculations.
+### 2.3. The Execution Context (View)
+`mf_exec_ctx` is an ephemeral "Window" into the data.
+*   **Role:** Adapts the global state for a specific kernel operation.
+*   **Cardinality:** Many. One per thread / tile.
+*   **Features:** Knows "Who am I?" (Thread ID, Tile Offset) and "Where is my data?" (Register Pointers).
 
-*   **Shader Mode (Stateless/Parallel):**
-    *   **Call:** `mf_engine_dispatch(engine, Width, Height)`
-    *   **Behavior:** Delegates to the **Backend**.
-    *   **Propagation:** The Backend spins up worker VMs. These workers automatically **Copy** inputs (Uniforms) and **Slice** outputs (Buffers) from the Main VM.
-    *   **Use Case:** Rendering, Image Processing, Particle Systems.
-
-### 2.3. Memory Model
-*   **Arena (Static):** Stores Program Code, Constants, Symbol Table. Allocated once at startup.
-*   **Heap (Dynamic):** Stores Tensor Data (Variables). The main working memory.
-    *   *Note:* Backend workers may use their own temporary memory (Arena/Heap) for intermediate calculations, but they read/write to the Main Engine's memory.
+### 2.4. The Backend (Executor)
+The strategy for running the code.
+*   **CPU Backend:** Creates N threads. Each thread creates a local `mf_exec_ctx` pointing to a tile of the screen, then runs the Interpreter Loop.
+*   **GPU Backend (Future):** Compiles the graph to a shader and dispatches a compute job.
 
 ---
 
 ## 3. Modules Detail
 
-The codebase is organized in layers, ensuring separation of concerns.
-
 ```mermaid
 graph TD
     %% Styles
     classDef layerApp fill:#dce,stroke:#86b,stroke-width:2px;
-    classDef layerHost fill:#cde,stroke:#68b,stroke-width:2px;
+    classDef layerHost fill:#def,stroke:#48a,stroke-width:2px;
     classDef layerCore fill:#dec,stroke:#6b8,stroke-width:2px;
+    classDef layerImpl fill:#ffe,stroke:#db8,stroke-width:2px;
     classDef layerBase fill:#edd,stroke:#b66,stroke-width:2px;
 
-    %% Layer 1: Apps (Executables)
+    %% Layer 1: Apps
     subgraph L1 ["Layer 1: Applications"]
-        App_GUI["mf-window"]:::layerApp
-        App_CLI["mf-runner"]:::layerApp
+        App["mf-runner / mf-window"]:::layerApp
     end
 
-    %% Layer 2: Host (Integration Library)
-    subgraph L2 ["Layer 2: Host Framework"]
-        Host["Host (SDL/Headless)"]:::layerHost
-        Loader["Loader (Composition Root)"]:::layerHost
+    %% Layer 2: Host Framework
+    subgraph L2 ["Layer 2: Host & Loader"]
+        Host["Host (SDL/Input/Window)"]:::layerHost
+        Loader["Loader (Asset Bootstrapper)"]:::layerHost
     end
 
-    %% Layer 3: Core (Logic)
+    %% Layer 3: System Core
     subgraph L3 ["Layer 3: System Core"]
         Engine["Engine (Orchestrator)"]:::layerCore
         Compiler["Compiler (JSON->ISA)"]:::layerCore
-        VM["Virtual Machine (Interpreter)"]:::layerCore
     end
 
-    %% Layer 4: Compute (Execution)
-    subgraph L4 ["Layer 4: Compute Providers"]
-        Backend["Backend (Thread Pool)"]:::layerBase
-        Ops["Math Kernels (ops)"]:::layerBase
+    %% Layer 4: Implementation
+    subgraph L4 ["Layer 4: Compute Implementation"]
+        Backend["Backend (CPU/GPU Strategy)"]:::layerImpl
+        Ops["Ops (Math Kernels)"]:::layerImpl
     end
 
-    %% Layer 5: Contracts
-    subgraph L5 ["Layer 5: Foundation & Contracts"]
-        ISA["ISA (The Contract)"]:::layerBase
-        Base["Base (Common Foundation)"]:::layerBase
+    %% Layer 5: Foundation
+    subgraph L5 ["Layer 5: Contracts & Foundation"]
+        ISA["ISA (Data & Interfaces)"]:::layerBase
+        Base["Base (Memory/Threads)"]:::layerBase
     end
 
-    %% Dependencies (Build Time)
-    App_GUI --> Host
-    App_CLI --> Host
-    
+    %% Dependencies
+    App --> Host
     Host --> Loader
     Host --> Engine
     
+    Loader --> Engine
     Loader --> Compiler
     Loader --> Backend
-    Loader --> Engine
     
-    Engine --> VM
+    Engine --> ISA
     
-    Backend --> VM
+    Backend --> ISA
     Backend --> Ops
     
-    %% Layer 5 (ISA & Base) is the implicit foundation for all modules above.
+    Ops --> ISA
+    
+    Compiler --> ISA
 ```
 
-### 3.1. Engine (`modules/engine`)
-The public face of the runtime.
-*   **API:** `mf_engine_create`, `mf_engine_bind_program`, `mf_engine_dispatch`.
-*   **Responsibility:** Lifecycle management, Resource ownership.
-*   **Behavior:** Acts as the bridge between the Host (Data) and the Backend (Execution).
+### 3.1. Host (`modules/host`)
+The Application Framework.
+*   **Host SDL:** Manages the window, SDL2 renderer, and translates OS events to State updates (Mouse, Time).
+*   **Manifest Loader:** Parses `.mfapp` files to automatically configure resolution and threads.
 
-### 3.2. ISA (`modules/isa`)
-The "Contract" defining the Instruction Set and Interfaces.
-*   **Opcodes:** `MF_OP_ADD`, `MF_OP_COPY`, etc.
-*   **Dispatch Table:** Defines the interface (`mf_backend_dispatch_table`) that backends must implement.
+### 3.2. Loader (`modules/loader`)
+The bridge between Files and the Engine.
+*   Handles binary (`.bin`) and JSON (`.json`) graph loading.
+*   Provides a convenient injection point for Backend initialization.
 
-### 3.3. Virtual Machine (`modules/vm`)
-The internal Bytecode Interpreter.
-*   **Role:** Executes the program instructions sequentially. Pure execution logic, no I/O.
-*   **Usage:** Used directly by the Engine for "Script Mode", and by the Backend for "Worker Threads".
+### 3.3. Engine (`modules/engine`)
+The public API and Lifecycle Manager.
+*   Owns the persistent `mf_state`.
+*   Manages double-buffering and error aggregation.
+*   `mf_engine_dispatch(engine, x, y)`: The primary tick function.
 
-### 3.4. Backend: CPU (`modules/backend_cpu`)
-Reference implementation of parallel execution.
-*   **Role:** Manages the Thread Pool and Worker VMs.
-*   **State Propagation:** Handles the logic of copying Uniforms and tiling Output Tensors for each worker.
+### 3.4. ISA (`modules/isa`)
+The Contract. Defines data structures shared between all modules.
+*   `mf_program`: The Bytecode and Static Metadata.
+*   `mf_state`: The Persistent Data layout (and runtime error codes).
+*   `mf_exec_ctx`: The Ephemeral Context definition.
+*   `mf_backend`: The Abstract Interface for execution.
 
-### 3.5. Host (`modules/host`)
-Application Framework & Orchestration.
-*   **`Host SDL`:** SDL2 integration, Window management, Input handling.
-*   **`Host Headless`:** Logic for CLI execution without graphics.
+### 3.5. Ops (`modules/ops`)
+The Math Kernel Library.
+*   Pure C implementations of all opcodes.
+*   Exposes `mf_ops_fill_table()` for CPU interpreters.
 
-### 3.6. Loader (`modules/loader`)
-The **Composition Root** of the system.
-*   **Responsibility:** Initializes the Backend, loads Assets (JSON/BIN), invokes Compiler, and binds everything to the Engine.
-*   **Role:** Solves the dependency injection problem, decoupling Apps from low-level system construction.
+### 3.6. Backend: CPU (`modules/backend_cpu`)
+The Reference Strategy.
+*   Implements tiled parallel execution using a thread pool.
+*   Contains the **Interpreter Loop** that executes ISA bytecode.
 
 ---
 
-## 4. The Standard Protocol (Host Integration)
+## 4. Execution Flow (The Lifecycle)
 
-This section describes how the Host interacts with the Engine.
+1.  **Setup:**
+    *   Host creates `mf_engine`.
+    *   Engine allocates `mf_state` (Heap).
+    *   Engine binds `mf_backend_cpu`.
 
-### 4.1. I/O Protocol (Symbol Table)
-The Host Application interacts with the VM using Named Registers (Uniforms):
-1.  **Map:** `ptr = mf_engine_map_tensor(engine, "u_Time")`.
-2.  **Write:** Update `*ptr` directly in memory (Zero-Copy).
-3.  **Dispatch:** `mf_engine_dispatch(engine, 800, 600)`.
-4.  **Read:** Read from `mf_engine_map_tensor(engine, "out_Color")`.
+2.  **Input:**
+    *   Host writes to `mf_state.registers["u_Mouse"]`.
 
-There are no per-job callbacks. The Engine ensures that the state written in step 2 is visible to all parallel workers in step 3.
+3.  **Dispatch (Frame Start):**
+    *   Engine calls `backend->dispatch(program, state, w, h)`.
 
-### 4.2. State Management
-To support interactive UI (toggles, animations) without external logic:
-*   **`MF_NODE_MEMORY`:** Acts as a "delay" line. Outputs the value from the *previous* frame.
-*   **Cycle Breaking:** The compiler treats Memory nodes as inputs (Roots) for the current frame to resolve dependency cycles.
+4.  **Parallel Execution:**
+    *   Backend splits domain (WxH) into Tiles.
+    *   **Worker Thread:**
+        *   Creates `mf_exec_ctx` on stack.
+        *   Sets `ctx.offset` (Tile X, Y).
+        *   Runs Loop: `for inst in code: op_table[inst.opcode](ctx, ...)`
+        *   Opcode calls `mf_exec_ctx_map_tensor` -> Reads from `state` (or local cache).
+
+5.  **Frame End:**
+    *   Engine swaps Double Buffers (if Memory Nodes exist).
+    *   Host reads from `mf_state.registers["out_Color"]`.
 
 ---
 
-## 5. Application Layer (Manifest)
+## 5. Future: GPU Strategy
+The separation of State and Execution makes GPU integration natural.
 
-MathFlow separates **Logic Definition** (Graphs) from **Application Configuration** (Manifests).
-
-### 5.1. Manifest (`.mfapp`)
-A JSON file that defines *how* to run a graph.
-```json
-{
-    "runtime": {
-        "entry": "../graphs/ui.json"
-    },
-    "window": {
-        "title": "My UI",
-        "width": 800,
-        "height": 600,
-        "vsync": true
-    }
-}
-```
+*   `mf_state` will hold `cl_mem` or `VkBuffer` handles instead of `void*`.
+*   `Backend GPU` will simply bind these handles to the Compute Shader.
+*   The Interpreter Loop is bypassed entirely in favor of the GPU Hardware Scheduler.
