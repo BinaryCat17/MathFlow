@@ -1,10 +1,12 @@
-add_library(mf_isa INTERFACE)
+add_library(mf_isa STATIC
+    src/mf_exec_ctx.c
+)
 add_library(MathFlow::isa ALIAS mf_isa)
 
-target_include_directories(mf_isa INTERFACE
+target_include_directories(mf_isa PUBLIC
     include
 )
 
-target_link_libraries(mf_isa INTERFACE
+target_link_libraries(mf_isa PUBLIC
     MathFlow::base
 )

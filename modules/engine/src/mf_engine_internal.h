@@ -2,7 +2,7 @@
 #define MF_ENGINE_INTERNAL_H
 
 #include <mathflow/engine/mf_engine.h>
-#include <mathflow/vm/mf_vm.h>
+#include <mathflow/isa/mf_state.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/isa/mf_dispatch_table.h>
 
@@ -23,9 +23,12 @@ struct mf_engine {
     mf_backend_dispatch_table backend;
 
     // Execution State (Single Source of Truth)
-    mf_vm vm;
+    mf_state state;
     mf_heap heap;
     void* heap_buffer;
+    
+    // Global Config (used for dispatch)
+    u32 global_size[3];
     
     // State Management (Double Buffering)
     mf_state_buffer* state_buffers;

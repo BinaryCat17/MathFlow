@@ -1,9 +1,72 @@
 #include <mathflow/engine/mf_engine.h>
 #include "mf_engine_internal.h"
+#include <mathflow/isa/mf_exec_ctx.h>
 
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+
+// --- Internal State Management ---
+
+static void mf_state_shutdown(mf_state* state) {
+    if (!state->registers || !state->allocator) return;
+    
+    for (u32 i = 0; i < state->register_count; ++i) {
+        mf_tensor* t = &state->registers[i];
+        if (t->data && (t->flags & MF_TENSOR_OWNS_DATA)) {
+            state->allocator->free(state->allocator, t->data);
+            t->data = NULL;
+            t->flags &= ~MF_TENSOR_OWNS_DATA;
+        }
+    }
+    state->registers = NULL;
+    state->register_count = 0;
+}
+
+static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
+    if (!prog) return;
+    
+    state->register_count = prog->meta.tensor_count;
+    state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
+
+    for (u32 i = 0; i < state->register_count; ++i) {
+        mf_tensor* dst = &state->registers[i];
+        const mf_tensor* src = &prog->tensors[i];
+        
+        *dst = *src;
+        dst->flags = 0; 
+        
+        if (src->data) {
+            if (state->allocator) {
+                size_t bytes = src->capacity_bytes;
+                dst->data = state->allocator->alloc(state->allocator, bytes);
+                if (dst->data) memcpy(dst->data, src->data, bytes);
+                dst->capacity_bytes = bytes;
+                dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
+            } else {
+                 dst->data = src->data; 
+            }
+        } else {
+            if (state->allocator) {
+                 size_t type_size = mf_dtype_size(src->dtype);
+                 if (type_size == 0) type_size = 4;
+                 size_t bytes = (src->size > 0) ? src->size * type_size : type_size;
+                 
+                 dst->data = state->allocator->alloc(state->allocator, bytes);
+                 if (dst->data) memset(dst->data, 0, bytes);
+                 
+                 dst->capacity_bytes = bytes;
+                 dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
+            } else {
+                 dst->data = NULL;
+                 dst->capacity_bytes = 0;
+                 dst->flags |= MF_TENSOR_DYNAMIC;
+            }
+        }
+    }
+}
+
+// --- Engine API ---
 
 mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     mf_engine* engine = calloc(1, sizeof(mf_engine));
@@ -12,81 +75,52 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     size_t arena_size = (desc && desc->arena_size > 0) ? desc->arena_size : MF_MB(8);
     size_t heap_size = (desc && desc->heap_size > 0) ? desc->heap_size : MF_MB(64);
 
-    // 1. Arena
     engine->arena_buffer = malloc(arena_size);
-    if (!engine->arena_buffer) {
-        free(engine);
-        return NULL;
-    }
+    if (!engine->arena_buffer) { free(engine); return NULL; }
     mf_arena_init(&engine->arena, engine->arena_buffer, arena_size);
 
-    // 2. Heap
     engine->heap_buffer = malloc(heap_size);
-    if (!engine->heap_buffer) {
-        free(engine->arena_buffer);
-        free(engine);
-        return NULL;
-    }
+    if (!engine->heap_buffer) { free(engine->arena_buffer); free(engine); return NULL; }
     mf_heap_init(&engine->heap, engine->heap_buffer, heap_size);
 
-    // 3. Backend (Injection)
     if (desc) {
         engine->backend = desc->backend;
     }
 
-    // 4. VM (Initialize without context)
-    mf_vm_init(&engine->vm, (mf_allocator*)&engine->heap);
+    engine->state.allocator = (mf_allocator*)&engine->heap;
 
     return engine;
 }
 
 void mf_engine_destroy(mf_engine* engine) {
     if (!engine) return;
-
-    mf_engine_reset(engine); // Clean up state buffers first
-    
-    // Shutdown Backend
-    if (engine->backend.shutdown) {
-        engine->backend.shutdown(engine->backend.state);
-    }
-
+    mf_engine_reset(engine);
+    if (engine->backend.shutdown) engine->backend.shutdown(engine->backend.state);
     if (engine->heap_buffer) free(engine->heap_buffer);
     if (engine->arena_buffer) free(engine->arena_buffer);
-    
     free(engine);
 }
 
 void mf_engine_reset(mf_engine* engine) {
     if (!engine) return;
 
-    // 1. Clean State Buffers
     if (engine->state_buffers && engine->program) {
         for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
             free(engine->state_buffers[i].buffer_a);
             free(engine->state_buffers[i].buffer_b);
         }
-        // Array itself is in Arena, so it will be freed below
         engine->state_buffers = NULL;
     }
 
-    // 2. Shutdown VM (clears registers pointer, etc)
-    mf_vm_shutdown(&engine->vm);
-    
-    // 3. Reset Allocators
-    // Arena reset is fast (pos = 0)
+    mf_state_shutdown(&engine->state);
     mf_arena_reset(&engine->arena);
     
-    // Heap reset: just re-initialize the free list
-    // This is valid because we own the buffer
     if (engine->heap_buffer) {
         mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
     }
     
-    // 4. Clear Program State
     engine->program = NULL;
-    
-    // 5. Re-init VM (restore allocator pointers)
-    mf_vm_init(&engine->vm, (mf_allocator*)&engine->heap);
+    engine->state.allocator = (mf_allocator*)&engine->heap;
 }
 
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
@@ -96,17 +130,10 @@ mf_arena* mf_engine_get_arena(mf_engine* engine) {
 
 void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
     if (!engine || !prog) return;
-
     engine->program = prog;
     
-    // Setup Context - Removed
-    // mf_context_init(&engine->ctx, engine->program, &engine->backend);
+    mf_state_reset(&engine->state, engine->program, &engine->arena);
     
-    // Reset VM (Allocates registers in the Heap using the Arena for descriptors)
-    // Pass program so VM can allocate registers
-    mf_vm_reset(&engine->vm, engine->program, &engine->arena);
-    
-    // Alloc State Buffers (Double Buffering)
     u32 state_count = prog->meta.state_count;
     engine->frame_index = 0;
     
@@ -115,12 +142,9 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
         
         for (u32 i = 0; i < state_count; ++i) {
             mf_bin_state_link* link = &prog->state_table[i];
-            
-            if (link->read_reg >= prog->meta.tensor_count) continue;
             mf_tensor* t_proto = &prog->tensors[link->read_reg];
-            
             size_t bytes = mf_tensor_size_bytes(t_proto);
-            if (bytes == 0) bytes = 4; // Safety
+            if (bytes == 0) bytes = 4;
 
             engine->state_buffers[i].size = bytes;
             engine->state_buffers[i].buffer_a = malloc(bytes);
@@ -137,45 +161,33 @@ void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
     }
 }
 
-// --- Dispatch Bridge ---
-
-void mf_engine_dispatch(
-    mf_engine* engine, 
-    u32 count_x, u32 count_y
-) {
-    if (!engine) return;
+void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
+    if (!engine || !engine->program) return;
     
-    // Update Global Size (for Resolution Ops)
-    engine->vm.global_size[0] = count_y; // H
-    engine->vm.global_size[1] = count_x; // W
-    engine->vm.global_size[2] = 1;
+    engine->global_size[0] = count_y;
+    engine->global_size[1] = count_x;
+    engine->global_size[2] = 1;
 
-    // Apply Double Buffering (Ping-Pong)
-    if (engine->state_buffers && engine->program && engine->program->meta.state_count > 0) {
+    if (engine->state_buffers && engine->program->meta.state_count > 0) {
         bool is_even = (engine->frame_index % 2 == 0);
-        
         for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
             mf_bin_state_link* link = &engine->program->state_table[i];
             mf_state_buffer* buf = &engine->state_buffers[i];
-            
-            // Swap Buffers
             void* prev = is_even ? buf->buffer_a : buf->buffer_b;
             void* next = is_even ? buf->buffer_b : buf->buffer_a;
             
-            mf_tensor* t_read = &engine->vm.registers[link->read_reg];
-            mf_tensor* t_write = &engine->vm.registers[link->write_reg];
+            mf_tensor* t_read = &engine->state.registers[link->read_reg];
+            mf_tensor* t_write = &engine->state.registers[link->write_reg];
             
-            // Update Read Register
             if (t_read->flags & MF_TENSOR_OWNS_DATA) {
-                if (engine->vm.allocator) engine->vm.allocator->free(engine->vm.allocator, t_read->data);
+                engine->state.allocator->free(engine->state.allocator, t_read->data);
                 t_read->flags &= ~MF_TENSOR_OWNS_DATA;
             }
             t_read->data = prev;
             t_read->capacity_bytes = buf->size;
              
-            // Update Write Register
             if (t_write->flags & MF_TENSOR_OWNS_DATA) {
-                if (engine->vm.allocator) engine->vm.allocator->free(engine->vm.allocator, t_write->data);
+                engine->state.allocator->free(engine->state.allocator, t_write->data);
                 t_write->flags &= ~MF_TENSOR_OWNS_DATA;
             }
             t_write->data = next;
@@ -184,66 +196,49 @@ void mf_engine_dispatch(
     }
 
     if (engine->backend.dispatch) {
-        engine->backend.dispatch(
-            engine->backend.state,
-            engine->program,
-            &engine->vm,
-            count_x, count_y
-        );
+        engine->backend.dispatch(engine->backend.state, engine->program, &engine->state, count_x, count_y);
     }
-    
     engine->frame_index++;
 }
 
-// --- State Access ---
-
 int32_t mf_engine_find_register(mf_engine* engine, const char* name) {
     if (!engine || !engine->program) return -1;
-    
     const mf_program* prog = engine->program;
     if (!prog->symbols) return -1;
-
     for (size_t i = 0; i < prog->meta.symbol_count; ++i) {
-        if (strcmp(prog->symbols[i].name, name) == 0) {
-            return (int32_t)prog->symbols[i].register_idx;
-        }
+        if (strcmp(prog->symbols[i].name, name) == 0) return (int32_t)prog->symbols[i].register_idx;
     }
     return -1;
 }
 
 mf_tensor* mf_engine_map_tensor(mf_engine* engine, u16 reg_idx, mf_access_mode mode) {
-    if (!engine) return NULL;
-    return mf_vm_map_tensor(&engine->vm, reg_idx, mode);
+    (void)mode;
+    if (!engine || reg_idx >= engine->state.register_count) return NULL;
+    return &engine->state.registers[reg_idx];
 }
 
 bool mf_engine_resize_tensor(mf_engine* engine, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
     if (!engine) return false;
-    return mf_vm_resize_tensor(&engine->vm, tensor, new_shape, new_ndim);
+    // We don't have a VM here, but we can use a temporary context or just the allocator
+    mf_exec_ctx tmp_ctx;
+    mf_exec_ctx_init(&tmp_ctx, engine->state.registers, engine->state.register_count, engine->state.allocator);
+    return mf_exec_ctx_resize_tensor(&tmp_ctx, tensor, new_shape, new_ndim);
 }
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
-    if (!engine) return MF_ENGINE_ERR_NONE;
-    switch (engine->vm.error) {
-        case MF_ERROR_NONE: return MF_ENGINE_ERR_NONE;
-        case MF_ERROR_OOM: return MF_ENGINE_ERR_OOM;
-        case MF_ERROR_SHAPE_MISMATCH: return MF_ENGINE_ERR_SHAPE;
-        case MF_ERROR_INVALID_OP: return MF_ENGINE_ERR_INVALID_OP;
-        default: return MF_ENGINE_ERR_INVALID_OP;
-    }
+    (void)engine;
+    return MF_ENGINE_ERR_NONE; // Errors are now per-dispatch context
 }
 
 void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, void* user_data) {
     if (!engine || !cb) return;
-
-    for (size_t i = 0; i < engine->vm.register_count; ++i) {
-        mf_tensor* t = &engine->vm.registers[i];
+    for (size_t i = 0; i < engine->state.register_count; ++i) {
+        mf_tensor* t = &engine->state.registers[i];
         const char* name = NULL;
-        
         if (engine->program && engine->program->symbols) {
-             const mf_program* prog = engine->program;
-            for (size_t s = 0; s < prog->meta.symbol_count; ++s) {
-                if (prog->symbols[s].register_idx == i) {
-                    name = prog->symbols[s].name;
+            for (size_t s = 0; s < engine->program->meta.symbol_count; ++s) {
+                if (engine->program->symbols[s].register_idx == i) {
+                    name = engine->program->symbols[s].name;
                     break;
                 }
             }

@@ -59,6 +59,14 @@
 - [x] **Step 2: Purify VM Struct:** Remove `mf_context` and `mf_backend_dispatch_table` dependencies from `mf_vm`. The VM should only manage Registers, Memory, and Allocators.
 - [x] **Step 3: Update Backend Interface:** Update `mf_backend_cpu` to accept `mf_program` (Code) and `mf_vm` (State) explicitly during dispatch, rather than relying on the VM to know about the program code.
 
+## Phase 17.8: State-Execution Separation (Architecture Polish) (Completed)
+**Objective:** Finalize the decoupling by splitting the overloaded `mf_vm` concept into two distinct entities: `mf_state` (Persistent Data) and `mf_exec_ctx` (Ephemeral Execution Context). The Engine will own `mf_state`, while the Backend will create temporary `mf_exec_ctx` instances on-demand.
+
+- [x] **Step 1: Define `mf_state`:** Create a new structure in `modules/engine` (or `base`) that strictly holds Tensor Data and Heap Memory. This replaces `engine->vm` as the Source of Truth.
+- [x] **Step 2: Rename VM to `mf_exec_ctx`:** Rename the `mf_vm` structure and its related functions to `mf_exec_ctx`. This clarifies that it is a light-weight "view" of the state, not a heavy machine.
+- [x] **Step 3: Ephemeral Contexts:** Modify `mf_backend_cpu` to construct `mf_exec_ctx` instances on the stack (or thread-local) for both Serial and Parallel execution, linking them to `mf_state` tensors or tiled buffers.
+- [x] **Step 4: Cleanup Module Structure:** Refactor `modules/vm` into a library that provides the execution context API, ensuring it doesn't "own" any persistent state.
+
 ## Phase 18: Advanced State Management (Ping-Pong) (Completed)
 **Objective:** Enable robust state persistence without race conditions. The Compiler transforms high-level `Memory` nodes into explicit Read/Write register pairs linked via a `StateTable`. The Engine manages Double Buffering (Ping-Pong) for these registers, keeping the VM stateless.
 

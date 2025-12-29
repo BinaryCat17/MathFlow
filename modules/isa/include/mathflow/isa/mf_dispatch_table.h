@@ -3,21 +3,19 @@
 
 #include <mathflow/isa/mf_kernel_ctx.h>
 #include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/isa/mf_state.h>
 
 // Forward declarations
-struct mf_vm;
+struct mf_exec_ctx;
 struct mf_program;
 
 // The Dispatch Table
 // Connects the VM Opcodes to the Kernel Implementations.
 
-// Forward declaration
-struct mf_vm;
-
 // --- Backend Interface ---
 
 // Hook for sync (e.g. GPU upload/download)
-// Called by the runtime (VM) when a tensor is mapped.
+// Called by the runtime when a tensor is mapped.
 typedef void (*mf_hook_map)(void* impl, mf_tensor* tensor, mf_access_mode mode);
 
 /**
@@ -26,13 +24,13 @@ typedef void (*mf_hook_map)(void* impl, mf_tensor* tensor, mf_access_mode mode);
  * 
  * @param backend_state Internal state of the backend (e.g. thread pool).
  * @param program The program to execute (Code/Prototypes).
- * @param main_vm Pointer to the Main VM (Source of Truth).
+ * @param state Pointer to the persistent state (Registers/Data).
  * @param count_x, count_y Dimensions of the dispatch.
  */
 typedef void (*mf_backend_dispatch_func)(
     void* backend_state,
     const struct mf_program* program,
-    struct mf_vm* main_vm,
+    mf_state* state,
     u32 count_x, u32 count_y
 );
 
