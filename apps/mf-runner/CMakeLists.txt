@@ -9,4 +9,5 @@ target_include_directories(mf-runner PRIVATE
 target_link_libraries(mf-runner 
     PRIVATE 
         MathFlow::host_core
+        MathFlow::base
 )

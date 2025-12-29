@@ -1,6 +1,7 @@
 #include <mathflow/engine/mf_engine.h>
 #include "mf_engine_internal.h"
 #include <mathflow/isa/mf_exec_ctx.h>
+#include <mathflow/base/mf_log.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -69,6 +70,7 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
 // --- Engine API ---
 
 mf_engine* mf_engine_create(const mf_engine_desc* desc) {
+    MF_LOG_INFO("Creating Engine...");
     mf_engine* engine = calloc(1, sizeof(mf_engine));
     if (!engine) return NULL;
 
@@ -167,6 +169,8 @@ void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
     // Reset error state
     engine->state.error_code = 0;
     
+    MF_LOG_TRACE("Dispatching frame %llu: %ux%u", (unsigned long long)engine->frame_index, count_x, count_y);
+
     engine->global_size[0] = count_y;
     engine->global_size[1] = count_x;
     engine->global_size[2] = 1;

@@ -1,5 +1,6 @@
 #include "mf_compiler_internal.h"
 #include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/base/mf_log.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -63,7 +64,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* b = &s2->out_shape;
                 
                 if (!mf_shapes_compatible(a, b, out)) {
-                    printf("Error: Shape mismatch in node '%s'. Input shapes: [%d] vs [%d]\n", node->id, a->ndim, b->ndim);
+                    MF_LOG_ERROR("Shape mismatch in node '%s'. Input shapes: [%d] vs [%d]", node->id, a->ndim, b->ndim);
                     return false;
                 }
             }
@@ -182,7 +183,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* b = &s2->out_shape;
                 if (a->ndim == 2 && b->ndim == 2) {
                     if (a->shape[1] != b->shape[0]) {
-                        printf("Error: MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.\n", node->id, a->shape[1], b->shape[0]);
+                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.", node->id, a->shape[1], b->shape[0]);
                         return false;
                     }
                     out->dtype = a->dtype;
@@ -193,7 +194,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 } else {
                     // Fallback
                     if (a->size != b->size) {
-                        printf("Error: MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.\n", node->id, a->size, b->size);
+                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.", node->id, a->size, b->size);
                         return false;
                     }
                     *out = *a; 
@@ -221,7 +222,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                     bool t_s = (t->size == 1);
                     bool f_s = (f->size == 1);
                     if (!t_s && !f_s && !mf_tensor_same_shape(t, f)) {
-                         printf("Error: Select shape mismatch in node '%s'.\n", node->id);
+                         MF_LOG_ERROR("Select shape mismatch in node '%s'.", node->id);
                          return false;
                     }
                     *out = t_s ? *f : *t;

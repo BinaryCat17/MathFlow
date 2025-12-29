@@ -1,5 +1,6 @@
 #include "mf_compiler_internal.h"
 #include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/base/mf_log.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -69,7 +70,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         // 1. CONST
         if (node->type == MF_NODE_CONST) {
             if (node->constant.data == NULL) {
-                printf("Error: Const node '%s' has no data.\n", node->id ? node->id : "unknown");
+                MF_LOG_ERROR("Const node '%s' has no data.", node->id ? node->id : "unknown");
                 return false;
             }
             *t_desc = node->constant; 
@@ -88,7 +89,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                  *t_desc = node->out_shape;
                  t_desc->data = NULL; 
              } else {
-                 printf("Error: Output node '%s' is not connected.\n", node->id);
+                 MF_LOG_ERROR("Output node '%s' is not connected.", node->id);
                  return false;
              }
         }
@@ -121,7 +122,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         else {
             // Logic Node
             if (!mf_infer_shape(node, s1, s2, s3)) {
-                printf("Error: Shape inference failed for node '%s'.\n", node->id ? node->id : "unknown");
+                MF_LOG_ERROR("Shape inference failed for node '%s'.", node->id ? node->id : "unknown");
                 return false; 
             }
 

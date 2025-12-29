@@ -1,5 +1,6 @@
 #include "mf_compiler_internal.h"
 #include <mathflow/base/mf_utils.h>
+#include <mathflow/base/mf_log.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -244,7 +245,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
             else key[0] = '\0';
             
             if (!mf_map_get(&map, key, &ir_link->src_node_idx)) {
-                printf("Error: Link source node '%s' not found.\n", key);
+                MF_LOG_ERROR("Link source node '%s' not found.", key);
             }
 
             cJSON* j_dst = cJSON_GetObjectItem(link, "dst");
@@ -252,7 +253,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
             else key[0] = '\0';
             
             if (!mf_map_get(&map, key, &ir_link->dst_node_idx)) {
-                 printf("Error: Link dest node '%s' not found.\n", key);
+                 MF_LOG_ERROR("Link dest node '%s' not found.", key);
             }
 
             ir_link->src_port = (u32)cJSON_GetObjectItem(link, "src_port")->valueint;
@@ -324,7 +325,7 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             
             char* json_content = mf_file_read(node->sub_graph_path, arena);
             if (!json_content) {
-                printf("Error: Could not read subgraph %s\n", node->sub_graph_path);
+                MF_LOG_ERROR("Could not read subgraph %s", node->sub_graph_path);
                 continue;
             }
 
@@ -458,7 +459,7 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
 bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena) {
     char* json_content = mf_file_read(json_path, arena);
     if (!json_content) {
-        printf("Error: Could not read file %s\n", json_path);
+        MF_LOG_ERROR("Could not read file %s", json_path);
         return false;
     }
 
@@ -480,6 +481,6 @@ bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* 
         current_ir = next_ir;
     }
     
-    printf("Error: Max recursion depth reached or expansion failed.\n");
+    MF_LOG_ERROR("Max recursion depth reached or expansion failed.");
     return false;
 }

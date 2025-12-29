@@ -45,12 +45,18 @@
 - [x] **Step 3: Direct Texture Output:** Optimize the write-back path. Instead of `float->byte` conversion loop, can we render directly to `u8` tensors? Or make `convert_to_pixels` part of the engine via a `Color` node?
 - [x] **Step 4: Intrinsic Resolution:** Introduce `MF_OP_RESOLUTION` to allow graphs to query canvas size without Host `u_Resolution` uniforms.
 
-## Phase 17.6: System Logging & Error Handling
-**Objective:** Replace raw `printf` calls with a structured logging system in `base`. Implement centralized error reporting for Compiler and Runtime to support GUI integration.
+## Phase 17.6: System Logging (Advanced)
+**Objective:** Replace raw `printf` calls with a structured, thread-safe logging system in `base`. The system must support multiple output sinks (Console, File) with independent verbosity levels and minimal overhead when disabled.
 
-- [ ] **Step 1: Logging API (Base):** Implement `mf_log.h` with levels (INFO, WARN, ERROR) and callback support.
-- [ ] **Step 2: Compiler Integration:** Replace `printf("Error...")` in Compiler with `MF_LOG_ERROR` and source tracking.
-- [ ] **Step 3: Runtime Integration:** Add logging to `Loader` and `Backend` initialization. Ensure thread-safety for worker threads.
+- [ ] **Step 1: Logging Core (Base):**
+    - **Interface:** Implement `mf_log.h` using macros (`MF_LOG_INFO(...)`) to capture call-site context (`__FILE__`, `__LINE__`).
+    - **Zero-Cost Overhead:** Ensure logging macros check the global log level *before* formatting strings or acquiring locks.
+    - **Sink API:** Define sinks as `void (*mf_log_sink_fn)(void* user_data, int level, const char* file, int line, const char* msg)`.
+    - **Thread Safety:** Use `mf_mutex` to prevent interleaved output from concurrent workers.
+    - **Default Sink:** Implement a Console Sink with ANSI color support.
+- [ ] **Step 2: Integration:**
+    - Replace `printf` / `fprintf` in `Compiler` (Parsing errors) and `Loader` (Asset loading events).
+    - Add `MF_LOG_TRACE` calls in `Engine` dispatch loop for high-frequency debugging (guarded by zero-cost checks).
 
 ## Phase 17.7: VM-Backend Separation (Pure Data VM) (Completed)
 **Objective:** Transform `modules/vm` into a pure state container (Data) without execution logic. Move the reference interpreter loop (`mf_vm_exec`) out of `modules/vm` and into `modules/backend_cpu` as a private implementation detail. This ensures the VM module is a passive data structure, allowing different backends (CPU, JIT, GPU) to handle execution logic independently.

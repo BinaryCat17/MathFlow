@@ -2,6 +2,7 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
+#include <mathflow/base/mf_log.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -42,7 +43,7 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     
     mf_bin_header* head = (mf_bin_header*)data;
     if (head->magic != MF_BINARY_MAGIC || head->version != MF_BINARY_VERSION) {
-        printf("[Loader] Invalid binary version or magic.\n");
+        MF_LOG_ERROR("Invalid binary version or magic.");
         free(data);
         return NULL;
     }
@@ -132,19 +133,19 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     if (strcmp(ext, "json") == 0) {
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(path, &ir, arena)) {
-            printf("[Loader] Failed to load/parse JSON: %s\n", path);
+            MF_LOG_ERROR("Failed to load/parse JSON: %s", path);
             return false;
         }
         prog = mf_compile(&ir, arena);
     } else if (strcmp(ext, "bin") == 0) {
         prog = _load_binary(path, arena);
     } else {
-        printf("[Loader] Unknown file extension: %s\n", ext);
+        MF_LOG_ERROR("Unknown file extension: %s", ext);
         return false;
     }
 
     if (!prog) {
-        printf("[Loader] Failed to generate program.\n");
+        MF_LOG_ERROR("Failed to generate program.");
         return false;
     }
 

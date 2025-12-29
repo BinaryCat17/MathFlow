@@ -4,14 +4,19 @@
 #include <mathflow/host/mf_manifest_loader.h>
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/host/mf_host_desc.h>
+#include <mathflow/base/mf_log.h>
 
 static void print_help(const char* prog) {
     printf("Usage: %s <app.mfapp> [options]\n", prog);
     printf("Options:\n");
     printf("  --frames <n>   Number of frames to execute (default: 1)\n");
+    printf("  --trace        Enable trace logging\n");
 }
 
 int main(int argc, char** argv) {
+    // Init Logging
+    mf_log_init();
+
     if (argc < 2) {
         print_help(argv[0]);
         return 1;
@@ -24,6 +29,9 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[i+1]);
             i++;
+        }
+        else if (strcmp(argv[i], "--trace") == 0) {
+            mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
         }
     }
 

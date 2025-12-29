@@ -1,4 +1,5 @@
 add_library(mf_base STATIC
+    src/mf_log.c
     src/mf_memory.c
     src/mf_platform.c
     src/mf_thread_pool.c
