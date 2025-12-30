@@ -13,21 +13,21 @@ static void op_range(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
 
     // Determine count
     int count = 0;
-    if (count_tensor->dtype == MF_DTYPE_F32) {
-        count = (int)((f32*)count_tensor->data)[0];
-    } else if (count_tensor->dtype == MF_DTYPE_I32) {
-        count = ((int32_t*)count_tensor->data)[0];
+    if (count_tensor->info.dtype == MF_DTYPE_F32) {
+        count = (int)((f32*)mf_tensor_data(count_tensor))[0];
+    } else if (count_tensor->info.dtype == MF_DTYPE_I32) {
+        count = ((int32_t*)mf_tensor_data(count_tensor))[0];
     }
     
     if (count < 0) count = 0;
 
     // Resize Dest
-    dst->dtype = MF_DTYPE_F32; // Always F32 for now
+    dst->info.dtype = MF_DTYPE_F32; // Always F32 for now
     int32_t shape[] = { count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     // Fill
-    f32* d = (f32*)dst->data;
+    f32* d = (f32*)mf_tensor_data(dst);
     for (int i = 0; i < count; ++i) {
         d[i] = (f32)i;
     }
@@ -45,12 +45,13 @@ static void op_cumsum(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return;
 
     // Implementation (F32 only for now)
-    if (src->dtype != MF_DTYPE_F32) return; // TODO: Support others
+    if (src->info.dtype != MF_DTYPE_F32) return; // TODO: Support others
 
-    f32* s = (f32*)src->data;
-    f32* d = (f32*)dst->data;
+    f32* s = (f32*)mf_tensor_data(src);
+    f32* d = (f32*)mf_tensor_data(dst);
     f32 sum = 0.0f;
-    for (size_t i = 0; i < dst->size; ++i) {
+    size_t count = mf_tensor_count(dst);
+    for (size_t i = 0; i < count; ++i) {
         sum += s[i];
         d[i] = sum;
     }
@@ -67,37 +68,37 @@ static void op_compress(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_id
     
     if (!dst || !data || !mask) return;
 
-    // Validate size (Must match)
-    // TODO: Broadcasting logic? For compress usually 1-to-1.
-    size_t count = (data->size < mask->size) ? data->size : mask->size;
+    size_t data_count = mf_tensor_count(data);
+    size_t mask_count = mf_tensor_count(mask);
+    size_t count = (data_count < mask_count) ? data_count : mask_count;
     
     // Pass 1: Count True
     size_t true_count = 0;
     for(size_t i=0; i<count; ++i) {
         bool keep = false;
-        if (mask->dtype == MF_DTYPE_U8) keep = ((u8*)mask->data)[i] != 0;
-        else if (mask->dtype == MF_DTYPE_F32) keep = ((f32*)mask->data)[i] > 0.5f; // Threshold
-        else if (mask->dtype == MF_DTYPE_I32) keep = ((int32_t*)mask->data)[i] != 0;
+        if (mask->info.dtype == MF_DTYPE_U8) keep = ((u8*)mf_tensor_data(mask))[i] != 0;
+        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f; // Threshold
+        else if (mask->info.dtype == MF_DTYPE_I32) keep = ((int32_t*)mf_tensor_data(mask))[i] != 0;
         
         if (keep) true_count++;
     }
 
     // Resize Dest
-    dst->dtype = data->dtype;
+    dst->info.dtype = data->info.dtype;
     int32_t new_shape[] = { (int32_t)true_count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, new_shape, 1)) return;
 
     // Pass 2: Copy
     size_t write_idx = 0;
-    size_t elem_size = mf_dtype_size(data->dtype);
-    u8* src_ptr = (u8*)data->data;
-    u8* dst_ptr = (u8*)dst->data;
+    size_t elem_size = mf_dtype_size(data->info.dtype);
+    u8* src_ptr = (u8*)mf_tensor_data(data);
+    u8* dst_ptr = (u8*)mf_tensor_data(dst);
 
     for(size_t i=0; i<count; ++i) {
         bool keep = false;
-        if (mask->dtype == MF_DTYPE_U8) keep = ((u8*)mask->data)[i] != 0;
-        else if (mask->dtype == MF_DTYPE_F32) keep = ((f32*)mask->data)[i] > 0.5f;
-        else if (mask->dtype == MF_DTYPE_I32) keep = ((int32_t*)mask->data)[i] != 0;
+        if (mask->info.dtype == MF_DTYPE_U8) keep = ((u8*)mf_tensor_data(mask))[i] != 0;
+        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f;
+        else if (mask->info.dtype == MF_DTYPE_I32) keep = ((int32_t*)mf_tensor_data(mask))[i] != 0;
 
         if (keep) {
             memcpy(dst_ptr + write_idx * elem_size, src_ptr + i * elem_size, elem_size);
@@ -115,19 +116,19 @@ static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
     if (!dst || !axis_t) return;
 
     int axis = 0;
-    if (axis_t->dtype == MF_DTYPE_F32) axis = (int)((f32*)axis_t->data)[0];
-    else if (axis_t->dtype == MF_DTYPE_I32) axis = ((int32_t*)axis_t->data)[0];
+    if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
+    else if (axis_t->info.dtype == MF_DTYPE_I32) axis = ((int32_t*)mf_tensor_data(axis_t))[0];
     
     // Safety check for axis
     if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
 
     size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
 
-    dst->dtype = MF_DTYPE_F32;
+    dst->info.dtype = MF_DTYPE_F32;
     int32_t shape[] = { (int32_t)count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
-    f32* d = (f32*)dst->data;
+    f32* d = (f32*)mf_tensor_data(dst);
     
     // Pre-calculate strides for unflattening the batch index inside the tile
     // The batch corresponds to the TILE shape (ctx->tile_size).
@@ -173,15 +174,15 @@ static void op_resolution(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_
     if (!dst || !axis_t) return;
 
     int axis = 0;
-    if (axis_t->dtype == MF_DTYPE_F32) axis = (int)((f32*)axis_t->data)[0];
-    else if (axis_t->dtype == MF_DTYPE_I32) axis = ((int32_t*)axis_t->data)[0];
+    if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
+    else if (axis_t->info.dtype == MF_DTYPE_I32) axis = ((int32_t*)mf_tensor_data(axis_t))[0];
     
     // Output: Scalar [1]
-    dst->dtype = MF_DTYPE_F32;
+    dst->info.dtype = MF_DTYPE_F32;
     int32_t shape[] = { 1 };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 0)) return; 
 
-    f32* d = (f32*)dst->data;
+    f32* d = (f32*)mf_tensor_data(dst);
     if (axis >= 0 && axis < MF_MAX_DIMS) {
         d[0] = (f32)ctx->domain_shape[axis];
     } else {

@@ -55,15 +55,11 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
 // --- Execution ---
 
 /**
- * @brief Dispatches the current pipeline over an N-dimensional domain.
- * Automatically uses the active backend and thread pool.
- * @param domain Tensor defining the iteration space (Shape). 
- *               Can be one of the bound resources or a dummy tensor.
+ * @brief Dispatches the current pipeline.
+ * Iterates over all kernels, determines their domain automatically based on Output resources,
+ * and executes them using the backend.
  */
-void mf_engine_dispatch(
-    mf_engine* engine, 
-    const mf_tensor* domain
-);
+void mf_engine_dispatch(mf_engine* engine);
 
 // --- State Access (Single Source of Truth) ---
 

@@ -14,10 +14,26 @@ static void mf_state_shutdown(mf_state* state) {
     
     for (u32 i = 0; i < state->register_count; ++i) {
         mf_tensor* t = &state->registers[i];
-        if (t->data && (t->flags & MF_TENSOR_OWNS_DATA)) {
-            state->allocator->free(state->allocator, t->data);
-            t->data = NULL;
-            t->flags &= ~MF_TENSOR_OWNS_DATA;
+        // If tensor has a buffer and owns it (via alloc)
+        // In the new view model, registers in state might own their buffers if they are temps.
+        // If they are bound to globals, they point to engine buffers.
+        // For temps: mf_tensor_alloc creates a buffer.
+        
+        // Check if buffer exists and is owned by this tensor context?
+        // Simplification: We rely on mf_buffer's own flags.
+        // But we need to know if we should free the *mf_buffer struct* itself?
+        // If it was allocated on heap, yes. If on arena/stack, no.
+        // Currently mf_tensor_alloc (in mf_tensor.c) does: buffer = alloc(...);
+        
+        if (t->buffer) {
+            mf_buffer_free(t->buffer); // Frees the raw data
+            // We should free the struct too if we allocated it dynamically
+            // But tracking that is hard without a flag in tensor.
+            // Assuming for now that registers created via mf_tensor_alloc use the state allocator for the struct.
+            if (t->buffer->alloc == state->allocator) {
+                 state->allocator->free(state->allocator, t->buffer);
+            }
+            t->buffer = NULL;
         }
     }
     state->registers = NULL;
@@ -31,8 +47,21 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
-        if (!mf_tensor_clone(&state->registers[i], &prog->tensors[i], state->allocator)) {
-            MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+        // Init temp registers
+        // For constants, we view the program data.
+        // For temps, we alloc.
+        
+        mf_tensor* t_prog = &prog->tensors[i];
+        mf_tensor* t_reg = &state->registers[i];
+        
+        if (t_prog->buffer) {
+            // Constant -> View
+            mf_tensor_view(t_reg, t_prog);
+        } else {
+            // Temp -> Alloc
+            if (!mf_tensor_alloc(t_reg, state->allocator, &t_prog->info)) {
+                MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+            }
         }
     }
 }
@@ -91,6 +120,14 @@ void mf_engine_reset(mf_engine* engine) {
         free(engine->kernels[i].id);
     }
     for (u32 i = 0; i < engine->resource_count; ++i) {
+        // Free resource buffers
+        if (engine->resources[i].buffer_a) {
+            mf_buffer_free(engine->resources[i].buffer_a);
+            // struct is on arena, no need to free pointer
+        }
+        if (engine->resources[i].buffer_b) {
+            mf_buffer_free(engine->resources[i].buffer_b);
+        }
         free(engine->resources[i].name);
     }
 
@@ -124,27 +161,33 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         mf_pipeline_resource* res_desc = &pipe->resources[i];
         mf_resource_inst* res = &engine->resources[i];
         
-        MF_LOG_INFO("  Resource[%u]: %s (%s)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other");
+        MF_LOG_TRACE("  Resource[%u]: %s (%s)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other");
 
         res->name = strdup(res_desc->name);
         
         // Descriptor Prototype
         memset(&res->desc, 0, sizeof(mf_tensor));
-        res->desc.dtype = res_desc->dtype;
-        res->desc.ndim = res_desc->ndim;
-        memcpy(res->desc.shape, res_desc->shape, sizeof(int32_t) * res_desc->ndim);
-        res->desc.size = 1;
-        for(int d=0; d<res->desc.ndim; ++d) res->desc.size *= res->desc.shape[d];
+        res->desc.info.dtype = res_desc->dtype;
+        res->desc.info.ndim = res_desc->ndim;
+        memcpy(res->desc.info.shape, res_desc->shape, sizeof(int32_t) * res_desc->ndim);
+        
+        // Init strides
+        int32_t stride = 1;
+        for (int k = res->desc.info.ndim - 1; k >= 0; --k) {
+            res->desc.info.strides[k] = stride;
+            stride *= res->desc.info.shape[k];
+        }
         
         size_t bytes = mf_tensor_size_bytes(&res->desc);
         res->size_bytes = bytes;
         
-        // Always allocate Double Buffers
-        res->buffer_a = allocator->alloc(allocator, bytes);
-        if (res->buffer_a) memset(res->buffer_a, 0, bytes);
+        // Allocate Buffers
+        // The structs live on the arena, the data lives on the heap
+        res->buffer_a = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
+        mf_buffer_alloc(res->buffer_a, allocator, bytes);
         
-        res->buffer_b = allocator->alloc(allocator, bytes);
-        if (res->buffer_b) memset(res->buffer_b, 0, bytes);
+        res->buffer_b = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
+        mf_buffer_alloc(res->buffer_b, allocator, bytes);
     }
 
     // 2. Load Kernels
@@ -165,18 +208,46 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         ker->state.allocator = allocator;
         mf_state_reset(&ker->state, ker->program, &engine->arena);
         
+        // --- NEW: Initialize Global Resources from Program Constants ---
+        for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+            mf_bin_symbol* sym = &ker->program->symbols[s];
+            mf_tensor* t_prog = &ker->program->tensors[sym->register_idx];
+            
+            if (mf_tensor_is_valid(t_prog)) {
+                // Find matching resource
+                for (u32 r = 0; r < engine->resource_count; ++r) {
+                    if (strcmp(engine->resources[r].name, sym->name) == 0) {
+                        mf_resource_inst* res = &engine->resources[r];
+                        void* prog_data = mf_tensor_data(t_prog);
+                        size_t bytes = mf_tensor_size_bytes(t_prog);
+                        
+                        if (res->size_bytes == bytes) {
+                            memcpy(res->buffer_a->data, prog_data, bytes);
+                            memcpy(res->buffer_b->data, prog_data, bytes);
+                            MF_LOG_TRACE("    Initialized resource '%s' from kernel constant.", res->name);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+        
         // 3. Setup Bindings
         ker->binding_count = ker_desc->binding_count;
         ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, ker->binding_count);
-        
+        ker->master_binding_idx = 0xFFFF; // Default to Invalid
+
         for (u32 b = 0; b < ker_desc->binding_count; ++b) {
             mf_pipeline_binding* bind = &ker_desc->bindings[b];
             
             // Find Local Reg Index
             int32_t local_idx = -1;
+            u8 symbol_flags = 0;
+            
             for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
                 if (strcmp(ker->program->symbols[s].name, bind->kernel_port) == 0) {
                     local_idx = ker->program->symbols[s].register_idx;
+                    symbol_flags = ker->program->symbols[s].flags;
                     break;
                 }
             }
@@ -193,14 +264,24 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
             if (local_idx != -1 && global_idx != -1) {
                 ker->bindings[b].local_reg = (u16)local_idx;
                 ker->bindings[b].global_res = (u16)global_idx;
+
+                if ((symbol_flags & MF_SYMBOL_FLAG_OUTPUT) && ker->master_binding_idx == 0xFFFF) {
+                    ker->master_binding_idx = (u16)b;
+                    MF_LOG_TRACE("  Kernel %s master driven by output '%s' (Res: %s)", 
+                        ker->id, bind->kernel_port, bind->global_resource);
+                }
             } else {
                 MF_LOG_ERROR("Failed to bind %s -> %s in kernel %s", bind->kernel_port, bind->global_resource, ker->id);
             }
         }
+        
+        if (ker->master_binding_idx == 0xFFFF) {
+            MF_LOG_WARN("Kernel %s has no bound OUTPUT symbols. It will not execute!", ker->id);
+        }
     }
 }
 
-void mf_engine_dispatch(mf_engine* engine, const mf_tensor* domain) {
+void mf_engine_dispatch(mf_engine* engine) {
     if (!engine) return;
 
     MF_LOG_TRACE("Dispatching Pipeline frame %llu", (unsigned long long)engine->frame_index);
@@ -209,6 +290,9 @@ void mf_engine_dispatch(mf_engine* engine, const mf_tensor* domain) {
 
     for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
+        
+        if (ker->master_binding_idx == 0xFFFF) continue; 
+
         MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
         
         // Zero-Copy Bindings: Map Global Resources to Local Registers
@@ -232,33 +316,26 @@ void mf_engine_dispatch(mf_engine* engine, const mf_tensor* domain) {
                 }
             }
 
-            void* data_ptr;
+            mf_buffer* active_buf;
             if (flags & MF_SYMBOL_FLAG_OUTPUT) {
                 // Write to Next Frame (Back Buffer)
-                // Frame Even (0) -> Writes to B (Odd)
-                data_ptr = is_even ? res->buffer_b : res->buffer_a;
+                active_buf = is_even ? res->buffer_b : res->buffer_a;
             } else {
                 // Read from Previous Frame (Front Buffer)
-                // Frame Even (0) -> Reads from A (Even)
-                data_ptr = is_even ? res->buffer_a : res->buffer_b;
+                active_buf = is_even ? res->buffer_a : res->buffer_b;
             }
 
-            t->data = data_ptr;
-            t->capacity_bytes = res->size_bytes;
+            // Bind buffer to tensor view
+            t->buffer = active_buf;
+            t->byte_offset = 0;
             
-            t->ndim = res->desc.ndim;
-            t->size = res->desc.size;
-            memcpy(t->shape, res->desc.shape, sizeof(int32_t) * MF_MAX_DIMS);
+            // Sync metadata from resource
+            t->info = res->desc.info;
         }
 
-        // Determine Execution Domain
-        // Phase 20: Use explicit domain tensor if provided, or fallback to first bound output
-        const mf_tensor* kernel_domain = domain;
-        if (!kernel_domain && ker->binding_count > 0) {
-             // Fallback: Use the first bound register as domain (heuristic)
-             // Ideally we should use the explicit 'implicit domain' logic from roadmap
-             kernel_domain = &ker->state.registers[ker->bindings[0].local_reg];
-        }
+        // Determine Execution Domain from Master Binding
+        u16 master_local_reg = ker->bindings[ker->master_binding_idx].local_reg;
+        const mf_tensor* kernel_domain = &ker->state.registers[master_local_reg];
 
         // Execute Kernel
         for (u32 f = 0; f < ker->frequency; ++f) {
@@ -277,9 +354,9 @@ mf_tensor* mf_engine_map_resource(mf_engine* engine, const char* name) {
         if (strcmp(engine->resources[i].name, name) == 0) {
             mf_resource_inst* res = &engine->resources[i];
             
-            // Map the "Stable" buffer (the one just written to)
             bool is_even = (engine->frame_index % 2 == 0);
-            res->desc.data = is_even ? res->buffer_a : res->buffer_b;
+            res->desc.buffer = is_even ? res->buffer_a : res->buffer_b;
+            res->desc.byte_offset = 0;
             
             return &res->desc;
         }
@@ -294,36 +371,40 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
         if (strcmp(engine->resources[i].name, name) == 0) {
             mf_resource_inst* res = &engine->resources[i];
             
-            // Calculate new size
-            size_t new_size = 1;
-            for(int d=0; d<new_ndim; ++d) new_size *= new_shape[d];
-            size_t new_bytes = new_size * mf_dtype_size(res->desc.dtype);
+            mf_allocator* alloc = (mf_allocator*)&engine->heap;
             
-            // Reallocate Buffer A
-            if (res->buffer_a) {
-                res->buffer_a = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_a, res->size_bytes, new_bytes);
-            } else {
-                res->buffer_a = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
+            // Update descriptor logic first to get new size
+            // This is slightly inefficient (temp copy), but safe
+            mf_type_info new_info = res->desc.info;
+            new_info.ndim = new_ndim;
+            memcpy(new_info.shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS);
+            // Recalc strides
+            int32_t stride = 1;
+            for (int k = new_ndim - 1; k >= 0; --k) {
+                new_info.strides[k] = stride;
+                stride *= new_info.shape[k];
             }
             
-            // Reallocate Buffer B (Always present)
-            if (res->buffer_b) {
-                    res->buffer_b = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_b, res->size_bytes, new_bytes);
-            } else {
-                    res->buffer_b = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
-            }
+            size_t new_bytes = 1;
+            for(int d=0; d<new_ndim; ++d) new_bytes *= new_shape[d];
+            new_bytes *= mf_dtype_size(new_info.dtype);
             
-            // Update Descriptor
+            // Reallocate Buffers (Using helper to simplify)
+            // Note: mf_buffer_alloc doesn't resize, it allocs new.
+            // We need to free old and alloc new? Or add resize support to mf_buffer?
+            // Let's just free and alloc for now (lossy resize). 
+            // Ideally we should preserve data if possible, but for double-buffered pipelines,
+            // resizing usually implies a complete reset of that resource.
+            
+            mf_buffer_free(res->buffer_a);
+            mf_buffer_alloc(res->buffer_a, alloc, new_bytes);
+            
+            mf_buffer_free(res->buffer_b);
+            mf_buffer_alloc(res->buffer_b, alloc, new_bytes);
+            
             res->size_bytes = new_bytes;
-            res->desc.ndim = new_ndim;
-            res->desc.size = new_size;
-            res->desc.capacity_bytes = new_bytes;
-            memcpy(res->desc.shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS);
+            res->desc.info = new_info;
             
-            // Update data pointer
-            bool is_even = (engine->frame_index % 2 == 0);
-            res->desc.data = is_even ? res->buffer_a : res->buffer_b;
-
             return true;
         }
     }
@@ -332,8 +413,6 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
     if (!engine) return MF_ENGINE_ERR_NONE;
-    // TODO: Aggregate errors from all kernels?
-    // For now, return NONE.
     return MF_ENGINE_ERR_NONE;
 }
 
@@ -344,7 +423,8 @@ void mf_engine_iterate_resources(mf_engine* engine, mf_engine_resource_cb cb, vo
         mf_resource_inst* res = &engine->resources[i];
         
         bool is_even = (engine->frame_index % 2 == 0);
-        res->desc.data = is_even ? res->buffer_a : res->buffer_b;
+        res->desc.buffer = is_even ? res->buffer_a : res->buffer_b;
+        res->desc.byte_offset = 0;
 
         cb(res->name, &res->desc, user_data);
     }

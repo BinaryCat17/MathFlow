@@ -7,6 +7,7 @@
 #include <mathflow/isa/mf_backend.h>
 
 #include <mathflow/engine/mf_pipeline.h>
+#include <mathflow/base/mf_buffer.h>
 
 typedef struct {
     u16 local_reg;
@@ -23,13 +24,17 @@ typedef struct {
     // Cached mapping: Local Reg Index -> Global Resource Index
     mf_kernel_binding* bindings;
     u32 binding_count;
+    
+    // Index into 'bindings' array that drives the execution domain (First Output).
+    // If 0xFFFF, the kernel has no outputs and might not run correctly.
+    u16 master_binding_idx;
 } mf_kernel_inst;
 
 // Concrete implementation of a Global Resource instance
 typedef struct {
     char* name;
-    void* buffer_a;
-    void* buffer_b; // Used if persistent=true
+    mf_buffer* buffer_a;
+    mf_buffer* buffer_b; // Used if persistent=true
     size_t size_bytes;
     mf_tensor desc; // Prototype
 } mf_resource_inst;

@@ -84,44 +84,70 @@ static mf_node_type mf_node_type_from_string(const char* type) {
 
 // --- Tensor Parsing ---
 
+static mf_dtype mf_parse_dtype(const char* s) {
+    if (!s) return MF_DTYPE_F32;
+    if (strcmp(s, "f32") == 0) return MF_DTYPE_F32;
+    if (strcmp(s, "i32") == 0) return MF_DTYPE_I32;
+    if (strcmp(s, "bool") == 0 || strcmp(s, "u8") == 0) return MF_DTYPE_U8;
+    return MF_DTYPE_F32;
+}
+
+static void _init_scalar_info(mf_type_info* info, mf_dtype dtype) {
+    info->dtype = dtype;
+    info->ndim = 0;
+}
+
+static void _init_vector_info(mf_type_info* info, mf_dtype dtype, int count) {
+    info->dtype = dtype;
+    info->ndim = 1;
+    info->shape[0] = count;
+    info->strides[0] = 1;
+}
+
 void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
     if (cJSON_IsNumber(val)) {
-        t->dtype = MF_DTYPE_F32;
-        t->ndim = 0;
-        t->size = 1;
-        t->capacity_bytes = sizeof(f32);
-        t->data = MF_ARENA_PUSH(arena, f32, 1);
-        *((f32*)t->data) = (f32)val->valuedouble;
+        _init_scalar_info(&t->info, MF_DTYPE_F32);
+        size_t bytes = sizeof(f32);
+        mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+        void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+        mf_buffer_init_view(buf, mem, bytes);
+        t->buffer = buf;
+        t->byte_offset = 0;
+        *((f32*)mem) = (f32)val->valuedouble;
     } 
     else if (cJSON_IsBool(val)) {
-        t->dtype = MF_DTYPE_U8;
-        t->ndim = 0;
-        t->size = 1;
-        t->capacity_bytes = sizeof(u8);
-        t->data = MF_ARENA_PUSH(arena, u8, 1);
-        *((u8*)t->data) = (u8)(cJSON_IsTrue(val) ? 1 : 0);
+        _init_scalar_info(&t->info, MF_DTYPE_U8);
+        size_t bytes = sizeof(u8);
+        mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+        void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+        mf_buffer_init_view(buf, mem, bytes);
+        t->buffer = buf;
+        t->byte_offset = 0;
+        *((u8*)mem) = (u8)(cJSON_IsTrue(val) ? 1 : 0);
     }
     else if (cJSON_IsString(val)) {
-        t->dtype = MF_DTYPE_I32;
-        t->ndim = 0;
-        t->size = 1;
-        t->capacity_bytes = sizeof(int32_t);
-        t->data = MF_ARENA_PUSH(arena, int32_t, 1);
-        *((int32_t*)t->data) = (int32_t)mf_fnv1a_hash(val->valuestring);
+        _init_scalar_info(&t->info, MF_DTYPE_I32);
+        size_t bytes = sizeof(int32_t);
+        mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+        void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+        mf_buffer_init_view(buf, mem, bytes);
+        t->buffer = buf;
+        t->byte_offset = 0;
+        *((int32_t*)mem) = (int32_t)mf_fnv1a_hash(val->valuestring);
     }
     else if (cJSON_IsArray(val)) {
         int count = cJSON_GetArraySize(val);
         if (count == 0) return;
         cJSON* first = cJSON_GetArrayItem(val, 0);
         if (cJSON_IsNumber(first)) {
-            t->dtype = MF_DTYPE_F32;
-            t->ndim = 1;
-            t->shape[0] = count;
-            t->strides[0] = 1;
-            t->size = count;
-            t->capacity_bytes = count * sizeof(f32);
-            f32* data = MF_ARENA_PUSH(arena, f32, count);
-            t->data = data;
+            _init_vector_info(&t->info, MF_DTYPE_F32, count);
+            size_t bytes = count * sizeof(f32);
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+            mf_buffer_init_view(buf, mem, bytes);
+            t->buffer = buf;
+            t->byte_offset = 0;
+            f32* data = (f32*)mem;
             int i = 0;
             cJSON* item = NULL;
             cJSON_ArrayForEach(item, val) {
@@ -129,14 +155,14 @@ void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
             }
         }
         else if (cJSON_IsString(first)) {
-            t->dtype = MF_DTYPE_I32;
-            t->ndim = 1;
-            t->shape[0] = count;
-            t->strides[0] = 1;
-            t->size = count;
-            t->capacity_bytes = count * sizeof(int32_t);
-            int32_t* data = MF_ARENA_PUSH(arena, int32_t, count);
-            t->data = data;
+            _init_vector_info(&t->info, MF_DTYPE_I32, count);
+            size_t bytes = count * sizeof(int32_t);
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+            mf_buffer_init_view(buf, mem, bytes);
+            t->buffer = buf;
+            t->byte_offset = 0;
+            int32_t* data = (int32_t*)mem;
             int i = 0;
             cJSON* item = NULL;
             cJSON_ArrayForEach(item, val) {
@@ -190,26 +216,58 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
         cJSON* data = cJSON_GetObjectItem(node, "data");
         
         if (data) {
-            if (ir_node->type == MF_NODE_INPUT || ir_node->type == MF_NODE_CONST || ir_node->type == MF_NODE_STEP) {
+            if (ir_node->type == MF_NODE_INPUT) {
+                 cJSON* j_shape = cJSON_GetObjectItem(data, "shape");
+                 cJSON* j_dtype = cJSON_GetObjectItem(data, "dtype");
+                 
+                 if (j_shape && cJSON_IsArray(j_shape)) {
+                     ir_node->constant.info.dtype = j_dtype ? mf_parse_dtype(j_dtype->valuestring) : MF_DTYPE_F32;
+                     ir_node->constant.info.ndim = (uint8_t)cJSON_GetArraySize(j_shape);
+                     if (ir_node->constant.info.ndim > MF_MAX_DIMS) ir_node->constant.info.ndim = MF_MAX_DIMS;
+                     
+                     int d_idx = 0;
+                     cJSON* dim = NULL;
+                     cJSON_ArrayForEach(dim, j_shape) {
+                         if (d_idx < MF_MAX_DIMS) {
+                             ir_node->constant.info.shape[d_idx] = (int32_t)dim->valueint;
+                         }
+                         d_idx++;
+                     }
+                     
+                     // Recalc strides
+                     int32_t stride = 1;
+                     for(int k=ir_node->constant.info.ndim-1; k>=0; --k) {
+                         ir_node->constant.info.strides[k] = stride;
+                         stride *= ir_node->constant.info.shape[k];
+                     }
+
+                     ir_node->constant.buffer = NULL;
+                     ir_node->constant.byte_offset = 0;
+                 } else {
+                     cJSON* val = cJSON_GetObjectItem(data, "value");
+                     if (val) parse_constant_tensor(val, &ir_node->constant, arena);
+                 }
+            }
+            else if (ir_node->type == MF_NODE_CONST || ir_node->type == MF_NODE_STEP) {
                 cJSON* val = cJSON_GetObjectItem(data, "value");
                 if (val) parse_constant_tensor(val, &ir_node->constant, arena);
             }
             else if (ir_node->type == MF_NODE_INDEX || ir_node->type == MF_NODE_RESOLUTION) {
                 cJSON* axis = cJSON_GetObjectItem(data, "axis");
                 if (axis && cJSON_IsNumber(axis)) {
-                     // Store as scalar I32
-                     ir_node->constant.dtype = MF_DTYPE_I32;
-                     ir_node->constant.ndim = 0;
-                     ir_node->constant.size = 1;
-                     ir_node->constant.capacity_bytes = sizeof(int32_t);
-                     ir_node->constant.data = MF_ARENA_PUSH(arena, int32_t, 1);
-                     *((int32_t*)ir_node->constant.data) = (int32_t)axis->valueint;
+                     _init_scalar_info(&ir_node->constant.info, MF_DTYPE_I32);
+                     size_t bytes = sizeof(int32_t);
+                     mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+                     void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+                     mf_buffer_init_view(buf, mem, bytes);
+                     ir_node->constant.buffer = buf;
+                     ir_node->constant.byte_offset = 0;
+                     *((int32_t*)mem) = (int32_t)axis->valueint;
                 }
             }
             else if (ir_node->type == MF_NODE_CALL) {
                 cJSON* path_val = cJSON_GetObjectItem(data, "path");
                 if (path_val && cJSON_IsString(path_val)) {
-                    // If base_path is provided, resolve relative paths
                     if (base_path) {
                         char* dir = mf_path_get_dir(base_path, arena);
                         ir_node->sub_graph_path = mf_path_join(dir, path_val->valuestring, arena);
@@ -220,12 +278,15 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
             }
             else if ((ir_node->type == MF_NODE_EXPORT_INPUT || ir_node->type == MF_NODE_EXPORT_OUTPUT)) {
                 cJSON* idx_val = cJSON_GetObjectItem(data, "index");
-                ir_node->constant.dtype = MF_DTYPE_I32;
-                ir_node->constant.ndim = 0;
-                ir_node->constant.size = 1;
-                ir_node->constant.data = MF_ARENA_PUSH(arena, i32, 1);
-                if (idx_val) *((i32*)ir_node->constant.data) = (i32)idx_val->valueint;
-                else *((i32*)ir_node->constant.data) = 0;
+                _init_scalar_info(&ir_node->constant.info, MF_DTYPE_I32);
+                size_t bytes = sizeof(i32);
+                mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+                void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+                mf_buffer_init_view(buf, mem, bytes);
+                ir_node->constant.buffer = buf;
+                ir_node->constant.byte_offset = 0;
+                if (idx_val) *((i32*)mem) = (i32)idx_val->valueint;
+                else *((i32*)mem) = 0;
             }
         }
 
@@ -237,7 +298,7 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
     if (links) {
         int l_count = cJSON_GetArraySize(links);
         out_ir->links = MF_ARENA_PUSH(arena, mf_ir_link, l_count);
-        memset(out_ir->links, 0, sizeof(mf_ir_link) * l_count); // Ensure clean state
+        memset(out_ir->links, 0, sizeof(mf_ir_link) * l_count); 
         out_ir->link_count = l_count;
         out_ir->link_cap = l_count;
 
@@ -290,13 +351,11 @@ static bool needs_expansion(mf_graph_ir* ir) {
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].type == MF_NODE_CALL) return true;
         
-        // Check for desugaring candidates
-        if (ir->nodes[i].constant.data != NULL) {
+        if (mf_tensor_is_valid(&ir->nodes[i].constant)) {
             if (ir->nodes[i].type == MF_NODE_INDEX || 
                 ir->nodes[i].type == MF_NODE_RESOLUTION ||
                 ir->nodes[i].type == MF_NODE_STEP) 
             {
-                // Only if unconnected
                 if (!is_input_connected(ir, (u32)i, 0)) return true;
             }
         }
@@ -305,7 +364,6 @@ static bool needs_expansion(mf_graph_ir* ir) {
 }
 
 static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
-    // 1. Calculate capacity
     typedef struct LNode { mf_ir_node n; struct LNode* next; } LNode;
     typedef struct LLink { mf_ir_link l; struct LLink* next; } LLink;
     
@@ -317,7 +375,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
     LLink* tail_link = NULL;
     size_t new_link_count = 0;
 
-    // Helper to append node
     #define APPEND_NODE(node_val) { \
         LNode* ln = MF_ARENA_PUSH(arena, LNode, 1); \
         ln->n = node_val; ln->next = NULL; \
@@ -326,7 +383,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
         new_node_count++; \
     }
 
-    // Helper to append link
     #define APPEND_LINK(link_val) { \
         LLink* ll = MF_ARENA_PUSH(arena, LLink, 1); \
         ll->l = link_val; ll->next = NULL; \
@@ -346,41 +402,34 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
     for (size_t i = 0; i < src->node_count; ++i) {
         mf_ir_node* node = &src->nodes[i];
         
-        // --- DESUGARING START ---
-        if (node->constant.data != NULL && 
+        if (mf_tensor_is_valid(&node->constant) && 
            (node->type == MF_NODE_INDEX || node->type == MF_NODE_RESOLUTION || node->type == MF_NODE_STEP)) 
         {
-            // Check if Port 0 is missing input
             if (!is_input_connected(src, (u32)i, 0)) {
-                // Generate Implicit Const
                 char* const_id = mf_arena_sprintf(arena, "%s_impl_const", node->id ? node->id : "gen");
                 mf_ir_node const_node = {0};
                 const_node.id = const_id;
                 const_node.type = MF_NODE_CONST;
-                const_node.constant = node->constant; // Transfer ownership/copy
+                const_node.constant = node->constant; 
                 
-                // Clear original constant to prevent re-desugaring
-                node->constant.data = NULL;
+                node->constant.buffer = NULL;
+                node->constant.byte_offset = 0;
                 
-                // Add Const Node
                 mf_map_put(&global_map, const_id, current_idx);
                 APPEND_NODE(const_node);
                 u32 const_idx = current_idx++;
                 
-                // Link
                 mf_ir_link implicit_link = {0};
                 implicit_link.src_node_idx = const_idx;
-                implicit_link.dst_node_idx = current_idx; // Next one
+                implicit_link.dst_node_idx = current_idx; 
                 implicit_link.src_port = 0;
                 implicit_link.dst_port = 0;
                 
                 APPEND_LINK(implicit_link);
             }
         }
-        // --- DESUGARING END ---
 
         if (node->type == MF_NODE_CALL) {
-            // LOAD SUBGRAPH
             if (!node->sub_graph_path) continue;
             
             char* json_content = mf_file_read(node->sub_graph_path, arena);
@@ -390,33 +439,27 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             }
 
             mf_graph_ir child_ir;
-            // Pass node->sub_graph_path as base_path so nested calls are resolved correctly
             if (!parse_flat(json_content, &child_ir, arena, node->sub_graph_path)) continue;
 
-            // Process Child Nodes
             for (size_t k = 0; k < child_ir.node_count; ++k) {
                 mf_ir_node* c_node = &child_ir.nodes[k];
-                
-                // 1. Generate Prefixed ID
                 char* new_id = mf_arena_sprintf(arena, "%s::%s", node->id, c_node->id);
                 
-                // 2. Register Ports (Exports)
                 if (c_node->type == MF_NODE_EXPORT_INPUT) {
-                    i32 port_idx = *((i32*)c_node->constant.data);
+                    i32 port_idx = *((i32*)mf_tensor_data(&c_node->constant));
                     char port_key[128];
                     snprintf(port_key, 128, "%s:i%d", node->id, port_idx); 
                     mf_map_put(&port_map, mf_arena_strdup(arena, port_key), 0); 
                     
                     c_node->id = new_id;
                     mf_map_put(&global_map, new_id, current_idx);
-                    
                     mf_map_put(&port_map, mf_arena_strdup(arena, port_key), current_idx); 
                     
                     APPEND_NODE(*c_node);
                     current_idx++;
                 }
                 else if (c_node->type == MF_NODE_EXPORT_OUTPUT) {
-                    i32 port_idx = *((i32*)c_node->constant.data);
+                    i32 port_idx = *((i32*)mf_tensor_data(&c_node->constant));
                     char port_key[128];
                     snprintf(port_key, 128, "%s:o%d", node->id, port_idx);
                     
@@ -435,7 +478,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
                 }
             }
 
-            // Process Child Links
             for (size_t k = 0; k < child_ir.link_count; ++k) {
                 mf_ir_link l = child_ir.links[k];
                 const char* src_id = child_ir.nodes[l.src_node_idx].id;
@@ -452,14 +494,12 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             }
         } 
         else {
-            // Normal Node
             mf_map_put(&global_map, node->id, current_idx);
             APPEND_NODE(*node);
             current_idx++;
         }
     }
 
-    // Step 2: Process Parent Links (Rewiring)
     for (size_t i = 0; i < src->link_count; ++i) {
         mf_ir_link l = src->links[i];
         mf_ir_node* src_node = &src->nodes[l.src_node_idx];
@@ -469,7 +509,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
         u32 final_dst_idx = 0;
         bool drop_link = false;
 
-        // RESOLVE SOURCE
         if (src_node->type == MF_NODE_CALL) {
             char key[128];
             snprintf(key, 128, "%s:o%d", src_node->id, l.src_port);
@@ -479,7 +518,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
             mf_map_get(&global_map, src_node->id, &final_src_idx);
         }
 
-        // RESOLVE DEST
         if (dst_node->type == MF_NODE_CALL) {
             char key[128];
             snprintf(key, 128, "%s:i%d", dst_node->id, l.dst_port);
@@ -496,7 +534,6 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
         }
     }
 
-    // Step 3: Finalize Output
     dst->node_count = new_node_count;
     dst->nodes = MF_ARENA_PUSH(arena, mf_ir_node, new_node_count);
     size_t ni = 0;
@@ -526,7 +563,6 @@ bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* 
     mf_graph_ir initial_ir;
     if (!parse_flat(json_content, &initial_ir, arena, json_path)) return false;
 
-    // Expand Loop
     mf_graph_ir current_ir = initial_ir;
     for (int pass = 0; pass < 10; ++pass) {
         if (!needs_expansion(&current_ir)) {

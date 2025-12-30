@@ -35,7 +35,8 @@
     { "id": "check_cat", "type": "Equal" },
     { "id": "check_price", "type": "Greater" },
     { "id": "filter_logic", "type": "And" },
-    { "id": "out_Color", "type": "Select" }
+    { "id": "calc_final", "type": "Select" },
+    { "id": "out_Color", "type": "Output" }
   ],
   "links": [
     { "src": "prices", "src_port": 0, "dst": "calc_total", "dst_port": 0 },
@@ -53,7 +54,9 @@
     { "src": "check_cat", "src_port": 0, "dst": "filter_logic", "dst_port": 0 },
     { "src": "check_price", "src_port": 0, "dst": "filter_logic", "dst_port": 1 },
 
-    { "src": "filter_logic", "src_port": 0, "dst": "out_Color", "dst_port": 0 },
-    { "src": "calc_tax", "src_port": 0, "dst": "out_Color", "dst_port": 1 }
+    { "src": "filter_logic", "src_port": 0, "dst": "calc_final", "dst_port": 0 },
+    { "src": "calc_tax", "src_port": 0, "dst": "calc_final", "dst_port": 1 },
+    
+    { "src": "calc_final", "src_port": 0, "dst": "out_Color", "dst_port": 0 }
   ]
 }

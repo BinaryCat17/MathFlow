@@ -43,17 +43,17 @@ MathFlow comes with a CLI tool `mf-runner` for text output and `mf-window` for r
 
 **Run a test graph (CLI):**
 ```bash
-./out/build/x64-debug-linux/mf-runner assets/graphs/demo_inventory.json
+./out/build/x64-debug-linux/mf-runner assets/projects/inventory/inventory.json
 ```
 
 **Run a Pixel Math demo (Visual):**
 ```bash
-./out/build/x64-debug-linux/apps/mf-window/mf-window assets/graphs/sdf_button.json
+./out/build/x64-debug-linux/apps/mf-window/mf-window assets/projects/sdf_button/sdf_button.mfapp
 ```
 
 **Output:**
 ```
-MathFlow Tensor Runner. Loading: assets/graphs/demo_inventory.json
+MathFlow Tensor Runner. Loading: assets/projects/inventory/inventory.json
 Program: 12 tensors, 6 insts
 ...
   [11] Shape: [5] F32: {0.00, 1200.00, 1440.00, 0.00, 12000.00}
@@ -71,11 +71,10 @@ For deep dives into the system design:
 *   `modules/`
     *   `isa/` - Instruction Set Architecture definitions (The Contract).
     *   `engine/` - The Runtime Core (API, Memory, Dispatch).
-    *   `vm/` - Internal Bytecode Interpreter.
     *   `compiler/` - Translates JSON Graphs to Bytecode (`mf_program`).
     *   `backend_cpu/` - Parallel CPU Execution (Thread Pool).
     *   `host/` - Application Framework (Window, Input, Loading).
 *   `apps/`
     *   `mf-runner/` - CLI tool for testing and execution.
     *   `mf-window/` - GUI tool for real-time visualization.
-*   `assets/` - Test graphs and data.
+*   `assets/` - Test projects (graphs + manifests).

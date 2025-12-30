@@ -9,16 +9,18 @@
 // --- Helper: Shape Resolution (Inline) ---
 
 static inline bool mf_utils_resolve_binary_shape(mf_exec_ctx* ctx, mf_tensor* dst, const mf_tensor* a, const mf_tensor* b) {
-    if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
+    if (dst->info.dtype == MF_DTYPE_UNKNOWN) dst->info.dtype = a->info.dtype;
 
     // Use larger input as shape source (simple broadcasting)
-    const mf_tensor* shape_src = (a->size >= b->size) ? a : b;
-    return mf_exec_ctx_resize_tensor(ctx, dst, shape_src->shape, shape_src->ndim);
+    size_t count_a = mf_tensor_count(a);
+    size_t count_b = mf_tensor_count(b);
+    const mf_tensor* shape_src = (count_a >= count_b) ? a : b;
+    return mf_exec_ctx_resize_tensor(ctx, dst, shape_src->info.shape, shape_src->info.ndim);
 }
 
 static inline bool mf_utils_resolve_unary_shape(mf_exec_ctx* ctx, mf_tensor* dst, const mf_tensor* a) {
-    if (dst->dtype == MF_DTYPE_UNKNOWN) dst->dtype = a->dtype;
-    return mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim);
+    if (dst->info.dtype == MF_DTYPE_UNKNOWN) dst->info.dtype = a->info.dtype;
+    return mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim);
 }
 
 // --- Macros: Kernel Definitions ---
@@ -32,9 +34,10 @@ static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
-    size_t sz_a = a->size; size_t sz_b = b->size; \
-    f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
 }
 
 // Helper for function-based binary ops (C = func(A, B))
@@ -45,9 +48,10 @@ static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
-    size_t sz_a = a->size; size_t sz_b = b->size; \
-    f32* da = (f32*)a->data; f32* db = (f32*)b->data; f32* dd = (f32*)dst->data; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC(da[i % sz_a], db[i % sz_b]); \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = FUNC(da[i % sz_a], db[i % sz_b]); \
 }
 
 // Helper for unary ops (C = func(A))
@@ -57,8 +61,9 @@ static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
     if (!dst || !a) return; \
     if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return; \
-    f32* da = (f32*)a->data; f32* dd = (f32*)dst->data; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = FUNC(da[i]); \
+    f32* da = (f32*)mf_tensor_data(a); f32* dd = (f32*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = FUNC(da[i]); \
 }
 
 // Helper for comparison ops (C = A op B), Output is always U8 (bool)
@@ -68,15 +73,16 @@ static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
-    dst->dtype = MF_DTYPE_U8; /* Force Bool Output */ \
+    dst->info.dtype = MF_DTYPE_U8; /* Force Bool Output */ \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
-    size_t sz_a = a->size; size_t sz_b = b->size; u8* dd = (u8*)dst->data; \
-    if (a->dtype == MF_DTYPE_F32) { \
-        f32* da = (f32*)a->data; f32* db = (f32*)b->data; \
-        for(size_t i=0; i<dst->size; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
-    } else if (a->dtype == MF_DTYPE_I32) { \
-        int32_t* da = (int32_t*)a->data; int32_t* db = (int32_t*)b->data; \
-        for(size_t i=0; i<dst->size; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); u8* dd = (u8*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    if (a->info.dtype == MF_DTYPE_F32) { \
+        f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); \
+        for(size_t i=0; i<sz_dst; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
+    } else if (a->info.dtype == MF_DTYPE_I32) { \
+        int32_t* da = (int32_t*)mf_tensor_data(a); int32_t* db = (int32_t*)mf_tensor_data(b); \
+        for(size_t i=0; i<sz_dst; ++i) dd[i] = (da[i % sz_a] OP db[i % sz_b]) ? 1 : 0; \
     } \
 }
 
@@ -87,11 +93,12 @@ static void op_##NAME(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ); \
     if (!dst || !a || !b) return; \
-    dst->dtype = MF_DTYPE_U8; \
+    dst->info.dtype = MF_DTYPE_U8; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
-    u8* da = (u8*)a->data; u8* db = (u8*)b->data; u8* dd = (u8*)dst->data; \
-    size_t sz_a = a->size; size_t sz_b = b->size; \
-    for(size_t i=0; i<dst->size; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
+    u8* da = (u8*)mf_tensor_data(a); u8* db = (u8*)mf_tensor_data(b); u8* dd = (u8*)mf_tensor_data(dst); \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = da[i % sz_a] OP db[i % sz_b]; \
 }
 
 #endif // MF_KERNEL_UTILS_H

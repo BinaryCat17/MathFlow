@@ -84,16 +84,19 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         offset += sizeof(mf_bin_tensor_desc);
         
         mf_tensor* t = &prog->tensors[i];
-        t->dtype = (mf_dtype)desc->dtype;
-        t->ndim = desc->ndim;
-        memcpy(t->shape, desc->shape, sizeof(int32_t) * MF_MAX_DIMS);
-        t->flags = 0; 
+        t->info.dtype = (mf_dtype)desc->dtype;
+        t->info.ndim = desc->ndim;
+        memcpy(t->info.shape, desc->shape, sizeof(int32_t) * MF_MAX_DIMS);
         
-        t->size = 1;
-        for(int k=0; k<t->ndim; ++k) t->size *= t->shape[k];
-        if (t->ndim == 0) t->size = 1;
-        
-        t->capacity_bytes = 0;
+        // Initialize strides? Or leave 0? Ops usually calculate strides on fly if 0, or we should init them.
+        // Let's init them for safety.
+        // TODO: mf_tensor_calc_strides(t); 
+        // For now, simple standard layout:
+        int32_t stride = 1;
+        for (int k = t->info.ndim - 1; k >= 0; --k) {
+            t->info.strides[k] = stride;
+            stride *= t->info.shape[k];
+        }
     }
 
     // Data Blob
@@ -110,15 +113,21 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         mf_bin_tensor_desc* desc = (mf_bin_tensor_desc*)(data + this_desc_offset);
         
         if (desc->is_constant) {
-            size_t bytes = mf_dtype_size(t->dtype) * t->size;
+            size_t bytes = mf_tensor_size_bytes(t);
             void* mem = MF_ARENA_PUSH(arena, u8, bytes);
             memcpy(mem, data + offset, bytes);
-            t->data = mem;
-            t->capacity_bytes = bytes; 
+            
+            // Create buffer wrapper on arena
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            mf_buffer_init_view(buf, mem, bytes);
+            
+            t->buffer = buf;
+            t->byte_offset = 0;
+            
             offset += bytes;
         } else {
-            t->data = NULL;
-            t->capacity_bytes = 0;
+            t->buffer = NULL;
+            t->byte_offset = 0;
         }
     }
 
@@ -141,6 +150,40 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
     return NULL;
 }
 
+static mf_pipeline_desc* mf_loader_synthesize_pipeline(const mf_program* prog, const char* kernel_id, mf_arena* arena) {
+    u32 res_count = prog->meta.symbol_count;
+    
+    mf_pipeline_desc* pipe = MF_ARENA_PUSH(arena, mf_pipeline_desc, 1);
+    pipe->resource_count = res_count;
+    pipe->resources = MF_ARENA_PUSH(arena, mf_pipeline_resource, res_count);
+    
+    pipe->kernel_count = 1;
+    pipe->kernels = MF_ARENA_PUSH(arena, mf_pipeline_kernel, 1);
+    
+    mf_pipeline_kernel* kernel = &pipe->kernels[0];
+    kernel->id = kernel_id;
+    kernel->frequency = 1;
+    kernel->binding_count = res_count;
+    kernel->bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, res_count);
+
+    for (u32 i = 0; i < res_count; ++i) {
+        mf_bin_symbol* sym = &prog->symbols[i];
+        mf_tensor* t = &prog->tensors[sym->register_idx];
+        
+        // Resource
+        pipe->resources[i].name = sym->name;
+        pipe->resources[i].dtype = t->info.dtype;
+        pipe->resources[i].ndim = t->info.ndim;
+        memcpy(pipe->resources[i].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+        
+        // Binding
+        kernel->bindings[i].kernel_port = sym->name;
+        kernel->bindings[i].global_resource = sym->name;
+    }
+    
+    return pipe;
+}
+
 bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     if (!engine || !path) return false;
 
@@ -154,58 +197,11 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
 
     MF_LOG_INFO("Loader: Synthesizing Implicit Pipeline for %s", path);
 
-    // 2. Inspect Symbols to create Resources
-    // We need to count distinct resources. For a single graph, every symbol is a resource.
-    u32 res_count = prog->meta.symbol_count;
+    // 2. Synthesize & Bind
+    mf_pipeline_desc* pipe = mf_loader_synthesize_pipeline(prog, "main", arena);
     
-    // Allocate temporary descriptors (on stack if small, else heap)
-    mf_pipeline_resource* resources = calloc(res_count, sizeof(mf_pipeline_resource));
-    mf_pipeline_binding* bindings = calloc(res_count, sizeof(mf_pipeline_binding));
-
-    for (u32 i = 0; i < res_count; ++i) {
-        mf_bin_symbol* sym = &prog->symbols[i];
-        mf_tensor* t = &prog->tensors[sym->register_idx];
-        
-        // Resource Desc
-        resources[i].name = sym->name; // Borrow pointer, bind_pipeline will strdup
-        resources[i].dtype = t->dtype;
-        resources[i].ndim = t->ndim;
-        memcpy(resources[i].shape, t->shape, sizeof(int32_t) * MF_MAX_DIMS);
-        
-        // Binding Desc
-        bindings[i].kernel_port = sym->name;
-        bindings[i].global_resource = sym->name;
-    }
-
-    // 3. Create Kernel Desc
-    mf_pipeline_kernel kernel = {0};
-    kernel.id = "main";
-    kernel.graph_path = path;
-    kernel.frequency = 1;
-
-    // Heuristic: If graph uses Spatial Ops (Index/Resolution), assume Spatial Domain.
-    // Otherwise, assume Scalar (Script) Domain.
-    // Phase 20: Removed domain field.
-    // kernel.domain = MF_DOMAIN_SCALAR;
-    // ... loop removed ...
-
-    kernel.bindings = bindings;
-    kernel.binding_count = res_count;
-
-    // 4. Create Pipeline Desc
-    mf_pipeline_desc pipe = {0};
-    pipe.resources = resources;
-    pipe.resource_count = res_count;
-    pipe.kernels = &kernel;
-    pipe.kernel_count = 1;
-
-    // 5. Bind
     mf_program* programs[] = { prog };
-    mf_engine_bind_pipeline(engine, &pipe, programs);
-
-    // Cleanup temporary arrays
-    free(resources);
-    free(bindings);
+    mf_engine_bind_pipeline(engine, pipe, programs);
 
     return true;
 }

@@ -66,11 +66,67 @@
 
 - [x] **Step 3: Engine Architecture Update:**
     - **Remove `persistent` flag:** Every global resource is now double-buffered (Front/Back) by default.
-    - **Logic:**
+    - Logic:
         - `INPUT` symbols bind to **Front Buffer** (Previous State).
         - `OUTPUT` symbols bind to **Back Buffer** (Next State).
     - **Auto-Swap:** Engine swaps Front/Back pointers for all resources at the end of the frame.
     - Remove string-based heuristics ("out_").
+
+## Phase 22: Data Purity (Tensor Refactor)
+**Objective:** Resolve the ambiguity of the `mf_tensor` structure by separating Metadata, Storage, and View. This enables Zero-Copy Slicing, safer memory management, and simplified GPU interoperability.
+
+- [ ] **Step 1: Structural Split:**
+    - `mf_type_info`: Pure metadata (DType, Shape, Strides). Lightweight "value semantics".
+    - `mf_buffer`: Raw memory handle (`void*`, `size_t`, `allocator`). Owns the memory.
+    - `mf_tensor`: A **View** combining `type_info`, `buffer`, and a `byte_offset`.
+- [ ] **Step 2: ISA Update:**
+    - Update `mf_program` to store a table of `mf_type_info` separately.
+    - Constant Data becomes a single monolithic `mf_buffer`.
+- [ ] **Step 3: Zero-Copy Mechanics:**
+    - Implement `mf_tensor_slice()`: Create a new tensor view pointing to a subset of data (modifying `offset` and `shape`) without allocation.
+    - Update `mf_engine` to manage `mf_buffer` (A/B) swapping while keeping `mf_tensor` views stable.
+- [ ] **Step 4: O(1) Tensor Ops:**
+    - Reimplement `Slice`, `Reshape`, and `Transpose` to modify Metadata/Offset only (no allocation/copy).
+- [ ] **Step 5: Windowed Execution (Backend Optimization):**
+    - Update `mf_backend_cpu` to create "Window Views" for worker threads.
+    - Workers see a local tensor (0..width) that maps to the global buffer via strides, simplifying loop logic.
+
+## Phase 23: Compiler Modularization
+**Objective:** Decompose the monolithic `mf_json_parser.c` into a pipeline of independent passes. This prepares the ground for advanced features like Generics and Optimizations.
+
+- [ ] **Step 1: AST Separation:**
+    - Create a distinct `mf_ast` (Abstract Syntax Tree) representing the raw JSON structure, separating it from the `mf_graph_ir` (Semantic Graph).
+- [ ] **Step 2: Pass Architecture:**
+    - `Pass_Desugar`: Converts legacy nodes (e.g., `Resolution`) to standard `Input`/`Const` nodes.
+    - `Pass_Inline`: Recursively expands Subgraphs (`MF_NODE_CALL`).
+    - `Pass_Lower`: Converts AST to IR (Index allocation, basic validation).
+- [ ] **Step 3: Clean Implementation:**
+    - Each pass resides in its own source file.
+    - Remove logic duplication between Loader and Compiler.
+
+## Phase 24: Strong Typing (Static Analysis)
+**Objective:** Prevent runtime errors and undefined behavior by enforcing type safety at compile time.
+
+- [ ] **Step 1: Type Inference Engine:**
+    - Implement a proper `mf_infer_type(node, inputs...)` system that propagates Shapes and DTypes forward.
+- [ ] **Step 2: Validation Pass:**
+    - Run validation *before* code generation.
+    - Check Shape Broadcasting rules (e.g., ensure `[10]` + `[5]` fails).
+    - Check DType compatibility (e.g., no implicit `f32` -> `bool` casting).
+- [ ] **Step 3: Error Reporting:**
+    - Provide human-readable errors with Node IDs and Port names when validation fails.
+
+## Phase 25: Zero-Overhead Linking (Hash-Based)
+**Objective:** Optimize the binding process and reduce memory overhead by replacing string comparisons with hash lookups.
+
+- [ ] **Step 1: ISA Hashing:**
+    - Update `mf_bin_symbol` to store `u32 name_hash` (FNV-1a).
+    - Keep string names in a separate "Debug Table" (stripped in Release builds).
+- [ ] **Step 2: Engine Update:**
+    - `mf_engine_bind_pipeline` matches resources using hashes (`O(1)`).
+- [ ] **Step 3: Loader Update:**
+    - Compute hashes during JSON parsing/Binary loading.
+    - Ensure collision detection (optional but recommended for robustness).
 
 ---
 

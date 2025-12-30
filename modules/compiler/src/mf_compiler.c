@@ -45,12 +45,17 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
     for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
         mf_tensor* t = &prog->tensors[i];
         mf_bin_tensor_desc desc = {0};
-        desc.dtype = (u8)t->dtype;
-        desc.ndim = t->ndim;
-        desc.is_constant = (t->data != NULL);
-        if (t->ndim > 0) memcpy(desc.shape, t->shape, sizeof(i32) * t->ndim);
+        desc.dtype = (u8)t->info.dtype;
+        desc.ndim = t->info.ndim;
+        void* data_ptr = mf_tensor_data(t);
+        desc.is_constant = (data_ptr != NULL);
+        if (t->info.ndim > 0) {
+            memcpy(desc.shape, t->info.shape, sizeof(i32) * t->info.ndim);
+        }
         
-        if (desc.is_constant) desc.data_size = mf_dtype_size(t->dtype) * t->size;
+        if (desc.is_constant) {
+            desc.data_size = mf_tensor_size_bytes(t);
+        }
         
         fwrite(&desc, sizeof(mf_bin_tensor_desc), 1, f);
     }
@@ -58,9 +63,10 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
     // 5. Tensor Data Blob
     for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
         mf_tensor* t = &prog->tensors[i];
-        if (t->data) {
-            size_t sz = mf_dtype_size(t->dtype) * t->size;
-            fwrite(t->data, 1, sz, f);
+        void* data_ptr = mf_tensor_data(t);
+        if (data_ptr) {
+            size_t sz = mf_tensor_size_bytes(t);
+            fwrite(data_ptr, 1, sz, f);
         }
     }
 

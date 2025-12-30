@@ -1,7 +1,6 @@
 {
     "runtime": {
-        "type": "shader",
-        "entry": "../graphs/sdf_button.json"
+        "entry": "sdf_button.json"
     },
     "window": {
         "title": "SDF Button Demo",

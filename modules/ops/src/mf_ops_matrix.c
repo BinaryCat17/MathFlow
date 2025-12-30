@@ -13,19 +13,21 @@ static void op_dot(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
-    if (a->size != b->size) return; 
+    size_t sz_a = mf_tensor_count(a);
+    size_t sz_b = mf_tensor_count(b);
+    if (sz_a != sz_b) return; 
 
-    int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
+    int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
     
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, out_ndim)) return;
-    dst->dtype = MF_DTYPE_F32;
+    dst->info.dtype = MF_DTYPE_F32;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
 
-    f32* A = (f32*)a->data; 
-    f32* B = (f32*)b->data; 
-    f32* D = (f32*)dst->data;
+    f32* A = (f32*)mf_tensor_data(a); 
+    f32* B = (f32*)mf_tensor_data(b); 
+    f32* D = (f32*)mf_tensor_data(dst);
     
-    size_t dim = (a->ndim <= 1) ? a->size : a->shape[a->ndim-1];
-    size_t batch = a->size / dim;
+    size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
+    size_t batch = sz_a / dim;
     
     for (size_t i = 0; i < batch; ++i) {
         float sum = 0.0f;
@@ -42,15 +44,16 @@ static void op_length(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
 
-    int out_ndim = (a->ndim > 0) ? a->ndim - 1 : 0;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, out_ndim)) return;
-    dst->dtype = MF_DTYPE_F32;
+    int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
+    dst->info.dtype = MF_DTYPE_F32;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
 
-    f32* A = (f32*)a->data; 
-    f32* D = (f32*)dst->data;
+    f32* A = (f32*)mf_tensor_data(a); 
+    f32* D = (f32*)mf_tensor_data(dst);
     
-    size_t dim = (a->ndim <= 1) ? a->size : a->shape[a->ndim-1];
-    size_t batch = a->size / dim;
+    size_t sz_a = mf_tensor_count(a);
+    size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
+    size_t batch = sz_a / dim;
     
     for (size_t i = 0; i < batch; ++i) {
         float sum = 0.0f;
@@ -68,32 +71,35 @@ static void op_matmul(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
-    int dim = (int)sqrtf((float)a->size); 
-    if (dim * dim != a->size) return; 
+    size_t sz_a = mf_tensor_count(a);
+    int dim = (int)sqrtf((float)sz_a); 
+    if (dim * dim != (int)sz_a) return; 
     
-    dst->dtype = a->dtype;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
+    dst->info.dtype = a->info.dtype;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
 
     // Fast Path
-    if (dim == 4 && a->size == 16) {
+    if (dim == 4 && sz_a == 16) {
         mf_mat4 A, B; 
-        memcpy(A.m, a->data, sizeof(mf_mat4));
-        memcpy(B.m, b->data, sizeof(mf_mat4));
+        memcpy(A.m, mf_tensor_data(a), sizeof(mf_mat4));
+        memcpy(B.m, mf_tensor_data(b), sizeof(mf_mat4));
         mf_mat4 R = mf_mat4_mul(A, B);
-        memcpy(dst->data, R.m, sizeof(mf_mat4));
+        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat4));
         return;
     }
-    if (dim == 3 && a->size == 9) {
+    if (dim == 3 && sz_a == 9) {
         mf_mat3 A, B; 
-        memcpy(A.m, a->data, sizeof(mf_mat3));
-        memcpy(B.m, b->data, sizeof(mf_mat3));
+        memcpy(A.m, mf_tensor_data(a), sizeof(mf_mat3));
+        memcpy(B.m, mf_tensor_data(b), sizeof(mf_mat3));
         mf_mat3 R = mf_mat3_mul(A, B);
-        memcpy(dst->data, R.m, sizeof(mf_mat3));
+        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat3));
         return;
     }
 
     // Generic Path
-    f32* A = (f32*)a->data; f32* B = (f32*)b->data; f32* C = (f32*)dst->data;
+    f32* A = (f32*)mf_tensor_data(a); 
+    f32* B = (f32*)mf_tensor_data(b); 
+    f32* C = (f32*)mf_tensor_data(dst);
     for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) { 
         float sum = 0.0f; 
         for (int k = 0; k < dim; k++) sum += A[r * dim + k] * B[k * dim + c]; 
@@ -106,27 +112,31 @@ static void op_transpose(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_i
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return; 
     
-    dst->dtype = a->dtype;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
+    dst->info.dtype = a->info.dtype;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
     
-    int dim = (int)sqrtf((float)a->size);
+    size_t sz_a = mf_tensor_count(a);
+    int dim = (int)sqrtf((float)sz_a);
     
     // Fast Path
-    if (dim == 4 && a->size == 16) {
-        mf_mat4 A; memcpy(A.m, a->data, sizeof(mf_mat4));
+    if (dim == 4 && sz_a == 16) {
+        mf_mat4 A; 
+        memcpy(A.m, mf_tensor_data(a), sizeof(mf_mat4));
         mf_mat4 R = mf_mat4_transpose(A);
-        memcpy(dst->data, R.m, sizeof(mf_mat4));
+        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat4));
         return;
     }
-    if (dim == 3 && a->size == 9) {
-        mf_mat3 A; memcpy(A.m, a->data, sizeof(mf_mat3));
+    if (dim == 3 && sz_a == 9) {
+        mf_mat3 A; 
+        memcpy(A.m, mf_tensor_data(a), sizeof(mf_mat3));
         mf_mat3 R = mf_mat3_transpose(A);
-        memcpy(dst->data, R.m, sizeof(mf_mat3));
+        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat3));
         return;
     }
 
     // Generic Path
-    f32* src = (f32*)a->data; f32* out = (f32*)dst->data;
+    f32* src = (f32*)mf_tensor_data(a); 
+    f32* out = (f32*)mf_tensor_data(dst);
     for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) out[c * dim + r] = src[r * dim + c];
 }
 
@@ -135,26 +145,27 @@ static void op_inverse(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
     
-    dst->dtype = a->dtype;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->shape, a->ndim)) return;
+    dst->info.dtype = a->info.dtype;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
 
-    int dim = (int)sqrtf((float)a->size);
+    size_t sz_a = mf_tensor_count(a);
+    int dim = (int)sqrtf((float)sz_a);
     
-    if (dim == 3 && a->size == 9) {
+    if (dim == 3 && sz_a == 9) {
         mf_mat3 m;
-        memcpy(m.m, a->data, sizeof(mf_mat3));
+        memcpy(m.m, mf_tensor_data(a), sizeof(mf_mat3));
         mf_mat3 res = mf_mat3_inverse(m);
-        memcpy(dst->data, res.m, sizeof(mf_mat3));
+        memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat3));
     } 
-    else if (dim == 4 && a->size == 16) {
+    else if (dim == 4 && sz_a == 16) {
         mf_mat4 m;
-        memcpy(m.m, a->data, sizeof(mf_mat4));
+        memcpy(m.m, mf_tensor_data(a), sizeof(mf_mat4));
         mf_mat4 res = mf_mat4_inverse(m);
-        memcpy(dst->data, res.m, sizeof(mf_mat4));
+        memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat4));
     }
     else {
         // Fallback: Identity / Copy
-        memcpy(dst->data, a->data, a->size * sizeof(f32));
+        memcpy(mf_tensor_data(dst), mf_tensor_data(a), sz_a * sizeof(f32));
     }
 }
 
@@ -165,26 +176,24 @@ static void op_join(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
 
-    size_t size = 1;
-    if (a->size != b->size) {
-        if (a->size != b->size) return; 
-    }
-    size = a->size;
+    size_t sz_a = mf_tensor_count(a);
+    size_t sz_b = mf_tensor_count(b);
+    if (sz_a != sz_b) return; 
     
     // Setup Output Shape
-    for (int i=0; i<a->ndim; ++i) dst->shape[i] = a->shape[i];
-    dst->shape[a->ndim] = 2;
-    dst->ndim = a->ndim + 1;
-    dst->size = size * 2;
-    dst->dtype = a->dtype; 
+    int32_t out_shape[MF_MAX_DIMS];
+    for (int i=0; i<a->info.ndim; ++i) out_shape[i] = a->info.shape[i];
+    out_shape[a->info.ndim] = 2;
+    uint8_t out_ndim = a->info.ndim + 1;
 
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, dst->shape, dst->ndim)) return;
+    dst->info.dtype = a->info.dtype; 
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, out_ndim)) return;
     
-    f32* A = (f32*)a->data; 
-    f32* B = (f32*)b->data; 
-    f32* D = (f32*)dst->data;
+    f32* A = (f32*)mf_tensor_data(a); 
+    f32* B = (f32*)mf_tensor_data(b); 
+    f32* D = (f32*)mf_tensor_data(dst);
     
-    for (size_t i = 0; i < size; ++i) {
+    for (size_t i = 0; i < sz_a; ++i) {
         D[i*2 + 0] = A[i];
         D[i*2 + 1] = B[i];
     }

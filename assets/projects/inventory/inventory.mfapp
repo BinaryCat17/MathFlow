@@ -1,7 +1,6 @@
 {
     "runtime": {
-        "type": "script",
-        "entry": "../graphs/demo_inventory.json"
+        "entry": "inventory.json"
     },
     "window": {
         "title": "Inventory Demo",

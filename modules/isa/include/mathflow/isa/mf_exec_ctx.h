@@ -65,7 +65,21 @@ static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_ac
 }
 
 static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
-    if (!mf_tensor_resize(tensor, ctx->allocator, new_shape, new_ndim)) {
+    if (!tensor) return false;
+    
+    mf_type_info info;
+    info.dtype = tensor->info.dtype; // Preserve type
+    info.ndim = new_ndim;
+    if (new_ndim > 0) memcpy(info.shape, new_shape, sizeof(int32_t) * new_ndim);
+    
+    // Default Strides
+    int32_t stride = 1;
+    for (int k = new_ndim - 1; k >= 0; --k) {
+        info.strides[k] = stride;
+        stride *= info.shape[k];
+    }
+
+    if (!mf_tensor_resize(tensor, ctx->allocator, &info)) {
         ctx->error = MF_ERROR_OOM;
         return false;
     }

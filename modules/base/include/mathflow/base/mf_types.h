@@ -35,6 +35,35 @@ typedef struct { f32 m[16]; } mf_mat4;
 // Column-major 3x3 matrix
 typedef struct { f32 m[9]; } mf_mat3;
 
+#define MF_MAX_DIMS 8
+
+// --- Data Types ---
+typedef enum {
+    MF_DTYPE_UNKNOWN = 0,
+    MF_DTYPE_F32,   // Standard float
+    MF_DTYPE_I32,   // Integer / String ID
+    MF_DTYPE_U8,    // Byte / Bool
+    MF_DTYPE_COUNT
+} mf_dtype;
+
+// --- Tensor Metadata (Value Semantics) ---
+// Describes the "Shape" of data, independent of storage.
+typedef struct {
+    mf_dtype dtype;
+    uint8_t ndim; // Rank
+    int32_t shape[MF_MAX_DIMS];
+    int32_t strides[MF_MAX_DIMS]; // Steps in elements (not bytes) to next index
+} mf_type_info;
+
+static inline size_t mf_dtype_size(mf_dtype type) {
+    switch (type) {
+        case MF_DTYPE_F32: return 4;
+        case MF_DTYPE_I32: return 4;
+        case MF_DTYPE_U8:  return 1;
+        default: return 0;
+    }
+}
+
 // --- Access Modes ---
 typedef enum {
     MF_ACCESS_READ = 0,

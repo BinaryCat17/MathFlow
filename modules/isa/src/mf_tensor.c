@@ -1,95 +1,177 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <string.h>
 
-bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const int32_t* new_shape, uint8_t new_ndim) {
-    if (!allocator) return false;
+void mf_tensor_init(mf_tensor* tensor, mf_buffer* buf, const mf_type_info* info, size_t offset) {
+    if (!tensor) return;
+    if (info) tensor->info = *info;
+    else memset(&tensor->info, 0, sizeof(mf_type_info));
     
-    // Calculate new size
-    size_t new_count = 1;
-    for (int i = 0; i < new_ndim; ++i) {
-        new_count *= new_shape[i];
+    tensor->buffer = buf;
+    tensor->byte_offset = offset;
+}
+
+bool mf_tensor_alloc(mf_tensor* tensor, mf_allocator* alloc, const mf_type_info* info) {
+    if (!tensor || !alloc || !info) return false;
+    
+    tensor->info = *info;
+    tensor->byte_offset = 0;
+    
+    // Allocate the mf_buffer structure itself
+    mf_buffer* buf = (mf_buffer*)alloc->alloc(alloc, sizeof(mf_buffer));
+    if (!buf) return false;
+    
+    size_t size_bytes = mf_tensor_size_bytes(tensor);
+    if (!mf_buffer_alloc(buf, alloc, size_bytes)) {
+        alloc->free(alloc, buf);
+        return false;
     }
-    if (new_ndim == 0) new_count = 1; // Scalar
     
-    size_t type_size = mf_dtype_size(tensor->dtype);
-    size_t needed_bytes = new_count * type_size;
+    tensor->buffer = buf;
+    return true;
+}
+
+bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const mf_type_info* new_info) {
+    if (!tensor || !allocator || !new_info) return false;
     
-    // Update shape meta
-    tensor->ndim = new_ndim;
-    memcpy(tensor->shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS); 
-    tensor->size = new_count;
+    size_t new_size_bytes = 1;
+    for(int i=0; i<new_info->ndim; ++i) new_size_bytes *= new_info->shape[i];
+    new_size_bytes *= mf_dtype_size(new_info->dtype);
     
-    // Check capacity
-    if (needed_bytes > tensor->capacity_bytes) {
-        void* new_ptr = NULL;
-        if (tensor->data && (tensor->flags & MF_TENSOR_OWNS_DATA)) {
-            size_t valid_bytes = tensor->size * type_size; // Previous valid size
-            // Note: realloc might copy garbage if we increased size, but we care about preserving valid data.
-            // Actually, we usually want to preserve the OLD data up to min(old_size, new_size).
-            // But here we rely on allocator->realloc semantics.
-            new_ptr = allocator->realloc(allocator, tensor->data, valid_bytes, needed_bytes);
-        } else {
-            // First alloc or transitioning from static to dynamic
-            new_ptr = allocator->alloc(allocator, needed_bytes);
-            if (tensor->data && !(tensor->flags & MF_TENSOR_OWNS_DATA)) {
-                // Preserve data if resizing from static
-                size_t old_bytes = tensor->size * type_size; 
-                size_t copy_bytes = (old_bytes < needed_bytes) ? old_bytes : needed_bytes;
-                memcpy(new_ptr, tensor->data, copy_bytes);
-            }
+    // Update metadata
+    tensor->info = *new_info;
+    
+    // Check if we need to realloc
+    if (!tensor->buffer) {
+        return mf_tensor_alloc(tensor, allocator, new_info);
+    }
+    
+    if (tensor->buffer->size_bytes < new_size_bytes) {
+        mf_buffer* old_buf = tensor->buffer;
+        
+        // Alloc new buffer struct
+        mf_buffer* new_buf = (mf_buffer*)allocator->alloc(allocator, sizeof(mf_buffer));
+        if (!new_buf) return false;
+        
+        if (!mf_buffer_alloc(new_buf, allocator, new_size_bytes)) {
+            allocator->free(allocator, new_buf);
+            return false;
         }
         
-        if (!new_ptr && needed_bytes > 0) {
-            return false; 
+        // Copy old data
+        size_t copy_size = (old_buf->size_bytes < new_size_bytes) ? old_buf->size_bytes : new_size_bytes;
+        if (old_buf->data && new_buf->data) {
+             memcpy(new_buf->data, old_buf->data, copy_size);
         }
         
-        tensor->data = new_ptr;
-        tensor->capacity_bytes = needed_bytes;
-        tensor->flags |= MF_TENSOR_OWNS_DATA;
+        // Free old buffer
+        mf_buffer_free(old_buf);
+        if (old_buf->alloc) old_buf->alloc->free(old_buf->alloc, old_buf);
+        
+        tensor->buffer = new_buf;
     }
     
     return true;
 }
 
-bool mf_tensor_clone(mf_tensor* dst, const mf_tensor* src, mf_allocator* allocator) {
+bool mf_tensor_copy_data(mf_tensor* dst, const mf_tensor* src) {
     if (!dst || !src) return false;
-
-    // Base Metadata Copy
-    *dst = *src;
-    dst->flags = 0; // Reset flags (don't inherit ownership yet)
     
-    // If no allocator provided, create a shallow alias (unsafe for mutable usage but valid for read-only)
-    if (!allocator) {
-        dst->data = src->data;
-        dst->capacity_bytes = 0; // Not owned
-        dst->flags |= MF_TENSOR_DYNAMIC; // Treat as dynamic? Or maybe just external.
-        return true;
-    }
-
-    // Determine allocation size
-    size_t type_size = mf_dtype_size(src->dtype);
-    if (type_size == 0) type_size = 4; // Fallback
+    void* dst_ptr = mf_tensor_data(dst);
+    void* src_ptr = mf_tensor_data(src);
     
-    size_t bytes = src->capacity_bytes;
-    if (bytes == 0) {
-        bytes = (src->size > 0) ? src->size * type_size : type_size;
+    if (!dst_ptr || !src_ptr) return false;
+    
+    size_t bytes = mf_tensor_size_bytes(dst);
+    size_t src_bytes = mf_tensor_size_bytes(src);
+    
+    // For now strict size match
+    if (bytes != src_bytes) return false; 
+    
+    memcpy(dst_ptr, src_ptr, bytes);
+    return true;
+}
+
+void mf_tensor_view(mf_tensor* dst, const mf_tensor* src) {
+    if (!dst || !src) return;
+    *dst = *src; // Copy struct (info + buffer ptr + offset)
+}
+
+bool mf_tensor_slice(mf_tensor* dst, const mf_tensor* src, size_t start_element, size_t count) {
+    if (!dst || !src) return false;
+    
+    // Validations
+    if (!mf_tensor_is_valid(src)) return false;
+    size_t src_count = mf_tensor_count(src);
+    if (start_element + count > src_count) return false;
+
+    // Create Base View
+    mf_tensor_view(dst, src);
+    
+    // Modify
+    size_t elem_size = mf_dtype_size(src->info.dtype);
+    dst->byte_offset += start_element * elem_size;
+    
+    // Flatten shape to 1D for now (or keep dim 0?)
+    // "View of Input[Start:End]" usually implies a flat slice or slicing dim 0.
+    // If we assume flat slice:
+    dst->info.ndim = 1;
+    dst->info.shape[0] = (int32_t)count;
+    dst->info.strides[0] = 1; // Contiguous
+    
+    return true;
+}
+
+bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_shape, int ndim) {
+    if (!dst || !src || ndim > MF_MAX_DIMS) return false;
+    
+    // Count check
+    size_t current_count = mf_tensor_count(src);
+    size_t new_count = 1;
+    for(int i=0; i<ndim; ++i) new_count *= new_shape[i];
+    
+    if (current_count != new_count) return false;
+    
+    // Create Base View
+    mf_tensor_view(dst, src);
+    
+    // Modify Metadata
+    dst->info.ndim = (uint8_t)ndim;
+    for(int i=0; i<ndim; ++i) dst->info.shape[i] = new_shape[i];
+    
+    // Recalculate Strides (Row-Major)
+    int32_t stride = 1;
+    for (int k = ndim - 1; k >= 0; --k) {
+        dst->info.strides[k] = stride;
+        stride *= new_shape[k];
     }
     
-    // Allocate
-    dst->data = allocator->alloc(allocator, bytes);
-    if (!dst->data && bytes > 0) {
-        return false; // OOM
-    }
+    return true;
+}
 
-    dst->capacity_bytes = bytes;
-    dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
-
-    // Initialize Content
-    if (src->data) {
-        memcpy(dst->data, src->data, bytes);
-    } else {
-        memset(dst->data, 0, bytes);
-    }
-
+bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src) {
+    if (!dst || !src) return false;
+    
+    // Only support 2D transpose for now
+    if (src->info.ndim != 2) return false;
+    
+    mf_tensor_view(dst, src);
+    
+    // Swap Shape
+    dst->info.shape[0] = src->info.shape[1];
+    dst->info.shape[1] = src->info.shape[0];
+    
+    // Swap Strides?
+    // NOTE: MathFlow assumes row-major contiguity in many ops. 
+    // Just swapping metadata strides works for valid "Views", but
+    // if an Op assumes contiguous memory (like memcpy), it will fail.
+    // For Phase 22, we are introducing this. Ops must be updated to respect strides.
+    // Current Ops (mf_ops_matrix.c) do NOT respect strides yet.
+    // So this is dangerous without Op updates.
+    // BUT: The goal of Phase 22 is to Enable it.
+    
+    // Let's implement it correctly for the Tensor struct.
+    dst->info.strides[0] = src->info.strides[1];
+    dst->info.strides[1] = src->info.strides[0];
+    
     return true;
 }

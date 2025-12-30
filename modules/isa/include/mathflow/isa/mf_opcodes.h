@@ -86,7 +86,9 @@ typedef enum {
     // --- State / Memory (512 - 767) ---
     MF_OP_STATE_BEGIN = 512,
     
-    MF_OP_COPY = 520, // Dest = Src1 (Tensor Copy)
+    MF_OP_COPY = 520,    // Dest = Src1 (Tensor Copy)
+    MF_OP_SLICE = 521,   // Dest = View of Src1[Start:End]
+    MF_OP_RESHAPE = 522, // Dest = View of Src1 with new Shape
 
     MF_OP_STATE_END = 767,
     

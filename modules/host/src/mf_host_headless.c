@@ -6,7 +6,8 @@
 #include <string.h>
 
 static void print_tensor(const char* name, mf_tensor* t) {
-    if (!t || !t->data) {
+    void* data_ptr = mf_tensor_data(t);
+    if (!t || !data_ptr) {
         printf("  %s: (Empty)\n", name ? name : "?");
         return;
     }
@@ -14,33 +15,35 @@ static void print_tensor(const char* name, mf_tensor* t) {
     printf("  '%s' ", name ? name : "?"); 
     
     printf("Shape: [");
-    for(int i=0; i<t->ndim; ++i) printf("%d%s", t->shape[i], i < t->ndim-1 ? "," : "");
+    for(int i=0; i<t->info.ndim; ++i) printf("%d%s", t->info.shape[i], i < t->info.ndim-1 ? "," : "");
     printf("] ");
     
-    if (t->dtype == MF_DTYPE_F32) {
+    size_t count = mf_tensor_count(t);
+    if (t->info.dtype == MF_DTYPE_F32) {
         printf("F32: {");
-        f32* data = (f32*)t->data;
-        size_t limit = t->size > 16 ? 16 : t->size;
+        f32* data = (f32*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
         for(size_t i=0; i<limit; ++i) printf("%.2f%s", data[i], i < limit-1 ? ", " : "");
-        if (t->size > limit) printf("... (+%zu)", t->size - limit);
+        if (count > limit) printf("... (+%zu)", count - limit);
         printf("}\n");
-    } else if (t->dtype == MF_DTYPE_I32) {
+    } else if (t->info.dtype == MF_DTYPE_I32) {
         printf("I32: {");
-        int32_t* data = (int32_t*)t->data;
-        size_t limit = t->size > 16 ? 16 : t->size;
+        int32_t* data = (int32_t*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
         for(size_t i=0; i<limit; ++i) printf("%d%s", data[i], i < limit-1 ? ", " : "");
-        if (t->size > limit) printf("... (+%zu)", t->size - limit);
+        if (count > limit) printf("... (+%zu)", count - limit);
         printf("}\n");
-    } else if (t->dtype == MF_DTYPE_U8) {
+    } else if (t->info.dtype == MF_DTYPE_U8) {
         printf("Bool: {");
-        u8* data = (u8*)t->data;
-        size_t limit = t->size > 16 ? 16 : t->size;
+        u8* data = (u8*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
         for(size_t i=0; i<limit; ++i) printf("%s%s", data[i] ? "true" : "false", i < limit-1 ? ", " : "");
         printf("}\n");
     }
 }
 
 static void debug_print_resource_callback(const char* name, mf_tensor* t, void* user_data) {
+    (void)user_data;
     print_tensor(name, t);
 }
 
@@ -50,7 +53,6 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
 
     mf_engine_desc engine_desc = {0};
     
-    // Init Backend via Loader (Injection)
     mf_loader_init_backend(&engine_desc.backend, desc->num_threads);
 
     mf_engine* engine = mf_engine_create(&engine_desc);
@@ -60,7 +62,6 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     if (desc->has_pipeline) {
         loaded = mf_loader_load_pipeline(engine, &desc->pipeline);
     } else {
-        // Now this automatically synthesizes a pipeline internally
         loaded = mf_loader_load_graph(engine, desc->graph_path);
     }
 
@@ -69,31 +70,47 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
         return 1;
     }
 
+    if (desc->width > 0) {
+        int w = desc->width;
+        int h = (desc->height > 0) ? desc->height : 1;
+        
+        int32_t shape[3] = { h, w, 4 }; 
+        if (h == 1) {
+            shape[0] = w;
+            mf_engine_resize_resource(engine, "out_Color", shape, 1);
+        } else {
+            mf_engine_resize_resource(engine, "out_Color", shape, 3);
+        }
+        
+        mf_tensor* t_res = mf_engine_map_resource(engine, "u_Resolution"); 
+        if (t_res) {
+             void* res_data = mf_tensor_data(t_res);
+             if (res_data) {
+                 size_t count = mf_tensor_count(t_res);
+                 if (count >= 2) {
+                     f32* d = (f32*)res_data;
+                     d[0] = (f32)w;
+                     d[1] = (f32)h;
+                 }
+             }
+        }
+        
+        mf_tensor* t_rx = mf_engine_map_resource(engine, "u_ResX");
+        if (t_rx) {
+            void* rx_data = mf_tensor_data(t_rx);
+            if (rx_data) *((f32*)rx_data) = (f32)w;
+        }
+        
+        mf_tensor* t_ry = mf_engine_map_resource(engine, "u_ResY");
+        if (t_ry) {
+            void* ry_data = mf_tensor_data(t_ry);
+            if (ry_data) *((f32*)ry_data) = (f32)h;
+        }
+    }
+
     MF_LOG_INFO("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
-        // Dispatch always using pipeline logic
-        // For implicit single-graph pipelines, we use the requested size
-        
-        mf_tensor domain_tensor = {0};
-        domain_tensor.dtype = MF_DTYPE_UNKNOWN; // Not used for domain
-        
-        if (desc->width > 0) {
-             if (desc->height > 1) {
-                  domain_tensor.ndim = 2;
-                  domain_tensor.shape[0] = desc->height;
-                  domain_tensor.shape[1] = desc->width;
-             } else {
-                  domain_tensor.ndim = 1;
-                  domain_tensor.shape[0] = desc->width;
-             }
-        } else {
-             domain_tensor.ndim = 1;
-             domain_tensor.shape[0] = 1;
-        }
-        domain_tensor.size = 1;
-        for(int i=0; i<domain_tensor.ndim; ++i) domain_tensor.size *= domain_tensor.shape[i];
-
-        mf_engine_dispatch(engine, &domain_tensor);
+        mf_engine_dispatch(engine);
         
         mf_engine_error err = mf_engine_get_error(engine);
         if (err != MF_ENGINE_ERR_NONE) {

@@ -16,8 +16,10 @@ mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
 
 // --- Helper: Shape Compatibility ---
 static bool mf_shapes_compatible(const mf_tensor* a, const mf_tensor* b, mf_tensor* out) {
-    bool a_scal = (a->size == 1);
-    bool b_scal = (b->size == 1);
+    size_t sz_a = mf_tensor_count(a);
+    size_t sz_b = mf_tensor_count(b);
+    bool a_scal = (sz_a == 1);
+    bool b_scal = (sz_b == 1);
     
     if (a_scal) { *out = *b; return true; }
     if (b_scal) { *out = *a; return true; }
@@ -26,21 +28,21 @@ static bool mf_shapes_compatible(const mf_tensor* a, const mf_tensor* b, mf_tens
     if (mf_tensor_same_shape(a, b)) { *out = *a; return true; }
     
     // Simple Broadcasting: [Batch, N] vs [N]
-    if (a->ndim == b->ndim + 1) {
+    if (a->info.ndim == b->info.ndim + 1) {
         // Check suffix
         bool match = true;
-        for (int i=0; i<b->ndim; ++i) if (a->shape[i+1] != b->shape[i]) match = false;
+        for (int i=0; i<b->info.ndim; ++i) if (a->info.shape[i+1] != b->info.shape[i]) match = false;
         if (match) { *out = *a; return true; }
     }
-    if (b->ndim == a->ndim + 1) {
+    if (b->info.ndim == a->info.ndim + 1) {
         bool match = true;
-        for (int i=0; i<a->ndim; ++i) if (b->shape[i+1] != a->shape[i]) match = false;
+        for (int i=0; i<a->info.ndim; ++i) if (b->info.shape[i+1] != a->info.shape[i]) match = false;
         if (match) { *out = *b; return true; }
     }
     
     // Dynamic Batch Broadcasting ([0, N] vs [N])
     // If shape[0] == 0, treat as Wildcard
-    if (a->shape[0] == 0 && a->ndim == b->ndim + 1) {
+    if (a->info.shape[0] == 0 && a->info.ndim == b->info.ndim + 1) {
         // Assume match
         *out = *a; return true;
     }
@@ -64,7 +66,7 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* b = &s2->out_shape;
                 
                 if (!mf_shapes_compatible(a, b, out)) {
-                    MF_LOG_ERROR("Shape mismatch in node '%s'. Input shapes: [%d] vs [%d]", node->id, a->ndim, b->ndim);
+                    MF_LOG_ERROR("Shape mismatch in node '%s'. Input shapes: [%d] vs [%d]", node->id, a->info.ndim, b->info.ndim);
                     return false;
                 }
             }
@@ -79,13 +81,13 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 
                 // Find the non-scalar shape (if any)
                 mf_tensor* shape = a;
-                if (a->size == 1) shape = b;
-                if (shape->size == 1) shape = c;
+                if (mf_tensor_count(a) == 1) shape = b;
+                if (mf_tensor_count(shape) == 1) shape = c;
                 
                 // Verify all non-scalars match 'shape'
-                if (a->size > 1 && !mf_tensor_same_shape(a, shape)) return false;
-                if (b->size > 1 && !mf_tensor_same_shape(b, shape)) return false;
-                if (c->size > 1 && !mf_tensor_same_shape(c, shape)) return false;
+                if (mf_tensor_count(a) > 1 && !mf_tensor_same_shape(a, shape)) return false;
+                if (mf_tensor_count(b) > 1 && !mf_tensor_same_shape(b, shape)) return false;
+                if (mf_tensor_count(c) > 1 && !mf_tensor_same_shape(c, shape)) return false;
 
                 *out = *shape;
              }
@@ -106,20 +108,23 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
                 // For MVP, require strict match or scalar broadcast
-                if (a->size == b->size) {
+                size_t sz_a = mf_tensor_count(a);
+                size_t sz_b = mf_tensor_count(b);
+                if (sz_a == sz_b) {
                     *out = *a;
-                } else if (a->size == 1) {
+                } else if (sz_a == 1) {
                     *out = *b;
-                } else if (b->size == 1) {
+                } else if (sz_b == 1) {
                     *out = *a;
                 } else {
                      return false;
                 }
                 
                 // Add Dimension
-                out->shape[out->ndim] = 2;
-                out->ndim += 1;
-                out->size *= 2;
+                out->info.shape[out->info.ndim] = 2;
+                out->info.ndim += 1;
+                // Strides updated later byVM or just leave for now. 
+                // In IR, we don't strictly care about strides yet.
             }
         } break;
 
@@ -128,15 +133,14 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             if (s1 && s2) {
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
+                (void)b;
                 // Assume last dim match
-                out->dtype = MF_DTYPE_F32;
-                if (a->ndim <= 1) {
-                    out->ndim = 0;
-                    out->size = 1;
+                out->info.dtype = MF_DTYPE_F32;
+                if (a->info.ndim <= 1) {
+                    out->info.ndim = 0;
                 } else {
-                    out->ndim = a->ndim - 1;
-                    for(int i=0; i<out->ndim; ++i) out->shape[i] = a->shape[i];
-                    out->size = a->size / a->shape[a->ndim-1];
+                    out->info.ndim = a->info.ndim - 1;
+                    for(int i=0; i<out->info.ndim; ++i) out->info.shape[i] = a->info.shape[i];
                 }
             }
         } break;
@@ -149,14 +153,12 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             if (s1) {
                  if (node->type == MF_NODE_LENGTH) {
                      mf_tensor* a = &s1->out_shape;
-                     out->dtype = MF_DTYPE_F32;
-                     if (a->ndim <= 1) {
-                         out->ndim = 0;
-                         out->size = 1;
+                     out->info.dtype = MF_DTYPE_F32;
+                     if (a->info.ndim <= 1) {
+                         out->info.ndim = 0;
                      } else {
-                         out->ndim = a->ndim - 1;
-                         for(int i=0; i<out->ndim; ++i) out->shape[i] = a->shape[i];
-                         out->size = a->size / a->shape[a->ndim-1];
+                         out->info.ndim = a->info.ndim - 1;
+                         for(int i=0; i<out->info.ndim; ++i) out->info.shape[i] = a->info.shape[i];
                      }
                  } else {
                      *out = s1->out_shape;
@@ -171,8 +173,8 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             if (s1 && s2) {
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
-                *out = (a->size >= b->size) ? *a : *b;
-                out->dtype = MF_DTYPE_U8;
+                *out = (mf_tensor_count(a) >= mf_tensor_count(b)) ? *a : *b;
+                out->info.dtype = MF_DTYPE_U8;
             }
         } break;
 
@@ -181,20 +183,19 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 // A: [M, K], B: [K, N] -> C: [M, N]
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
-                if (a->ndim == 2 && b->ndim == 2) {
-                    if (a->shape[1] != b->shape[0]) {
-                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.", node->id, a->shape[1], b->shape[0]);
+                if (a->info.ndim == 2 && b->info.ndim == 2) {
+                    if (a->info.shape[1] != b->info.shape[0]) {
+                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Inner dimensions [%d] and [%d] do not match.", node->id, a->info.shape[1], b->info.shape[0]);
                         return false;
                     }
-                    out->dtype = a->dtype;
-                    out->ndim = 2;
-                    out->shape[0] = a->shape[0];
-                    out->shape[1] = b->shape[1];
-                    out->size = out->shape[0] * out->shape[1];
+                    out->info.dtype = a->info.dtype;
+                    out->info.ndim = 2;
+                    out->info.shape[0] = a->info.shape[0];
+                    out->info.shape[1] = b->info.shape[1];
                 } else {
                     // Fallback
-                    if (a->size != b->size) {
-                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.", node->id, a->size, b->size);
+                    if (mf_tensor_count(a) != mf_tensor_count(b)) {
+                        MF_LOG_ERROR("MatMul shape mismatch in node '%s'. Sizes %zu and %zu do not match.", node->id, mf_tensor_count(a), mf_tensor_count(b));
                         return false;
                     }
                     *out = *a; 
@@ -205,10 +206,10 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
         case MF_NODE_TRANSPOSE:
             if (s1) {
                 *out = s1->out_shape;
-                if (out->ndim == 2) {
-                    int32_t tmp = out->shape[0];
-                    out->shape[0] = out->shape[1];
-                    out->shape[1] = tmp;
+                if (out->info.ndim == 2) {
+                    int32_t tmp = out->info.shape[0];
+                    out->info.shape[0] = out->info.shape[1];
+                    out->info.shape[1] = tmp;
                 }
             }
             break;
@@ -219,8 +220,8 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
                 mf_tensor* f = s3 ? &s3->out_shape : NULL;
 
                 if (f) {
-                    bool t_s = (t->size == 1);
-                    bool f_s = (f->size == 1);
+                    bool t_s = (mf_tensor_count(t) == 1);
+                    bool f_s = (mf_tensor_count(f) == 1);
                     if (!t_s && !f_s && !mf_tensor_same_shape(t, f)) {
                          MF_LOG_ERROR("Select shape mismatch in node '%s'.", node->id);
                          return false;
@@ -239,15 +240,12 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
         case MF_NODE_RANGE:
         case MF_NODE_INDEX:
         case MF_NODE_RESOLUTION:
-            // Output is 1D Array of F32. Size is dynamic (determined by input value or batch context).
-            out->dtype = MF_DTYPE_F32; 
-            out->ndim = 1;
-            out->shape[0] = 0; // Dynamic
-            out->size = 0;
-            // Correction for Resolution: It is always scalar [1].
+            // Output is 1D Array of F32. Size is dynamic.
+            out->info.dtype = MF_DTYPE_F32; 
+            out->info.ndim = 1;
+            out->info.shape[0] = 0; // Dynamic
             if (node->type == MF_NODE_RESOLUTION) {
-                out->ndim = 0;
-                out->size = 1;
+                out->info.ndim = 0;
             }
             break;
 
@@ -257,11 +255,8 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
 
         case MF_NODE_COMPRESS:
             if (s1 && s2) {
-                // S1: Data, S2: Mask
                 *out = s1->out_shape;
-                // Shape is dynamic (subset of input)
-                out->shape[0] = 0; 
-                out->size = 0;
+                out->info.shape[0] = 0; 
             }
             break;
 

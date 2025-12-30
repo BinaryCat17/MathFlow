@@ -1,110 +1,80 @@
 #ifndef MF_TENSOR_H
 #define MF_TENSOR_H
 
-#include <stdint.h>
-#include <stddef.h>
-#include <stdbool.h>
 #include <mathflow/base/mf_types.h>
+#include <mathflow/base/mf_buffer.h>
 #include <mathflow/base/mf_memory.h>
-
-// Max dimensions supported (Rank)
-#define MF_MAX_DIMS 8
-
-// --- Data Types ---
-
-typedef enum {
-    MF_DTYPE_UNKNOWN = 0,
-    
-    MF_DTYPE_F32,   // Standard float
-    MF_DTYPE_I32,   // Integer / String ID
-    MF_DTYPE_U8,    // Byte / Bool
-    
-    MF_DTYPE_COUNT
-} mf_dtype;
 
 // --- Tensor Structure ---
 
+// A Tensor is a VIEW into a buffer.
 typedef struct {
-    mf_dtype dtype;
+    mf_type_info info;   // Metadata: Shape, Strides, Type
     
-    // Shape: [batch, height, width, channels] etc.
-    // e.g., Scalar = {0}, Vec3 = {3}, Mat4 = {4,4}
-    uint8_t ndim; // Number of dimensions (Rank)
-    int32_t shape[MF_MAX_DIMS]; 
-    
-    // Strides: Steps in memory to reach next element in each dim.
-    // Allows slicing/transposing without data copy.
-    int32_t strides[MF_MAX_DIMS]; 
-
-    // Raw Data Pointer
-    // This memory is owned by the VM/Arena, not the struct itself.
-    void* data;
-    
-    // Total elements count (cached product of shape)
-    size_t size; 
-
-    // Allocated size in bytes (for dynamic resizing)
-    size_t capacity_bytes;
-
-    // Flags
-    u32 flags;
+    mf_buffer* buffer;   // Storage: Pointer to data owner
+    size_t byte_offset;  // Offset in bytes from buffer->data
 } mf_tensor;
-
-#define MF_TENSOR_OWNS_DATA 1
-#define MF_TENSOR_DYNAMIC   2  // Can be resized
 
 // --- Helper Functions (Inline) ---
 
-static inline size_t mf_dtype_size(mf_dtype type) {
-    switch (type) {
-        case MF_DTYPE_F32: return 4;
-        case MF_DTYPE_I32: return 4;
-        case MF_DTYPE_U8:  return 1;
-        default: return 0;
-    }
+// Get raw pointer to data start (with offset applied)
+static inline void* mf_tensor_data(const mf_tensor* t) {
+    if (!t || !t->buffer || !t->buffer->data) return NULL;
+    return (uint8_t*)t->buffer->data + t->byte_offset;
 }
 
-// Check if tensor is a scalar (Rank 0)
+static inline bool mf_tensor_is_valid(const mf_tensor* t) {
+    return t && t->buffer && t->buffer->data;
+}
+
 static inline bool mf_tensor_is_scalar(const mf_tensor* t) {
-    return t->ndim == 0;
+    return t->info.ndim == 0;
 }
 
-// Check if shapes are identical
+static inline size_t mf_tensor_count(const mf_tensor* t) {
+    size_t count = 1;
+    for(int i=0; i < t->info.ndim; ++i) count *= t->info.shape[i];
+    return count;
+}
+
+static inline size_t mf_tensor_size_bytes(const mf_tensor* t) {
+    return mf_tensor_count(t) * mf_dtype_size(t->info.dtype);
+}
+
 static inline bool mf_tensor_same_shape(const mf_tensor* a, const mf_tensor* b) {
-    if (a->ndim != b->ndim) return false;
-    for (int i = 0; i < a->ndim; ++i) {
-        if (a->shape[i] != b->shape[i]) return false;
+    if (a->info.ndim != b->info.ndim) return false;
+    for (int i = 0; i < a->info.ndim; ++i) {
+        if (a->info.shape[i] != b->info.shape[i]) return false;
     }
     return true;
 }
 
-static inline size_t mf_tensor_size_bytes(const mf_tensor* t) {
-    return t->size * mf_dtype_size(t->dtype);
-}
-
 // --- Tensor Operations ---
 
-/**
- * @brief Resizes a tensor to a new shape.
- * Reallocates memory using the provided allocator if necessary.
- * 
- * @param tensor The tensor to modify.
- * @param allocator The allocator to use for memory management.
- * @param new_shape Array of new dimension sizes.
- * @param new_ndim Number of dimensions.
- * @return true if successful (or no change needed), false on OOM.
- */
-bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const int32_t* new_shape, uint8_t new_ndim);
+// Init tensor view pointing to an existing buffer
+void mf_tensor_init(mf_tensor* tensor, mf_buffer* buf, const mf_type_info* info, size_t offset);
 
-/**
- * @brief Initializes 'dst' as a deep copy of 'src', allocating memory via 'allocator'.
- * If 'src->data' is present, it is copied. If NULL, 'dst->data' is zero-initialized.
- * 
- * @param dst Destination tensor (will be overwritten).
- * @param src Source tensor.
- * @param allocator Allocator for memory. Can be NULL (result is shallow copy alias).
- * @return true on success.
- */
-bool mf_tensor_clone(mf_tensor* dst, const mf_tensor* src, mf_allocator* allocator);
+// Allocates a NEW buffer and sets up the tensor view to point to it (Offset 0)
+bool mf_tensor_alloc(mf_tensor* tensor, mf_allocator* alloc, const mf_type_info* info);
+
+// Resizes the underlying buffer (reallocation) OR creates a new buffer
+// NOTE: This modifies the 'buffer' field. If the buffer was shared, this might detach logic.
+bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const mf_type_info* new_info);
+
+// Deep copy: Src -> Dst (allocates Dst if needed)
+bool mf_tensor_copy_data(mf_tensor* dst, const mf_tensor* src);
+
+// Shallow copy: Dst becomes a view of Src
+void mf_tensor_view(mf_tensor* dst, const mf_tensor* src);
+
+// Zero-Copy View Operations (O(1))
+// Create a view into a subset of elements (1D slice for now, modifies byte_offset and shape)
+bool mf_tensor_slice(mf_tensor* dst, const mf_tensor* src, size_t start_element, size_t count);
+
+// Create a view with a different shape (must have same total element count)
+bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_shape, int ndim);
+
+// Create a view with swapped dimensions (modifies strides)
+bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src);
 
 #endif // MF_TENSOR_H

@@ -44,7 +44,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->flags = 0;
             if (node->type == MF_NODE_INPUT || node->type == MF_NODE_EXPORT_INPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_INPUT;
-            } else if (node->type == MF_NODE_OUTPUT || node->type == MF_NODE_EXPORT_OUTPUT) {
+            } else if (node->type == MF_NODE_CONST) {
+                // Constants are neither Input nor Output state, they are static
+                sym->flags = 0; 
+            } else {
+                // Any other named node is an Output (State Update)
                 sym->flags |= MF_SYMBOL_FLAG_OUTPUT;
             }
         }
@@ -58,7 +62,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
         // 1. CONST
         if (node->type == MF_NODE_CONST) {
-            if (node->constant.data == NULL) {
+            if (!mf_tensor_is_valid(&node->constant)) {
                 MF_LOG_ERROR("Const node '%s' has no data.", node->id ? node->id : "unknown");
                 return false;
             }
@@ -68,7 +72,8 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         // 2. INPUT
         else if (node->type == MF_NODE_INPUT) {
             *t_desc = node->constant;
-            t_desc->data = NULL;
+            t_desc->buffer = NULL;
+            t_desc->byte_offset = 0;
             node->out_shape = node->constant;
         }
         // 3. OUTPUT
@@ -76,7 +81,8 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
              if (s1) {
                  node->out_shape = s1->out_shape;
                  *t_desc = node->out_shape;
-                 t_desc->data = NULL; 
+                 t_desc->buffer = NULL; 
+                 t_desc->byte_offset = 0;
              } else {
                  MF_LOG_ERROR("Output node '%s' is not connected.", node->id);
                  return false;
@@ -90,7 +96,8 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             }
 
             *t_desc = node->out_shape;
-            t_desc->data = NULL; 
+            t_desc->buffer = NULL; 
+            t_desc->byte_offset = 0;
         }
 
         mf_instruction* inst = &instrs[instr_count];
@@ -170,14 +177,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
             case MF_NODE_MIX:
                 if (s1 && s2 && s3) {
-                    // Dest = Sub(b, a)
                     inst->opcode = MF_OP_SUB;
                     inst->dest_idx = node->out_reg_idx;
                     inst->src1_idx = s2->out_reg_idx;
                     inst->src2_idx = s1->out_reg_idx;
                     instr_count++;
                     
-                    // Dest = Mul(Dest, t)
                     inst = &instrs[instr_count];
                     inst->opcode = MF_OP_MUL;
                     inst->dest_idx = node->out_reg_idx;
@@ -185,7 +190,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                     inst->src2_idx = s3->out_reg_idx;
                     instr_count++;
 
-                    // Dest = Add(Dest, a)
                     inst = &instrs[instr_count];
                     inst->opcode = MF_OP_ADD;
                     inst->dest_idx = node->out_reg_idx;
@@ -197,13 +201,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
             case MF_NODE_CLAMP:
                 if (s1 && s2 && s3) {
-                    // Dest = MAX(Val, Min)
                     inst->opcode = MF_OP_MAX;
                     inst->src1_idx = s1->out_reg_idx;
                     inst->src2_idx = s2->out_reg_idx;
                     instr_count++;
                     
-                    // Dest = MIN(Dest, Max)
                     inst = &instrs[instr_count];
                     inst->dest_idx = node->out_reg_idx;
                     inst->opcode = MF_OP_MIN;
