@@ -31,45 +31,8 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
-        mf_tensor* dst = &state->registers[i];
-        const mf_tensor* src = &prog->tensors[i];
-        
-        *dst = *src;
-        dst->flags = 0; 
-        
-        if (src->data) {
-            if (state->allocator) {
-                size_t bytes = src->capacity_bytes;
-                dst->data = state->allocator->alloc(state->allocator, bytes);
-                if (dst->data) {
-                    memcpy(dst->data, src->data, bytes);
-                } else {
-                    MF_LOG_ERROR("Failed to allocate %zu bytes for constant tensor %u.", bytes, i);
-                }
-                dst->capacity_bytes = bytes;
-                dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
-            } else {
-                 dst->data = src->data; 
-            }
-        } else {
-            if (state->allocator) {
-                 size_t type_size = mf_dtype_size(src->dtype);
-                 if (type_size == 0) type_size = 4;
-                 size_t bytes = (src->size > 0) ? src->size * type_size : type_size;
-                 
-                 dst->data = state->allocator->alloc(state->allocator, bytes);
-                 if (dst->data) memset(dst->data, 0, bytes);
-                 else {
-                     MF_LOG_ERROR("Failed to allocate %zu bytes for register %u.", bytes, i);
-                 }
-                 
-                 dst->capacity_bytes = bytes;
-                 dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
-            } else {
-                 dst->data = NULL;
-                 dst->capacity_bytes = 0;
-                 dst->flags |= MF_TENSOR_DYNAMIC;
-            }
+        if (!mf_tensor_clone(&state->registers[i], &prog->tensors[i], state->allocator)) {
+            MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
         }
     }
 }

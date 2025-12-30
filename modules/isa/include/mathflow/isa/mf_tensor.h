@@ -96,4 +96,15 @@ static inline size_t mf_tensor_size_bytes(const mf_tensor* t) {
  */
 bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const int32_t* new_shape, uint8_t new_ndim);
 
+/**
+ * @brief Initializes 'dst' as a deep copy of 'src', allocating memory via 'allocator'.
+ * If 'src->data' is present, it is copied. If NULL, 'dst->data' is zero-initialized.
+ * 
+ * @param dst Destination tensor (will be overwritten).
+ * @param src Source tensor.
+ * @param allocator Allocator for memory. Can be NULL (result is shallow copy alias).
+ * @return true on success.
+ */
+bool mf_tensor_clone(mf_tensor* dst, const mf_tensor* src, mf_allocator* allocator);
+
 #endif // MF_TENSOR_H

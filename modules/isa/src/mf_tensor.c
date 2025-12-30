@@ -50,3 +50,46 @@ bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const int32_t*
     
     return true;
 }
+
+bool mf_tensor_clone(mf_tensor* dst, const mf_tensor* src, mf_allocator* allocator) {
+    if (!dst || !src) return false;
+
+    // Base Metadata Copy
+    *dst = *src;
+    dst->flags = 0; // Reset flags (don't inherit ownership yet)
+    
+    // If no allocator provided, create a shallow alias (unsafe for mutable usage but valid for read-only)
+    if (!allocator) {
+        dst->data = src->data;
+        dst->capacity_bytes = 0; // Not owned
+        dst->flags |= MF_TENSOR_DYNAMIC; // Treat as dynamic? Or maybe just external.
+        return true;
+    }
+
+    // Determine allocation size
+    size_t type_size = mf_dtype_size(src->dtype);
+    if (type_size == 0) type_size = 4; // Fallback
+    
+    size_t bytes = src->capacity_bytes;
+    if (bytes == 0) {
+        bytes = (src->size > 0) ? src->size * type_size : type_size;
+    }
+    
+    // Allocate
+    dst->data = allocator->alloc(allocator, bytes);
+    if (!dst->data && bytes > 0) {
+        return false; // OOM
+    }
+
+    dst->capacity_bytes = bytes;
+    dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
+
+    // Initialize Content
+    if (src->data) {
+        memcpy(dst->data, src->data, bytes);
+    } else {
+        memset(dst->data, 0, bytes);
+    }
+
+    return true;
+}
