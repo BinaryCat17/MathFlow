@@ -196,9 +196,11 @@ static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
         mf_tensor* worker_t = &worker_ctx->registers[i];
 
         // Propagate Uniforms (Scalar or matching shape)
-        // If Shapes match exactly and it's small, copy? 
-        // Or if it's a global resource constant?
-        if (mf_tensor_same_shape(main_t, worker_t)) {
+        // Allow Scalar (0-rank) <-> Vector[1] (1-rank) adaptation
+        bool same_shape = mf_tensor_same_shape(main_t, worker_t);
+        bool scalar_adapt = (worker_t->ndim == 0 && main_t->ndim == 1 && main_t->shape[0] == 1);
+
+        if (same_shape || scalar_adapt) {
              if (worker_t->data) continue; 
              // Copy data from main state
              if (main_t->data) {
@@ -207,6 +209,14 @@ static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
                  if (data) {
                      memcpy(data, main_t->data, size);
                      worker_t->data = data;
+                     
+                     // Adopt shape from main state if adapting
+                     if (scalar_adapt) {
+                         worker_t->ndim = main_t->ndim;
+                         memcpy(worker_t->shape, main_t->shape, sizeof(int32_t) * MF_MAX_DIMS);
+                         worker_t->size = main_t->size;
+                     }
+
                      worker_t->flags |= MF_TENSOR_DYNAMIC;
                  }
              }

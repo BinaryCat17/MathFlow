@@ -161,10 +161,9 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         mf_pipeline_resource* res_desc = &pipe->resources[i];
         mf_resource_inst* res = &engine->resources[i];
         
-        MF_LOG_INFO("  Resource[%u]: %s (%s, persistent=%d)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other", res_desc->persistent);
+        MF_LOG_INFO("  Resource[%u]: %s (%s)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other");
 
         res->name = strdup(res_desc->name);
-        res->persistent = res_desc->persistent;
         
         // Descriptor Prototype
         memset(&res->desc, 0, sizeof(mf_tensor));
@@ -177,15 +176,12 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         size_t bytes = mf_tensor_size_bytes(&res->desc);
         res->size_bytes = bytes;
         
+        // Always allocate Double Buffers
         res->buffer_a = allocator->alloc(allocator, bytes);
         if (res->buffer_a) memset(res->buffer_a, 0, bytes);
         
-        if (res->persistent) {
-            res->buffer_b = allocator->alloc(allocator, bytes);
-            if (res->buffer_b) memset(res->buffer_b, 0, bytes);
-        } else {
-            res->buffer_b = NULL;
-        }
+        res->buffer_b = allocator->alloc(allocator, bytes);
+        if (res->buffer_b) memset(res->buffer_b, 0, bytes);
     }
 
     // 2. Load Kernels
@@ -262,26 +258,26 @@ void mf_engine_dispatch(mf_engine* engine, const mf_tensor* domain) {
             mf_resource_inst* res = &engine->resources[global_res];
             mf_tensor* t = &ker->state.registers[local_reg];
 
-            void* data_ptr = is_even ? res->buffer_a : res->buffer_b;
-            if (!res->persistent) data_ptr = res->buffer_a;
-
-            const char* port_name = NULL;
+            // Determine if Output or Input based on flags
+            u8 flags = 0;
             if (ker->program->symbols) {
                 for(u32 s=0; s<ker->program->meta.symbol_count; ++s) {
                     if (ker->program->symbols[s].register_idx == local_reg) {
-                        port_name = ker->program->symbols[s].name;
+                        flags = ker->program->symbols[s].flags;
                         break;
                     }
                 }
             }
 
-            if (port_name && strncmp(port_name, "out_", 4) == 0 && res->persistent) {
-                // It is an output! Write to the "Next" buffer.
+            void* data_ptr;
+            if (flags & MF_SYMBOL_FLAG_OUTPUT) {
+                // Write to Next Frame (Back Buffer)
+                // Frame Even (0) -> Writes to B (Odd)
                 data_ptr = is_even ? res->buffer_b : res->buffer_a;
             } else {
-                // Input or non-persistent (shared scratchpad)
+                // Read from Previous Frame (Front Buffer)
+                // Frame Even (0) -> Reads from A (Even)
                 data_ptr = is_even ? res->buffer_a : res->buffer_b;
-                if (!res->persistent) data_ptr = res->buffer_a;
             }
 
             t->data = data_ptr;
@@ -318,31 +314,9 @@ mf_tensor* mf_engine_map_resource(mf_engine* engine, const char* name) {
         if (strcmp(engine->resources[i].name, name) == 0) {
             mf_resource_inst* res = &engine->resources[i];
             
-            // Host always reads from the "Result of Previous Frame"?
-            // Or "Result of Current Frame" (which just finished)?
-            // frame_index incremented at end of dispatch.
-            // So frame_index is now Odd (if start 0). 0 was Even.
-            // Frame 0 executed: Read A, Write B.
-            // Now frame_index=1.
-            // We want to see what was written. That is B.
-            // Logic:
-            // Prev Frame (Index-1) was Even (0). Writes went to B.
-            // Current Frame (Index) is Odd (1). Reads come from B.
-            // So Host should read B?
-            
-            // Let's look at dispatch logic again:
-            // bool is_even = (engine->frame_index % 2 == 0);
-            // If frame=0 (even): Write to B.
-            // End of dispatch: frame=1.
-            // Host wants to read result of frame 0. It is in B.
-            // is_even (for frame 1) is False.
-            // data_ptr = is_even ? res->buffer_a : res->buffer_b => buffer_b.
-            
-            // Checks out. Host reads from the "Input for next frame", which is "Output of last frame".
-            
+            // Map the "Stable" buffer (the one just written to)
             bool is_even = (engine->frame_index % 2 == 0);
             res->desc.data = is_even ? res->buffer_a : res->buffer_b;
-            if (!res->persistent) res->desc.data = res->buffer_a;
             
             return &res->desc;
         }
@@ -364,19 +338,16 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
             
             // Reallocate Buffer A
             if (res->buffer_a) {
-                // We use the engine's allocator (heap)
                 res->buffer_a = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_a, res->size_bytes, new_bytes);
             } else {
                 res->buffer_a = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
             }
             
-            // Reallocate Buffer B if persistent
-            if (res->persistent) {
-                if (res->buffer_b) {
-                     res->buffer_b = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_b, res->size_bytes, new_bytes);
-                } else {
-                     res->buffer_b = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
-                }
+            // Reallocate Buffer B (Always present)
+            if (res->buffer_b) {
+                    res->buffer_b = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_b, res->size_bytes, new_bytes);
+            } else {
+                    res->buffer_b = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
             }
             
             // Update Descriptor
@@ -386,10 +357,9 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
             res->desc.capacity_bytes = new_bytes;
             memcpy(res->desc.shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS);
             
-            // Update data pointer in descriptor immediately to avoid stale access
+            // Update data pointer
             bool is_even = (engine->frame_index % 2 == 0);
             res->desc.data = is_even ? res->buffer_a : res->buffer_b;
-            if (!res->persistent) res->desc.data = res->buffer_a;
 
             return true;
         }
@@ -412,7 +382,6 @@ void mf_engine_iterate_resources(mf_engine* engine, mf_engine_resource_cb cb, vo
         
         bool is_even = (engine->frame_index % 2 == 0);
         res->desc.data = is_even ? res->buffer_a : res->buffer_b;
-        if (!res->persistent) res->desc.data = res->buffer_a;
 
         cb(res->name, &res->desc, user_data);
     }

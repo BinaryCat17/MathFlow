@@ -171,7 +171,6 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
         resources[i].dtype = t->dtype;
         resources[i].ndim = t->ndim;
         memcpy(resources[i].shape, t->shape, sizeof(int32_t) * MF_MAX_DIMS);
-        resources[i].persistent = false; // Default for script mode
         
         // Binding Desc
         bindings[i].kernel_port = sym->name;

@@ -10,7 +10,6 @@ typedef struct {
     mf_dtype dtype;
     int32_t shape[MF_MAX_DIMS];
     uint8_t ndim;
-    bool persistent; // If true, Engine manages Ping-Pong buffers for this resource
 } mf_pipeline_resource;
 
 // Mapping between a Kernel's internal Symbol and a Global Resource

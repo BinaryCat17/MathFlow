@@ -37,21 +37,40 @@
 ## Phase 20: Compute Unification (Data-Driven Dispatch)
 **Objective:** Remove artificial distinctions between "Script" and "Shader". The execution domain is strictly defined by the data (Output Tensors).
 
-- [ ] **Step 1: API Update (Domain Tensor):**
+- [x] **Step 1: API Update (Domain Tensor):**
     - Change `mf_engine_dispatch` and `mf_backend_dispatch` to accept `mf_tensor* domain` instead of `x, y`.
     - This tensor acts as the iteration space. It can be a real resource (e.g. `out_Color`) or a dummy layout.
 
-- [ ] **Step 2: N-Dimensional Context:**
+- [x] **Step 2: N-Dimensional Context:**
     - Update `mf_exec_ctx` to replace hardcoded 2D/3D fields with `u32 tile_offset[MF_MAX_DIMS]` and `u32 domain_shape[MF_MAX_DIMS]`.
 
-- [ ] **Step 3: Backend "Flat Scheduling":**
+- [x] **Step 3: Backend "Flat Scheduling":**
     - Implement **Linearization**: The Thread Pool works with a flat job index (0 to TotalElements).
     - Implement **Unflattening**: Workers convert the flat job ID back to N-dim coordinates (`ctx.tile_offset`) at the start of execution.
     - Implement **Fast Path**: If `total_elements < THRESHOLD`, bypass the thread pool and execute inline (replaces the old "Script Mode").
 
-- [ ] **Step 4: Opcode Update:**
+- [x] **Step 4: Opcode Update:**
     - Update `MF_OP_INDEX` to read from the new N-dim `ctx.tile_offset`.
     - **Decision:** No new `OP_INVOCATION_ID` instruction needed.
+
+## Phase 21: The Pure State Machine (Explicit Symbols & Auto-Buffering) (Completed)
+**Objective:** Make the engine fully deterministic and stateless by enforcing Double Buffering for ALL resources. Eliminate heuristics and the `persistent` flag.
+
+- [x] **Step 1: ISA Update (Symbol Flags):**
+    - Update `mf_bin_symbol` to include `u8 flags`.
+    - Define `MF_SYMBOL_INPUT` (Read-Only) and `MF_SYMBOL_OUTPUT` (Write-Only).
+    - Bump `MF_BINARY_VERSION` to 8.
+
+- [x] **Step 2: Compiler Update:**
+    - Update `mf_codegen.c` to identify and tag symbol types based on Node Type (`MF_NODE_INPUT` vs `MF_NODE_OUTPUT`).
+
+- [x] **Step 3: Engine Architecture Update:**
+    - **Remove `persistent` flag:** Every global resource is now double-buffered (Front/Back) by default.
+    - **Logic:**
+        - `INPUT` symbols bind to **Front Buffer** (Previous State).
+        - `OUTPUT` symbols bind to **Back Buffer** (Next State).
+    - **Auto-Swap:** Engine swaps Front/Back pointers for all resources at the end of the frame.
+    - Remove string-based heuristics ("out_").
 
 ---
 

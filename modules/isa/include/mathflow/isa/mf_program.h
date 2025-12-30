@@ -6,14 +6,20 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 7        // Stateless Programs
+#define MF_BINARY_VERSION 8        // Explicit IO Flags + Pure State
 
 #define MF_MAX_SYMBOL_NAME 64
+
+// Symbol Flags
+#define MF_SYMBOL_FLAG_INPUT  (1 << 0) // Read-Only (Bind to Front Buffer)
+#define MF_SYMBOL_FLAG_OUTPUT (1 << 1) // Write-Only (Bind to Back Buffer)
 
 // Map Name -> Register Index
 typedef struct {
     char name[MF_MAX_SYMBOL_NAME];
     uint32_t register_idx;
+    uint8_t flags;       // MF_SYMBOL_FLAG_*
+    uint8_t reserved[3]; // Padding/Alignment
 } mf_bin_symbol;
 
 // Metadata for a single tensor in the binary file

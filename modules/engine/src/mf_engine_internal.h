@@ -32,7 +32,6 @@ typedef struct {
     void* buffer_b; // Used if persistent=true
     size_t size_bytes;
     mf_tensor desc; // Prototype
-    bool persistent;
 } mf_resource_inst;
 
 // The concrete implementation of the Engine.

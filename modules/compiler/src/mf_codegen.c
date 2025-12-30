@@ -40,6 +40,13 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             strncpy(sym->name, node->id, MF_MAX_SYMBOL_NAME - 1);
             sym->name[MF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->register_idx = node_idx;
+            
+            sym->flags = 0;
+            if (node->type == MF_NODE_INPUT || node->type == MF_NODE_EXPORT_INPUT) {
+                sym->flags |= MF_SYMBOL_FLAG_INPUT;
+            } else if (node->type == MF_NODE_OUTPUT || node->type == MF_NODE_EXPORT_OUTPUT) {
+                sym->flags |= MF_SYMBOL_FLAG_OUTPUT;
+            }
         }
 
         // Setup Tensor Descriptor

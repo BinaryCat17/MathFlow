@@ -167,9 +167,6 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
                         pr->shape[d] = cJSON_GetArrayItem(shape, d)->valueint;
                     }
                 }
-
-                cJSON* pers = cJSON_GetObjectItem(res, "persistent");
-                if (cJSON_IsBool(pers)) pr->persistent = cJSON_IsTrue(pers);
             }
         }
 
