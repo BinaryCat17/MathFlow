@@ -260,6 +260,49 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             }
             break;
 
+        case MF_NODE_SLICE:
+            if (s1 && s2) {
+                // S1: Data, S2: Range [Start, Count]
+                out->info.dtype = s1->out_shape.info.dtype;
+                out->info.ndim = 1; // Slices are flattened to 1D for now
+                
+                // Try to infer size if range is constant
+                if (mf_tensor_is_valid(&s2->constant) && mf_tensor_count(&s2->constant) >= 2) {
+                    void* d = mf_tensor_data(&s2->constant);
+                    if (s2->constant.info.dtype == MF_DTYPE_F32) {
+                        out->info.shape[0] = (int32_t)((f32*)d)[1];
+                    } else {
+                        out->info.shape[0] = ((int32_t*)d)[1];
+                    }
+                } else {
+                    out->info.shape[0] = 0; // Dynamic
+                }
+            }
+            break;
+
+        case MF_NODE_RESHAPE:
+            if (s1 && s2) {
+                // S1: Data, S2: Shape Tensor
+                out->info.dtype = s1->out_shape.info.dtype;
+                
+                // Try to infer shape if ShapeTensor is constant
+                if (mf_tensor_is_valid(&s2->constant)) {
+                    int ndim = (int)mf_tensor_count(&s2->constant);
+                    out->info.ndim = (uint8_t)ndim;
+                    void* d = mf_tensor_data(&s2->constant);
+                    for(int i=0; i<ndim && i<MF_MAX_DIMS; ++i) {
+                        if (s2->constant.info.dtype == MF_DTYPE_F32) {
+                            out->info.shape[i] = (int32_t)((f32*)d)[i];
+                        } else {
+                            out->info.shape[i] = ((int32_t*)d)[i];
+                        }
+                    }
+                } else {
+                    out->info.ndim = 0; // Unknown rank/shape
+                }
+            }
+            break;
+
         default: break;
     }
     return true;

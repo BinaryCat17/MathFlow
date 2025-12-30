@@ -69,6 +69,8 @@ typedef enum {
     MF_NODE_RESOLUTION,
     MF_NODE_CUMSUM,
     MF_NODE_COMPRESS,
+    MF_NODE_SLICE,   // Slice(Input, Range[Start, Count]) -> View
+    MF_NODE_RESHAPE, // Reshape(Input, ShapeTensor) -> View
     
     // Sub-Graph
     MF_NODE_CALL,         // Call("path/to/graph.json")

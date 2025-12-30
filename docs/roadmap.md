@@ -72,24 +72,25 @@
     - **Auto-Swap:** Engine swaps Front/Back pointers for all resources at the end of the frame.
     - Remove string-based heuristics ("out_").
 
-## Phase 22: Data Purity (Tensor Refactor)
+## Phase 22: Data Purity (Tensor Refactor) (Completed)
 **Objective:** Resolve the ambiguity of the `mf_tensor` structure by separating Metadata, Storage, and View. This enables Zero-Copy Slicing, safer memory management, and simplified GPU interoperability.
 
-- [ ] **Step 1: Structural Split:**
+- [x] **Step 1: Structural Split:**
     - `mf_type_info`: Pure metadata (DType, Shape, Strides). Lightweight "value semantics".
     - `mf_buffer`: Raw memory handle (`void*`, `size_t`, `allocator`). Owns the memory.
     - `mf_tensor`: A **View** combining `type_info`, `buffer`, and a `byte_offset`.
-- [ ] **Step 2: ISA Update:**
+- [x] **Step 2: ISA Update:**
     - Update `mf_program` to store a table of `mf_type_info` separately.
     - Constant Data becomes a single monolithic `mf_buffer`.
-- [ ] **Step 3: Zero-Copy Mechanics:**
+- [x] **Step 3: Zero-Copy Mechanics:**
     - Implement `mf_tensor_slice()`: Create a new tensor view pointing to a subset of data (modifying `offset` and `shape`) without allocation.
     - Update `mf_engine` to manage `mf_buffer` (A/B) swapping while keeping `mf_tensor` views stable.
-- [ ] **Step 4: O(1) Tensor Ops:**
+- [x] **Step 4: O(1) Tensor Ops:**
     - Reimplement `Slice`, `Reshape`, and `Transpose` to modify Metadata/Offset only (no allocation/copy).
-- [ ] **Step 5: Windowed Execution (Backend Optimization):**
+    - Note: Matrix ops use a fallback "ensure_contiguous" copy for strided inputs until generic iterators are implemented.
+- [x] **Step 5: Windowed Execution (Backend Optimization):**
     - Update `mf_backend_cpu` to create "Window Views" for worker threads.
-    - Workers see a local tensor (0..width) that maps to the global buffer via strides, simplifying loop logic.
+    - Workers see a local tensor (0..width) that maps to the global buffer via strides/offsets.
 
 ## Phase 23: Compiler Modularization
 **Objective:** Decompose the monolithic `mf_json_parser.c` into a pipeline of independent passes. This prepares the ground for advanced features like Generics and Optimizations.

@@ -64,6 +64,8 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"Resolution", MF_NODE_RESOLUTION},
     {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS},
+    {"Slice", MF_NODE_SLICE},
+    {"Reshape", MF_NODE_RESHAPE},
 
     // --- SubGraph ---
     {"Call", MF_NODE_CALL},

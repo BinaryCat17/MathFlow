@@ -163,6 +163,20 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 instr_count++; 
                 break;
 
+            case MF_NODE_SLICE:
+                inst->opcode = MF_OP_SLICE;
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+                instr_count++;
+                break;
+
+            case MF_NODE_RESHAPE:
+                inst->opcode = MF_OP_RESHAPE;
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+                instr_count++;
+                break;
+
             case MF_NODE_STEP: inst->opcode = MF_OP_STEP; instr_count++; break;
             case MF_NODE_DOT: inst->opcode = MF_OP_DOT; instr_count++; break;
             case MF_NODE_LENGTH: inst->opcode = MF_OP_LENGTH; instr_count++; break;
