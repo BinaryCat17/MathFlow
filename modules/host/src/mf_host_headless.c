@@ -73,7 +73,27 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     for (int f = 0; f < frames; ++f) {
         // Dispatch always using pipeline logic
         // For implicit single-graph pipelines, we use the requested size
-        mf_engine_dispatch(engine, desc->width > 0 ? desc->width : 1, desc->height > 0 ? desc->height : 1);
+        
+        mf_tensor domain_tensor = {0};
+        domain_tensor.dtype = MF_DTYPE_UNKNOWN; // Not used for domain
+        
+        if (desc->width > 0) {
+             if (desc->height > 1) {
+                  domain_tensor.ndim = 2;
+                  domain_tensor.shape[0] = desc->height;
+                  domain_tensor.shape[1] = desc->width;
+             } else {
+                  domain_tensor.ndim = 1;
+                  domain_tensor.shape[0] = desc->width;
+             }
+        } else {
+             domain_tensor.ndim = 1;
+             domain_tensor.shape[0] = 1;
+        }
+        domain_tensor.size = 1;
+        for(int i=0; i<domain_tensor.ndim; ++i) domain_tensor.size *= domain_tensor.shape[i];
+
+        mf_engine_dispatch(engine, &domain_tensor);
         
         mf_engine_error err = mf_engine_get_error(engine);
         if (err != MF_ENGINE_ERR_NONE) {

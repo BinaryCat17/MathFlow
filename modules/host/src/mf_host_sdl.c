@@ -201,7 +201,10 @@ int mf_host_run(const mf_host_desc* desc) {
         }
 
         // Dispatch!
-        mf_engine_dispatch(engine, win_w, win_h);
+        // Phase 20: Pass the Output Tensor as the Domain.
+        // If t_out is NULL (e.g. logic-only graph?), we might need a fallback,
+        // but for mf-window, "out_Color" is mandatory.
+        mf_engine_dispatch(engine, t_out);
         
         // Read Back
         // NOTE: We need to re-map t_out AFTER dispatch if we want to read what was just written?

@@ -19,7 +19,6 @@ typedef struct {
     mf_program* program;
     mf_state state; // Local registers for this kernel
     uint32_t frequency;
-    mf_kernel_domain domain;
     
     // Cached mapping: Local Reg Index -> Global Resource Index
     mf_kernel_binding* bindings;

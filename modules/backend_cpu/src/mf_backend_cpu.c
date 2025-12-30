@@ -4,12 +4,17 @@
 #include <mathflow/isa/mf_state.h>
 #include <mathflow/isa/mf_exec_ctx.h>
 #include <mathflow/base/mf_thread_pool.h>
+#include <mathflow/base/mf_log.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdio.h>
 
-// --- Internal Structures ---
+// --- Constants ---
 
 #define MF_CPU_TILE_SIZE 64
+#define MF_CPU_INLINE_THRESHOLD 1024 // If total elements < this, run inline
+
+// --- Internal Structures ---
 
 typedef struct {
     mf_thread_pool* pool;
@@ -22,34 +27,140 @@ typedef struct {
     void* heap_mem;
     size_t heap_size;
     mf_arena reg_arena;
-    u8 reg_arena_mem[8192]; // Slightly larger to accommodate register descriptors
+    u8 reg_arena_mem[8192]; 
 } mf_backend_cpu_worker_state;
 
 typedef struct {
     const mf_program* program;
     mf_state* main_state;
     mf_op_func* op_table;
-    u32 width;  
-    u32 height; 
-    u32 tiles_x;
-    u32 tiles_y;
+    
+    // N-Dimensional Domain
+    u8 ndim;
+    u32 domain_shape[MF_MAX_DIMS];
+    u32 tiles_per_dim[MF_MAX_DIMS];
+    u32 tile_strides[MF_MAX_DIMS]; // For unflattening job_idx
 } mf_cpu_parallel_batch;
 
-// --- Worker Lifecycle (Internal) ---
+// --- Utils ---
+
+static void unflatten_index(u32 flat_idx, u8 ndim, const u32* strides, u32* out_coords) {
+    for (int i = 0; i < ndim; ++i) {
+        out_coords[i] = flat_idx / strides[i];
+        flat_idx %= strides[i];
+    }
+}
+
+// Recursive N-Dim Copy
+// Src is always packed (Tile). Dst has strides (Global).
+static void copy_tile_nd_recursive(
+    u8 current_dim, u8 total_dims,
+    u8* src_ptr, u8* dst_ptr,
+    const u32* size, const u32* src_strides, const u32* dst_strides
+) {
+    size_t count = size[current_dim];
+    
+    // Base Case: Innermost dimension (contiguous copy for optimization)
+    // Actually, src is packed, so src_strides[last] is elem_size.
+    // dst_strides[last] is also likely elem_size (unless there's padding, which we don't support yet).
+    if (current_dim == total_dims - 1) {
+        // Optimization: Memcpy row
+        // Assumption: Element size is baked into strides/ptr arithmetic, 
+        // but here strides are in BYTES.
+        memcpy(dst_ptr, src_ptr, count * src_strides[current_dim]); 
+        return;
+    }
+
+    for (u32 i = 0; i < count; ++i) {
+        copy_tile_nd_recursive(
+            current_dim + 1, total_dims,
+            src_ptr + i * src_strides[current_dim],
+            dst_ptr + i * dst_strides[current_dim],
+            size, src_strides, dst_strides
+        );
+    }
+}
+
+// Helper to calculate byte strides for a packed tensor
+static void calc_packed_strides(u8 ndim, const u32* shape, size_t elem_size, u32* out_strides) {
+    u32 stride = elem_size;
+    for (int i = ndim - 1; i >= 0; --i) {
+        out_strides[i] = stride;
+        stride *= shape[i];
+    }
+}
+
+// Helper to calculate byte strides for a global tensor (from int32 strides)
+static void calc_global_strides(u8 ndim, const int32_t* mf_strides, size_t elem_size, u32* out_strides) {
+    // MathFlow strides are in Elements? No, mf_tensor strides are usually implicitly calculated or passed.
+    // mf_tensor struct has int32 strides. Let's assume they are valid if set.
+    // But currently we don't set them everywhere. 
+    // Standard row-major layout:
+    // We need to re-calculate them based on the GLOBAL shape, not the tile shape.
+    // Wait, mf_tensor doesn't fully enforce strides yet. Let's assume compact row-major for now.
+    // TODO: Use tensor->strides when fully implemented.
+    (void)mf_strides;
+}
+
+static void copy_tile_to_global(
+    const mf_tensor* tile_t, mf_tensor* global_t, 
+    const u32* tile_offset, const u32* active_size
+) {
+    if (!tile_t->data || !global_t->data) return;
+    
+    size_t elem_size = mf_dtype_size(global_t->dtype);
+    
+    // Strides in Bytes
+    u32 src_strides[MF_MAX_DIMS];
+    u32 dst_strides[MF_MAX_DIMS];
+    
+    // Src (Tile) is always packed row-major
+    u32 current_stride = elem_size;
+    for (int i = global_t->ndim - 1; i >= 0; --i) {
+        src_strides[i] = current_stride;
+        // Tile stride depends on the TILE SIZE (e.g. 64), not active size?
+        // No, the tile tensor is resized to active_size in this implementation?
+        // Actually, let's assume the tile tensor is strictly (active_size).
+        current_stride *= active_size[i]; 
+    }
+
+    // Dst (Global) is packed row-major (for now)
+    current_stride = elem_size;
+    for (int i = global_t->ndim - 1; i >= 0; --i) {
+        dst_strides[i] = current_stride;
+        current_stride *= global_t->shape[i];
+    }
+    
+    // Calculate Base Offsets
+    u8* src_base = (u8*)tile_t->data;
+    u8* dst_base = (u8*)global_t->data;
+    
+    for (int i = 0; i < global_t->ndim; ++i) {
+        dst_base += tile_offset[i] * dst_strides[i];
+    }
+    
+    // Perform Copy
+    // If 1D, simple memcpy
+    if (global_t->ndim == 1) {
+        memcpy(dst_base, src_base, active_size[0] * elem_size);
+    } else {
+        // Using "src_strides[ndim-1]" as the element size for the memcpy inside
+        // For the recursive function, strides should be step-per-index.
+        // Yes, src_strides[last] == elem_size.
+        copy_tile_nd_recursive(0, global_t->ndim, src_base, dst_base, active_size, src_strides, dst_strides);
+    }
+}
+
+// --- Worker Lifecycle ---
 
 static void* worker_init(int thread_idx, void* user_data) {
     (void)thread_idx; (void)user_data;
-    
     mf_backend_cpu_worker_state* state = malloc(sizeof(mf_backend_cpu_worker_state));
-    
-    // Default heap size per thread
     size_t heap_size = 16 * 1024 * 1024;
     state->heap_mem = malloc(heap_size);
     state->heap_size = heap_size;
     mf_arena_init(&state->temp_arena, state->heap_mem, heap_size);
-    
     mf_arena_init(&state->reg_arena, state->reg_arena_mem, sizeof(state->reg_arena_mem));
-    
     return state;
 }
 
@@ -60,18 +171,13 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
     free(state);
 }
 
-// --- Interpreter Loop ---
+// --- Execution Logic ---
 
 static void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table) {
-    if (!program || !ctx || !op_table) return;
-
-    // Execution Loop
     size_t code_count = program->meta.instruction_count;
     mf_instruction* code = program->code;
-
     for (size_t i = 0; i < code_count; ++i) {
         if (ctx->error != MF_ERROR_NONE) break;
-
         mf_instruction inst = code[i];
         if (op_table[inst.opcode]) {
             op_table[inst.opcode](ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
@@ -79,219 +185,218 @@ static void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func*
     }
 }
 
-// --- Propagation Logic ---
-
-static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 tile_idx) {
-    (void)tile_idx;
+static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch) {
     mf_exec_ctx* worker_ctx = &state->ctx;
     mf_state* main_state = batch->main_state;
-    
     if (!main_state) return;
 
     for (size_t i = 0; i < worker_ctx->register_count; ++i) {
         if (i >= main_state->register_count) break;
-
         mf_tensor* main_t = &main_state->registers[i];
         mf_tensor* worker_t = &worker_ctx->registers[i];
 
-        // 1. Uniforms / Constants
+        // Propagate Uniforms (Scalar or matching shape)
+        // If Shapes match exactly and it's small, copy? 
+        // Or if it's a global resource constant?
         if (mf_tensor_same_shape(main_t, worker_t)) {
-            // Check if we already have data (program constant)
-            if (worker_t->data) continue;
-
-            size_t size = mf_tensor_size_bytes(main_t);
-            if (size > 0 && main_t->data) {
-                void* data = mf_arena_alloc((mf_allocator*)&state->temp_arena, size);
-                if (data) {
-                    memcpy(data, main_t->data, size);
-                    worker_t->data = data;
-                    worker_t->flags |= MF_TENSOR_DYNAMIC; 
-                }
-            }
-            continue;
+             if (worker_t->data) continue; 
+             // Copy data from main state
+             if (main_t->data) {
+                 size_t size = mf_tensor_size_bytes(main_t);
+                 void* data = mf_arena_alloc((mf_allocator*)&state->temp_arena, size);
+                 if (data) {
+                     memcpy(data, main_t->data, size);
+                     worker_t->data = data;
+                     worker_t->flags |= MF_TENSOR_DYNAMIC;
+                 }
+             }
         }
     }
 }
 
-#include <stdio.h> // Added for debug
-
-static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 tile_x, u32 tile_y, u32 active_w, u32 active_h) {
+static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch) {
     mf_exec_ctx* worker_ctx = &state->ctx;
     mf_state* main_state = batch->main_state;
-    
     if (!main_state) return;
 
     for (size_t i = 0; i < worker_ctx->register_count; ++i) {
         if (i >= main_state->register_count) break;
-        
         mf_tensor* worker_t = &worker_ctx->registers[i];
         mf_tensor* main_t = &main_state->registers[i];
 
         if (!worker_t->data || !main_t->data) continue;
-        
-        if (main_t->ndim >= 2 && main_t->shape[0] == (int32_t)batch->height && main_t->shape[1] == (int32_t)batch->width) {
-            size_t batch_size = active_w * active_h;
-            
-            int elem_dims = main_t->ndim - 2; 
-            size_t elem_size = mf_dtype_size(main_t->dtype);
-            for (int d=0; d<elem_dims; ++d) elem_size *= main_t->shape[2+d];
-            
-            if (worker_t->size < batch_size) {
-                 fprintf(stderr, "DEBUG: Skip Reg %zu. Worker Size %zu < Batch %zu\n", i, worker_t->size, batch_size);
-                 continue; 
-            }
-            
-            u8* src_ptr = (u8*)worker_t->data;
-            u8* dst_base = (u8*)main_t->data;
-            
-            size_t main_row_stride = batch->width * elem_size;
-            size_t tile_row_size = active_w * elem_size;
-            
-            fprintf(stderr, "DEBUG: Commit Reg %zu. Tile [%u, %u]. DstBase: %p, Stride: %zu, RowSize: %zu\n", i, tile_x, tile_y, dst_base, main_row_stride, tile_row_size);
-            fflush(stderr);
 
-            for (u32 y = 0; y < active_h; ++y) {
-                u32 global_y = tile_y * MF_CPU_TILE_SIZE + y;
-                u32 global_x = tile_x * MF_CPU_TILE_SIZE; 
-                
-                u8* dst_row = dst_base + (global_y * main_row_stride) + (global_x * elem_size);
-                u8* src_row = src_ptr + (y * tile_row_size);
-                
-                memcpy(dst_row, src_row, tile_row_size);
-            }
+        // Check if this register maps to the Domain (Output)
+        // Heuristic: If global tensor shape matches domain shape (and is large), we commit.
+        // Or if it matches the kernel bindings.
+        // For now, check if global shape >= tile offset
+        
+        // Only commit if dimensions match (rank)
+        if (main_t->ndim != batch->ndim) continue;
+        
+        // Only commit if it looks like a spatial field (matches domain size)
+        bool matches = true;
+        for(int d=0; d<batch->ndim; ++d) {
+            if (main_t->shape[d] != batch->domain_shape[d]) { matches = false; break; }
+        }
+        
+        if (matches) {
+            copy_tile_to_global(worker_t, main_t, worker_ctx->tile_offset, worker_ctx->tile_size);
         }
     }
 }
 
-// --- Job Execution ---
-
 static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data) {
     mf_backend_cpu_worker_state* state = (mf_backend_cpu_worker_state*)thread_local_data;
     mf_cpu_parallel_batch* batch = (mf_cpu_parallel_batch*)user_data;
-    
-    // fprintf(stderr, "DEBUG: Worker Job %u Start\n", job_idx); fflush(stderr);
 
-    // 1. Calculate Tile Bounds
-    u32 tile_y = job_idx / batch->tiles_x;
-    u32 tile_x = job_idx % batch->tiles_x;
-    
-    u32 start_x = tile_x * MF_CPU_TILE_SIZE;
-    u32 start_y = tile_y * MF_CPU_TILE_SIZE;
-    
-    u32 active_w = MF_CPU_TILE_SIZE;
-    if (start_x + active_w > batch->width) active_w = batch->width - start_x;
-    
-    u32 active_h = MF_CPU_TILE_SIZE;
-    if (start_y + active_h > batch->height) active_h = batch->height - start_y;
-    
-    if (active_w == 0 || active_h == 0) return;
-    
-    u32 batch_size = active_w * active_h;
-    
-    fprintf(stderr, "DEBUG: Job %u (Tile %u, %u) Size %ux%u\n", job_idx, tile_x, tile_y, active_w, active_h); fflush(stderr);
+    // 1. Unflatten Job ID -> Tile Coords
+    u32 tile_coords[MF_MAX_DIMS];
+    unflatten_index(job_idx, batch->ndim, batch->tile_strides, tile_coords);
 
-    // 2. Reset Context
+    // 2. Calculate Active Region
+    u32 pixel_offset[MF_MAX_DIMS];
+    u32 active_size[MF_MAX_DIMS];
+    u32 batch_size = 1;
+
+    for (int i = 0; i < batch->ndim; ++i) {
+        pixel_offset[i] = tile_coords[i] * MF_CPU_TILE_SIZE;
+        u32 size = MF_CPU_TILE_SIZE;
+        if (pixel_offset[i] + size > batch->domain_shape[i]) {
+            size = batch->domain_shape[i] - pixel_offset[i];
+        }
+        active_size[i] = size;
+        batch_size *= size;
+    }
+
+    if (batch_size == 0) return;
+
+    // 3. Reset Context
     mf_arena_reset(&state->reg_arena);
-    mf_arena_reset(&state->temp_arena); 
+    mf_arena_reset(&state->temp_arena);
     
-    // Allocate registers locally (pointing to prototypes initially)
+    // 4. Setup Local Registers
     mf_tensor* local_regs = MF_ARENA_PUSH(&state->reg_arena, mf_tensor, batch->program->meta.tensor_count);
     for (u32 i = 0; i < batch->program->meta.tensor_count; ++i) {
         local_regs[i] = batch->program->tensors[i];
-        
-        if (local_regs[i].data != NULL) {
-             // Keep program constant data
+        if (local_regs[i].data == NULL) {
+             local_regs[i].flags = MF_TENSOR_DYNAMIC;
+        } else {
              local_regs[i].flags &= ~MF_TENSOR_DYNAMIC;
              local_regs[i].flags &= ~MF_TENSOR_OWNS_DATA;
-        } else {
-             local_regs[i].data = NULL; // Will be set in prepare_inputs or resize
-             local_regs[i].flags = MF_TENSOR_DYNAMIC;
         }
     }
 
     mf_exec_ctx_init(&state->ctx, local_regs, batch->program->meta.tensor_count, (mf_allocator*)&state->temp_arena);
     
-    // 3. Setup Virtual Batching
+    // 5. Fill Context
     state->ctx.batch_size = batch_size;
-    state->ctx.global_offset[0] = start_y;
-    state->ctx.global_offset[1] = start_x;
-    state->ctx.global_offset[2] = 0;
-    state->ctx.local_size[0] = active_h;
-    state->ctx.local_size[1] = active_w;
-    state->ctx.local_size[2] = 1;
-    state->ctx.global_size[0] = batch->height;
-    state->ctx.global_size[1] = batch->width;
-    state->ctx.global_size[2] = 1;
-    
-    // 4. Propagate Inputs
-    prepare_inputs(state, batch, job_idx);
-    
-    // 5. Exec
-    // fprintf(stderr, "DEBUG: Exec Job %u\n", job_idx); fflush(stderr);
+    state->ctx.ndim = batch->ndim;
+    memcpy(state->ctx.tile_offset, pixel_offset, sizeof(u32) * MF_MAX_DIMS);
+    memcpy(state->ctx.tile_size, active_size, sizeof(u32) * MF_MAX_DIMS);
+    memcpy(state->ctx.domain_shape, batch->domain_shape, sizeof(u32) * MF_MAX_DIMS);
+
+    // 6. Propagate & Execute
+    prepare_inputs(state, batch);
     mf_cpu_exec(&state->ctx, batch->program, batch->op_table);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
         batch->main_state->error_code = (int32_t)state->ctx.error;
-    }
-    
-    // 6. Commit Outputs
-    if (state->ctx.error == MF_ERROR_NONE) {
-        commit_outputs(state, batch, tile_x, tile_y, active_w, active_h);
+    } else {
+        commit_outputs(state, batch);
     }
 }
 
-// --- Backend API ---
+// --- Dispatch ---
 
 static void mf_backend_cpu_dispatch(
     void* backend_state,
     const struct mf_program* program,
     struct mf_state* main_state,
-    u32 count_x, u32 count_y
+    const mf_tensor* domain
 ) {
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
+    if (!domain) return;
+
+    // 1. Analyze Domain
+    u8 ndim = domain->ndim;
+    if (ndim == 0) ndim = 1; // Scalar
+    if (ndim > MF_MAX_DIMS) ndim = MF_MAX_DIMS;
+
+    u32 domain_shape[MF_MAX_DIMS];
+    u32 tiles_per_dim[MF_MAX_DIMS];
+    u32 tile_strides[MF_MAX_DIMS];
     
-    // Optimization: Script Mode (Single Threaded, In-Place on Stack Context)
-    if (count_x == 1 && count_y == 1) {
-        if (main_state && program) {
-            mf_exec_ctx stack_ctx;
-            mf_exec_ctx_init(&stack_ctx, main_state->registers, main_state->register_count, main_state->allocator);
-            
-            stack_ctx.batch_size = 1;
-            stack_ctx.global_offset[0] = 0; stack_ctx.global_offset[1] = 0; stack_ctx.global_offset[2] = 0;
-            stack_ctx.global_size[0] = 1; stack_ctx.global_size[1] = 1; stack_ctx.global_size[2] = 1;
-            stack_ctx.local_size[0] = 1; stack_ctx.local_size[1] = 1; stack_ctx.local_size[2] = 1;
-            
-            mf_cpu_exec(&stack_ctx, program, state->op_table);
-            
-            if (stack_ctx.error != MF_ERROR_NONE) {
-                main_state->error_code = (int32_t)stack_ctx.error;
-            }
-        }
-        return;
+    u32 total_tiles = 1;
+    size_t total_elements = 1;
+
+    for (int i = 0; i < ndim; ++i) {
+        domain_shape[i] = (i < domain->ndim) ? domain->shape[i] : 1;
+        if (domain_shape[i] < 1) domain_shape[i] = 1;
+        
+        tiles_per_dim[i] = (domain_shape[i] + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
+        total_elements *= domain_shape[i];
     }
     
-    u32 tiles_x = (count_x + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
-    u32 tiles_y = (count_y + MF_CPU_TILE_SIZE - 1) / MF_CPU_TILE_SIZE;
-    u32 total_jobs = tiles_x * tiles_y;
+    // Calculate Tile Strides (Row-Major: Last dim is 1)
+    // Actually, job indices map to TILE COORDINATES.
+    // e.g. TILE_COORDS [0,0] -> Job 0.
+    // Strides for unflattening:
+    // If dims=[Y, X], strides=[TilesX, 1].
+    // Coords[0] = idx / TilesX.
     
-    if (total_jobs == 0) return;
+    u32 current_stride = 1;
+    for (int i = ndim - 1; i >= 0; --i) {
+        tile_strides[i] = current_stride;
+        current_stride *= tiles_per_dim[i];
+    }
+    total_tiles = current_stride;
 
+    // 2. Fast Path (Inline)
+    if (total_elements <= MF_CPU_INLINE_THRESHOLD || total_tiles == 1) {
+        // Run on calling thread using temporary worker state
+        // TODO: Reuse a cached thread-local state? For now, alloc/free is okay for "Fast Path" 
+        // compared to ThreadPool overhead, but ideally we want zero alloc.
+        // Actually, creating a worker state (16MB heap) is expensive!
+        // We should use a simplified stack-based execution for extremely small jobs.
+        
+        // For Phase 20 MVP, let's just use the standard path but serial.
+        // Optimization: if truly scalar (1 element), stack allocate registers?
+        
+        mf_backend_cpu_worker_state* temp_worker = worker_init(0, NULL);
+        
+        mf_cpu_parallel_batch batch = {
+            .program = program,
+            .main_state = main_state,
+            .op_table = state->op_table,
+            .ndim = ndim,
+        };
+        memcpy(batch.domain_shape, domain_shape, sizeof(domain_shape));
+        memcpy(batch.tiles_per_dim, tiles_per_dim, sizeof(tiles_per_dim));
+        memcpy(batch.tile_strides, tile_strides, sizeof(tile_strides));
+        
+        cpu_worker_job(0, temp_worker, &batch);
+        
+        worker_cleanup(temp_worker, NULL);
+        return;
+    }
+
+    // 3. Parallel Dispatch
     mf_cpu_parallel_batch batch = {
         .program = program,
         .main_state = main_state,
         .op_table = state->op_table,
-        .width = count_x,
-        .height = count_y,
-        .tiles_x = tiles_x,
-        .tiles_y = tiles_y
+        .ndim = ndim,
     };
+    memcpy(batch.domain_shape, domain_shape, sizeof(domain_shape));
+    memcpy(batch.tiles_per_dim, tiles_per_dim, sizeof(tiles_per_dim));
+    memcpy(batch.tile_strides, tile_strides, sizeof(tile_strides));
 
-    if (state && state->pool && total_jobs > 1) {
-        mf_thread_pool_run(state->pool, total_jobs, cpu_worker_job, &batch);
+    if (state->pool) {
+        mf_thread_pool_run(state->pool, total_tiles, cpu_worker_job, &batch);
     } else {
-        // Serial fallback (still uses a worker state for heap/temp memory isolation)
         mf_backend_cpu_worker_state* temp_worker = worker_init(0, NULL);
-        for (u32 i = 0; i < total_jobs; ++i) {
+        for (u32 i = 0; i < total_tiles; ++i) {
             cpu_worker_job(i, temp_worker, &batch);
         }
         worker_cleanup(temp_worker, NULL);
@@ -301,30 +406,20 @@ static void mf_backend_cpu_dispatch(
 static void mf_backend_cpu_shutdown(void* backend_state) {
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
     if (!state) return;
-    
-    if (state->pool) {
-        mf_thread_pool_destroy(state->pool);
-    }
-    
+    if (state->pool) mf_thread_pool_destroy(state->pool);
     free(state);
 }
 
 void mf_backend_cpu_init(mf_backend* backend, int num_threads) {
     memset(backend, 0, sizeof(mf_backend));
-    
     mf_backend_cpu_state* state = calloc(1, sizeof(mf_backend_cpu_state));
-    
     mf_thread_pool_desc pool_desc = {
         .num_threads = num_threads,
         .init_fn = worker_init,
-        .cleanup_fn = worker_cleanup,
-        .user_data = NULL
+        .cleanup_fn = worker_cleanup
     };
     state->pool = mf_thread_pool_create(&pool_desc);
-    
-    // Fill the internal operation table for the interpreter
     mf_ops_fill_table(state->op_table);
-    
     backend->state = state;
     backend->shutdown = mf_backend_cpu_shutdown;
     backend->dispatch = mf_backend_cpu_dispatch;

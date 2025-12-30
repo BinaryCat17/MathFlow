@@ -24,7 +24,7 @@ typedef void (*mf_backend_dispatch_func)(
     void* backend_state,
     const struct mf_program* program,
     mf_state* state,
-    u32 count_x, u32 count_y
+    const mf_tensor* domain
 );
 
 // Cleanup function for backend resources

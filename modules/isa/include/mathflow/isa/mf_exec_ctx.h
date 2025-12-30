@@ -31,9 +31,12 @@ struct mf_exec_ctx {
     
     // Execution Configuration
     u32 batch_size; 
-    u32 global_offset[3];
-    u32 local_size[3];
-    u32 global_size[3];
+    
+    // N-Dimensional Context
+    u8 ndim;
+    u32 tile_offset[MF_MAX_DIMS];  // Start coords of this tile/batch
+    u32 tile_size[MF_MAX_DIMS];    // Size of this tile/batch (active elements)
+    u32 domain_shape[MF_MAX_DIMS]; // Total size of the execution domain
 
     // State
     mf_exec_error error;
@@ -49,6 +52,10 @@ static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size
     ctx->registers = registers;
     ctx->register_count = reg_count;
     ctx->allocator = allocator;
+    ctx->ndim = 1; // Default
+    ctx->tile_size[0] = 1;
+    ctx->domain_shape[0] = 1;
+    ctx->batch_size = 1;
 }
 
 static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_access_mode mode) {

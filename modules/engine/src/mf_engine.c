@@ -196,12 +196,11 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         mf_pipeline_kernel* ker_desc = &pipe->kernels[i];
         mf_kernel_inst* ker = &engine->kernels[i];
         
-        MF_LOG_INFO("  Kernel[%u]: %s (freq=%u, domain=%s)", i, ker_desc->id, ker_desc->frequency, ker_desc->domain == MF_DOMAIN_SPATIAL ? "spatial" : "scalar");
+        MF_LOG_INFO("  Kernel[%u]: %s (freq=%u)", i, ker_desc->id, ker_desc->frequency);
 
         ker->id = strdup(ker_desc->id);
         ker->program = programs[i];
         ker->frequency = ker_desc->frequency;
-        ker->domain = ker_desc->domain;
         
         // Initialize Local State (Registers)
         ker->state.allocator = allocator;
@@ -242,7 +241,7 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
     }
 }
 
-void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
+void mf_engine_dispatch(mf_engine* engine, const mf_tensor* domain) {
     if (!engine) return;
 
     MF_LOG_TRACE("Dispatching Pipeline frame %llu", (unsigned long long)engine->frame_index);
@@ -266,36 +265,6 @@ void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
             void* data_ptr = is_even ? res->buffer_a : res->buffer_b;
             if (!res->persistent) data_ptr = res->buffer_a;
 
-            // Check if this port is an Output for the kernel?
-            // Heuristic: if name starts with "out_" and resource is persistent, write to the *other* buffer?
-            // Actually, the ping-pong logic is:
-            // Input: Read from Buffer A (Previous)
-            // Output: Write to Buffer B (Next)
-            // On next frame, we swap A and B.
-            // But here "buffer_a" is just pointer. 
-            // If is_even: Read=A, Write=B.
-            // If !is_even: Read=B, Write=A.
-            
-            // To know if it's Write, we need port direction. The Symbol table doesn't explicitly say In/Out yet (compiler TODO).
-            // But we can use the naming convention or just map BOTH to the "Current Write" buffer if it's an output?
-            // Wait, for Phase 19, we rely on manual double buffering in pipeline desc?
-            // No, the engine manages it.
-            
-            // Let's stick to the logic:
-            // If Persistent:
-            //   Readers see "Previous Frame" (A if even, B if odd? No, A if even means A is "Current Read").
-            //   Writers write to "Next Frame" (B if even).
-            // But a kernel might do Read-Modify-Write? No, that's race condition.
-            
-            // Current simple logic:
-            // Host sees A (always?) or flips?
-            
-            // Let's keep it simple:
-            // Even Frame: Read A, Write B.
-            // Odd Frame: Read B, Write A.
-            
-            // How do we know if it's a Write?
-            // "out_" prefix is the standard convention in this engine.
             const char* port_name = NULL;
             if (ker->program->symbols) {
                 for(u32 s=0; s<ker->program->meta.symbol_count; ++s) {
@@ -311,8 +280,6 @@ void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
                 data_ptr = is_even ? res->buffer_b : res->buffer_a;
             } else {
                 // Input or non-persistent (shared scratchpad)
-                // If non-persistent, A is the only buffer.
-                // If persistent input, read from "Current" (A if even).
                 data_ptr = is_even ? res->buffer_a : res->buffer_b;
                 if (!res->persistent) data_ptr = res->buffer_a;
             }
@@ -320,19 +287,24 @@ void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
             t->data = data_ptr;
             t->capacity_bytes = res->size_bytes;
             
-            // CRITICAL: Update register shape to match global resource
             t->ndim = res->desc.ndim;
             t->size = res->desc.size;
             memcpy(t->shape, res->desc.shape, sizeof(int32_t) * MF_MAX_DIMS);
         }
 
+        // Determine Execution Domain
+        // Phase 20: Use explicit domain tensor if provided, or fallback to first bound output
+        const mf_tensor* kernel_domain = domain;
+        if (!kernel_domain && ker->binding_count > 0) {
+             // Fallback: Use the first bound register as domain (heuristic)
+             // Ideally we should use the explicit 'implicit domain' logic from roadmap
+             kernel_domain = &ker->state.registers[ker->bindings[0].local_reg];
+        }
+
         // Execute Kernel
         for (u32 f = 0; f < ker->frequency; ++f) {
-            if (engine->backend.dispatch) {
-                u32 dx = (ker->domain == MF_DOMAIN_SPATIAL) ? count_x : 1;
-                u32 dy = (ker->domain == MF_DOMAIN_SPATIAL) ? count_y : 1;
-                
-                engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, dx, dy);
+            if (engine->backend.dispatch && kernel_domain) {
+                engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, kernel_domain);
             }
         }
     }

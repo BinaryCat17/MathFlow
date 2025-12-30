@@ -2,6 +2,7 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
+#include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_log.h>
 
 #include <stdio.h>
@@ -182,7 +183,13 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     kernel.id = "main";
     kernel.graph_path = path;
     kernel.frequency = 1;
-    kernel.domain = MF_DOMAIN_SPATIAL; // Default to full screen shader
+
+    // Heuristic: If graph uses Spatial Ops (Index/Resolution), assume Spatial Domain.
+    // Otherwise, assume Scalar (Script) Domain.
+    // Phase 20: Removed domain field.
+    // kernel.domain = MF_DOMAIN_SCALAR;
+    // ... loop removed ...
+
     kernel.bindings = bindings;
     kernel.binding_count = res_count;
 

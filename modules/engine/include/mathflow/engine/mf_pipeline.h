@@ -19,17 +19,11 @@ typedef struct {
     const char* global_resource; // Resource name defined in mf_pipeline_desc
 } mf_pipeline_binding;
 
-typedef enum {
-    MF_DOMAIN_SCALAR = 0, // Execution domain [1, 1]
-    MF_DOMAIN_SPATIAL = 1 // Execution domain [W, H] from host
-} mf_kernel_domain;
-
 // Description of a single execution unit (Shader/Kernel)
 typedef struct {
     const char* id;
     const char* graph_path; // Path to .json or .bin
     uint32_t frequency;     // 1 = every frame, N = N times per frame
-    mf_kernel_domain domain;
     
     mf_pipeline_binding* bindings;
     uint32_t binding_count;

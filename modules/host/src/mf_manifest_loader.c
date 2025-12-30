@@ -183,36 +183,34 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
             cJSON* ker = NULL;
             cJSON_ArrayForEach(ker, kernels) {
                 mf_pipeline_kernel* pk = &out_desc->pipeline.kernels[i++];
+                
                 cJSON* id = cJSON_GetObjectItem(ker, "id");
-                if (id) pk->id = strdup(id->valuestring);
+                if (id && cJSON_IsString(id)) pk->id = strdup(id->valuestring);
 
                 cJSON* entry = cJSON_GetObjectItem(ker, "entry");
-                if (entry) pk->graph_path = join_path(base_dir, entry->valuestring);
+                if (entry && cJSON_IsString(entry)) pk->graph_path = join_path(base_dir, entry->valuestring);
 
                 cJSON* freq = cJSON_GetObjectItem(ker, "frequency");
-                if (cJSON_IsNumber(freq)) pk->frequency = freq->valueint;
+                if (freq && cJSON_IsNumber(freq)) pk->frequency = (u32)freq->valueint;
                 else pk->frequency = 1;
 
-                cJSON* domain = cJSON_GetObjectItem(ker, "domain");
-                if (domain && cJSON_IsString(domain)) {
-                    if (strcmp(domain->valuestring, "spatial") == 0) pk->domain = MF_DOMAIN_SPATIAL;
-                    else pk->domain = MF_DOMAIN_SCALAR;
-                } else {
-                    pk->domain = MF_DOMAIN_SCALAR;
-                }
-
-                // Bindings
                 cJSON* bindings = cJSON_GetObjectItem(ker, "bindings");
-                if (cJSON_IsObject(bindings)) {
+                if (bindings && cJSON_IsArray(bindings)) {
                     pk->binding_count = cJSON_GetArraySize(bindings);
                     pk->bindings = calloc(pk->binding_count, sizeof(mf_pipeline_binding));
                     
-                    int b_idx = 0;
+                    int b = 0;
                     cJSON* bind = NULL;
                     cJSON_ArrayForEach(bind, bindings) {
-                        pk->bindings[b_idx].kernel_port = strdup(bind->string);
-                        pk->bindings[b_idx].global_resource = strdup(bind->valuestring);
-                        b_idx++;
+                        mf_pipeline_binding* pb = &pk->bindings[b++];
+                        // Expected format: "port_name": "resource_name" (Key-Value)
+                        // But cJSON array of objects? Or object?
+                        // "bindings": [ {"port": "A", "resource": "B"}, ... ]
+                        // Let's assume array of objects based on previous context.
+                        cJSON* port = cJSON_GetObjectItem(bind, "port");
+                        cJSON* res = cJSON_GetObjectItem(bind, "resource");
+                        if (port) pb->kernel_port = strdup(port->valuestring);
+                        if (res) pb->global_resource = strdup(res->valuestring);
                     }
                 }
             }

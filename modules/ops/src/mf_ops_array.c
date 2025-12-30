@@ -107,7 +107,7 @@ static void op_compress(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_id
 }
 
 // --- Op: Index (Intrinsic Coordinate) ---
-// Src1: Axis (0=Y, 1=X, etc)
+// Src1: Axis (0=Slowest, e.g. Y/Batch, N=Fastest, e.g. X)
 // Dest: Vector of global coordinates
 static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
@@ -118,9 +118,9 @@ static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
     if (axis_t->dtype == MF_DTYPE_F32) axis = (int)((f32*)axis_t->data)[0];
     else if (axis_t->dtype == MF_DTYPE_I32) axis = ((int32_t*)axis_t->data)[0];
     
-    // Determine Output Size
-    // If batch_size is set, use it. Otherwise 1 (Scalar)? 
-    // Usually OP_INDEX implies we are in a parallel context.
+    // Safety check for axis
+    if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
+
     size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
 
     dst->dtype = MF_DTYPE_F32;
@@ -129,26 +129,38 @@ static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
 
     f32* d = (f32*)dst->data;
     
-    // Generation Logic (Assumes 2D Tile Layout: Row-Major)
-    // Axis 1 is Fastest (X), Axis 0 is Slowest (Y)
-    u32 width = ctx->local_size[1];
-    if (width == 0) width = 1; // Safety
+    // Pre-calculate strides for unflattening the batch index inside the tile
+    // The batch corresponds to the TILE shape (ctx->tile_size).
+    // We assume the tile execution is iterating over the tile dimensions in standard order.
     
-    u32 offset = ctx->global_offset[axis];
+    u32 tile_strides[MF_MAX_DIMS];
+    u32 current_stride = 1;
+    // Iterate from fastest dim (last) to slowest (0)
+    for (int i = ctx->ndim - 1; i >= 0; --i) {
+        tile_strides[i] = current_stride;
+        current_stride *= ctx->tile_size[i];
+    }
     
-    for (size_t i = 0; i < count; ++i) {
-        u32 coord = 0;
-        if (axis == 1) {
-            // X: Modulo Width
-            coord = offset + (i % width);
-        } else if (axis == 0) {
-            // Y: Divide Width
-            coord = offset + (i / width);
-        } else {
-            // Z or others: For now assume 0 or direct mapping if 1D
-             coord = offset;
+    u32 axis_offset = ctx->tile_offset[axis];
+    u32 axis_stride = tile_strides[axis];
+    
+    // Optimization: If stride is 1 (Fastest Axis), simple increment
+    if (axis_stride == 1) {
+        for (size_t i = 0; i < count; ++i) {
+            d[i] = (f32)(axis_offset + i);
         }
-        d[i] = (f32)coord;
+    } else {
+        // Generic Unflattening (only for the requested axis)
+        // local_coord = (i / stride) % size
+        // But since we only need ONE axis, we can optimize.
+        // Actually, "stride" here accumulates lower dims.
+        // The formula is: (i / stride) % dim_size
+        u32 dim_size = ctx->tile_size[axis];
+        
+        for (size_t i = 0; i < count; ++i) {
+            u32 local_coord = (i / axis_stride) % dim_size;
+            d[i] = (f32)(axis_offset + local_coord);
+        }
     }
 }
 
@@ -167,11 +179,11 @@ static void op_resolution(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_
     // Output: Scalar [1]
     dst->dtype = MF_DTYPE_F32;
     int32_t shape[] = { 1 };
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 0)) return; // 0 dimensions = scalar
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 0)) return; 
 
     f32* d = (f32*)dst->data;
-    if (axis >= 0 && axis < 3) {
-        d[0] = (f32)ctx->global_size[axis];
+    if (axis >= 0 && axis < MF_MAX_DIMS) {
+        d[0] = (f32)ctx->domain_shape[axis];
     } else {
         d[0] = 0.0f;
     }
