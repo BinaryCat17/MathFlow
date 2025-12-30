@@ -1,0 +1,30 @@
+{
+  "nodes": [
+    { "id": "in_val", "type": "Input", "data": { "value": 0.0 } },
+    { "id": "u_Resolution", "type": "Input", "data": { "value": [800, 600] } },
+    { "id": "frag_coord", "type": "Index", "data": { "axis": 0 } },
+    { "id": "res_x", "type": "Const", "data": { "value": 800.0 } },
+    { "id": "res_y", "type": "Const", "data": { "value": 600.0 } },
+    
+    { "id": "norm_x", "type": "Div" },
+    { "id": "pos_x", "type": "Sin" },
+    { "id": "circle_pos_x", "type": "Add" },
+    
+    { "id": "dist", "type": "Sub" },
+    { "id": "abs_dist", "type": "Abs" },
+    { "id": "color_val", "type": "Step", "data": { "value": 0.1 } },
+    { "id": "out_Color", "type": "Output" }
+  ],
+  "links": [
+    { "src": "in_val", "src_port": 0, "dst": "pos_x", "dst_port": 0 },
+    { "src": "pos_x", "src_port": 0, "dst": "circle_pos_x", "dst_port": 0 },
+    { "src": "res_x", "src_port": 0, "dst": "circle_pos_x", "dst_port": 1 },
+    
+    { "src": "frag_coord", "src_port": 0, "dst": "dist", "dst_port": 0 },
+    { "src": "circle_pos_x", "src_port": 0, "dst": "dist", "dst_port": 1 },
+    
+    { "src": "dist", "src_port": 0, "dst": "abs_dist", "dst_port": 0 },
+    { "src": "abs_dist", "src_port": 0, "dst": "color_val", "dst_port": 0 },
+    { "src": "color_val", "src_port": 0, "dst": "out_Color", "dst_port": 0 }
+  ]
+}

@@ -65,9 +65,6 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS},
 
-    // --- State ---
-    {"Memory", MF_NODE_MEMORY},
-
     // --- SubGraph ---
     {"Call", MF_NODE_CALL},
     {"ExportInput", MF_NODE_EXPORT_INPUT},
@@ -154,10 +151,17 @@ void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena) {
 
 static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena, const char* base_path) {
     cJSON* root = cJSON_Parse(json_str);
-    if (!root) return false;
+    if (!root) {
+        MF_LOG_ERROR("JSON parse error before: %s", cJSON_GetErrorPtr());
+        return false;
+    }
 
     cJSON* nodes = cJSON_GetObjectItem(root, "nodes");
-    if (!nodes) { cJSON_Delete(root); return false; }
+    if (!nodes) {
+        MF_LOG_ERROR("Invalid graph JSON: missing 'nodes' array.");
+        cJSON_Delete(root);
+        return false;
+    }
 
     int count = cJSON_GetArraySize(nodes);
     out_ir->nodes = MF_ARENA_PUSH(arena, mf_ir_node, count);
@@ -185,41 +189,44 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
         // Data Parsing
         cJSON* data = cJSON_GetObjectItem(node, "data");
         
-        if ((ir_node->type == MF_NODE_INPUT || ir_node->type == MF_NODE_CONST) && data) {
-            cJSON* val = cJSON_GetObjectItem(data, "value");
-            if (val) parse_constant_tensor(val, &ir_node->constant, arena);
-        }
-        else if (ir_node->type == MF_NODE_MEMORY) {
-             cJSON* init_val = cJSON_GetObjectItem(node, "init");
-             if (init_val) parse_constant_tensor(init_val, &ir_node->constant, arena);
-             else {
-                 ir_node->constant.dtype = MF_DTYPE_F32;
-                 ir_node->constant.ndim = 0;
-                 ir_node->constant.size = 1;
-                 ir_node->constant.data = MF_ARENA_PUSH(arena, f32, 1);
-                 *((f32*)ir_node->constant.data) = 0.0f;
-             }
-        }
-        else if (ir_node->type == MF_NODE_CALL && data) {
-            cJSON* path_val = cJSON_GetObjectItem(data, "path");
-            if (path_val && cJSON_IsString(path_val)) {
-                // If base_path is provided, resolve relative paths
-                if (base_path) {
-                    char* dir = mf_path_get_dir(base_path, arena);
-                    ir_node->sub_graph_path = mf_path_join(dir, path_val->valuestring, arena);
-                } else {
-                    ir_node->sub_graph_path = mf_arena_strdup(arena, path_val->valuestring);
+        if (data) {
+            if (ir_node->type == MF_NODE_INPUT || ir_node->type == MF_NODE_CONST || ir_node->type == MF_NODE_STEP) {
+                cJSON* val = cJSON_GetObjectItem(data, "value");
+                if (val) parse_constant_tensor(val, &ir_node->constant, arena);
+            }
+            else if (ir_node->type == MF_NODE_INDEX || ir_node->type == MF_NODE_RESOLUTION) {
+                cJSON* axis = cJSON_GetObjectItem(data, "axis");
+                if (axis && cJSON_IsNumber(axis)) {
+                     // Store as scalar I32
+                     ir_node->constant.dtype = MF_DTYPE_I32;
+                     ir_node->constant.ndim = 0;
+                     ir_node->constant.size = 1;
+                     ir_node->constant.capacity_bytes = sizeof(int32_t);
+                     ir_node->constant.data = MF_ARENA_PUSH(arena, int32_t, 1);
+                     *((int32_t*)ir_node->constant.data) = (int32_t)axis->valueint;
                 }
             }
-        }
-        else if ((ir_node->type == MF_NODE_EXPORT_INPUT || ir_node->type == MF_NODE_EXPORT_OUTPUT) && data) {
-            cJSON* idx_val = cJSON_GetObjectItem(data, "index");
-            ir_node->constant.dtype = MF_DTYPE_I32;
-            ir_node->constant.ndim = 0;
-            ir_node->constant.size = 1;
-            ir_node->constant.data = MF_ARENA_PUSH(arena, i32, 1);
-            if (idx_val) *((i32*)ir_node->constant.data) = (i32)idx_val->valueint;
-            else *((i32*)ir_node->constant.data) = 0;
+            else if (ir_node->type == MF_NODE_CALL) {
+                cJSON* path_val = cJSON_GetObjectItem(data, "path");
+                if (path_val && cJSON_IsString(path_val)) {
+                    // If base_path is provided, resolve relative paths
+                    if (base_path) {
+                        char* dir = mf_path_get_dir(base_path, arena);
+                        ir_node->sub_graph_path = mf_path_join(dir, path_val->valuestring, arena);
+                    } else {
+                        ir_node->sub_graph_path = mf_arena_strdup(arena, path_val->valuestring);
+                    }
+                }
+            }
+            else if ((ir_node->type == MF_NODE_EXPORT_INPUT || ir_node->type == MF_NODE_EXPORT_OUTPUT)) {
+                cJSON* idx_val = cJSON_GetObjectItem(data, "index");
+                ir_node->constant.dtype = MF_DTYPE_I32;
+                ir_node->constant.ndim = 0;
+                ir_node->constant.size = 1;
+                ir_node->constant.data = MF_ARENA_PUSH(arena, i32, 1);
+                if (idx_val) *((i32*)ir_node->constant.data) = (i32)idx_val->valueint;
+                else *((i32*)ir_node->constant.data) = 0;
+            }
         }
 
         i++;
@@ -270,15 +277,35 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
 
 // --- Expansion Logic ---
 
-static bool has_call_nodes(mf_graph_ir* ir) {
+static bool is_input_connected(mf_graph_ir* ir, u32 node_idx, u32 port_idx) {
+    for (size_t i = 0; i < ir->link_count; ++i) {
+        if (ir->links[i].dst_node_idx == node_idx && ir->links[i].dst_port == port_idx) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool needs_expansion(mf_graph_ir* ir) {
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].type == MF_NODE_CALL) return true;
+        
+        // Check for desugaring candidates
+        if (ir->nodes[i].constant.data != NULL) {
+            if (ir->nodes[i].type == MF_NODE_INDEX || 
+                ir->nodes[i].type == MF_NODE_RESOLUTION ||
+                ir->nodes[i].type == MF_NODE_STEP) 
+            {
+                // Only if unconnected
+                if (!is_input_connected(ir, (u32)i, 0)) return true;
+            }
+        }
     }
     return false;
 }
 
 static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
-    // 1. Calculate capacity (simplification: assume max 10x expansion per pass, or just count)
+    // 1. Calculate capacity
     typedef struct LNode { mf_ir_node n; struct LNode* next; } LNode;
     typedef struct LLink { mf_ir_link l; struct LLink* next; } LLink;
     
@@ -319,6 +346,39 @@ static bool expand_graph(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
     for (size_t i = 0; i < src->node_count; ++i) {
         mf_ir_node* node = &src->nodes[i];
         
+        // --- DESUGARING START ---
+        if (node->constant.data != NULL && 
+           (node->type == MF_NODE_INDEX || node->type == MF_NODE_RESOLUTION || node->type == MF_NODE_STEP)) 
+        {
+            // Check if Port 0 is missing input
+            if (!is_input_connected(src, (u32)i, 0)) {
+                // Generate Implicit Const
+                char* const_id = mf_arena_sprintf(arena, "%s_impl_const", node->id ? node->id : "gen");
+                mf_ir_node const_node = {0};
+                const_node.id = const_id;
+                const_node.type = MF_NODE_CONST;
+                const_node.constant = node->constant; // Transfer ownership/copy
+                
+                // Clear original constant to prevent re-desugaring
+                node->constant.data = NULL;
+                
+                // Add Const Node
+                mf_map_put(&global_map, const_id, current_idx);
+                APPEND_NODE(const_node);
+                u32 const_idx = current_idx++;
+                
+                // Link
+                mf_ir_link implicit_link = {0};
+                implicit_link.src_node_idx = const_idx;
+                implicit_link.dst_node_idx = current_idx; // Next one
+                implicit_link.src_port = 0;
+                implicit_link.dst_port = 0;
+                
+                APPEND_LINK(implicit_link);
+            }
+        }
+        // --- DESUGARING END ---
+
         if (node->type == MF_NODE_CALL) {
             // LOAD SUBGRAPH
             if (!node->sub_graph_path) continue;
@@ -469,7 +529,7 @@ bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* 
     // Expand Loop
     mf_graph_ir current_ir = initial_ir;
     for (int pass = 0; pass < 10; ++pass) {
-        if (!has_call_nodes(&current_ir)) {
+        if (!needs_expansion(&current_ir)) {
             *out_ir = current_ir;
             return true;
         }

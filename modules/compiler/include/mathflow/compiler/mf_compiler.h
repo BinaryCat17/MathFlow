@@ -70,9 +70,6 @@ typedef enum {
     MF_NODE_CUMSUM,
     MF_NODE_COMPRESS,
     
-    // State
-    MF_NODE_MEMORY,
-
     // Sub-Graph
     MF_NODE_CALL,         // Call("path/to/graph.json")
     MF_NODE_EXPORT_INPUT, // Defines an Input Port for the SubGraph

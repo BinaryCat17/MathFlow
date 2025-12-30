@@ -41,7 +41,11 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
             if (state->allocator) {
                 size_t bytes = src->capacity_bytes;
                 dst->data = state->allocator->alloc(state->allocator, bytes);
-                if (dst->data) memcpy(dst->data, src->data, bytes);
+                if (dst->data) {
+                    memcpy(dst->data, src->data, bytes);
+                } else {
+                    MF_LOG_ERROR("Failed to allocate %zu bytes for constant tensor %u.", bytes, i);
+                }
                 dst->capacity_bytes = bytes;
                 dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
             } else {
@@ -55,6 +59,9 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
                  
                  dst->data = state->allocator->alloc(state->allocator, bytes);
                  if (dst->data) memset(dst->data, 0, bytes);
+                 else {
+                     MF_LOG_ERROR("Failed to allocate %zu bytes for register %u.", bytes, i);
+                 }
                  
                  dst->capacity_bytes = bytes;
                  dst->flags |= MF_TENSOR_OWNS_DATA | MF_TENSOR_DYNAMIC;
@@ -72,24 +79,34 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
 mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     MF_LOG_INFO("Creating Engine...");
     mf_engine* engine = calloc(1, sizeof(mf_engine));
-    if (!engine) return NULL;
+    if (!engine) {
+        MF_LOG_FATAL("Failed to allocate memory for engine structure.");
+        return NULL;
+    }
 
     size_t arena_size = (desc && desc->arena_size > 0) ? desc->arena_size : MF_MB(8);
     size_t heap_size = (desc && desc->heap_size > 0) ? desc->heap_size : MF_MB(64);
 
     engine->arena_buffer = malloc(arena_size);
-    if (!engine->arena_buffer) { free(engine); return NULL; }
+    if (!engine->arena_buffer) {
+        MF_LOG_FATAL("Failed to allocate memory for engine arena (%zu bytes).", arena_size);
+        free(engine);
+        return NULL;
+    }
     mf_arena_init(&engine->arena, engine->arena_buffer, arena_size);
 
     engine->heap_buffer = malloc(heap_size);
-    if (!engine->heap_buffer) { free(engine->arena_buffer); free(engine); return NULL; }
+    if (!engine->heap_buffer) {
+        MF_LOG_FATAL("Failed to allocate memory for engine heap (%zu bytes).", heap_size);
+        free(engine->arena_buffer);
+        free(engine);
+        return NULL;
+    }
     mf_heap_init(&engine->heap, engine->heap_buffer, heap_size);
 
     if (desc) {
         engine->backend = desc->backend;
     }
-
-    engine->state.allocator = (mf_allocator*)&engine->heap;
 
     return engine;
 }
@@ -106,23 +123,22 @@ void mf_engine_destroy(mf_engine* engine) {
 void mf_engine_reset(mf_engine* engine) {
     if (!engine) return;
 
-    if (engine->state_buffers && engine->program) {
-        for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
-            free(engine->state_buffers[i].buffer_a);
-            free(engine->state_buffers[i].buffer_b);
-        }
-        engine->state_buffers = NULL;
+    for (u32 i = 0; i < engine->kernel_count; ++i) {
+        mf_state_shutdown(&engine->kernels[i].state);
+        free(engine->kernels[i].id);
+    }
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        free(engine->resources[i].name);
     }
 
-    mf_state_shutdown(&engine->state);
     mf_arena_reset(&engine->arena);
     
     if (engine->heap_buffer) {
         mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
     }
     
-    engine->program = NULL;
-    engine->state.allocator = (mf_allocator*)&engine->heap;
+    engine->kernel_count = 0;
+    engine->resource_count = 0;
 }
 
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
@@ -130,126 +146,302 @@ mf_arena* mf_engine_get_arena(mf_engine* engine) {
     return &engine->arena;
 }
 
-void mf_engine_bind_program(mf_engine* engine, mf_program* prog) {
-    if (!engine || !prog) return;
-    engine->program = prog;
+void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs) {
+    if (!engine || !pipe) return;
     
-    mf_state_reset(&engine->state, engine->program, &engine->arena);
-    
-    u32 state_count = prog->meta.state_count;
-    engine->frame_index = 0;
-    
-    if (state_count > 0 && prog->state_table) {
-        engine->state_buffers = MF_ARENA_PUSH(&engine->arena, mf_state_buffer, state_count);
-        
-        for (u32 i = 0; i < state_count; ++i) {
-            mf_bin_state_link* link = &prog->state_table[i];
-            mf_tensor* t_proto = &prog->tensors[link->read_reg];
-            size_t bytes = mf_tensor_size_bytes(t_proto);
-            if (bytes == 0) bytes = 4;
+    MF_LOG_INFO("Binding Pipeline: %u resources, %u kernels", pipe->resource_count, pipe->kernel_count);
 
-            engine->state_buffers[i].size = bytes;
-            engine->state_buffers[i].buffer_a = malloc(bytes);
-            engine->state_buffers[i].buffer_b = malloc(bytes);
+    // 1. Allocate Global Resources
+    engine->resource_count = pipe->resource_count;
+    engine->resources = MF_ARENA_PUSH(&engine->arena, mf_resource_inst, engine->resource_count);
+    
+    mf_allocator* allocator = (mf_allocator*)&engine->heap;
+
+    for (u32 i = 0; i < pipe->resource_count; ++i) {
+        mf_pipeline_resource* res_desc = &pipe->resources[i];
+        mf_resource_inst* res = &engine->resources[i];
+        
+        MF_LOG_INFO("  Resource[%u]: %s (%s, persistent=%d)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other", res_desc->persistent);
+
+        res->name = strdup(res_desc->name);
+        res->persistent = res_desc->persistent;
+        
+        // Descriptor Prototype
+        memset(&res->desc, 0, sizeof(mf_tensor));
+        res->desc.dtype = res_desc->dtype;
+        res->desc.ndim = res_desc->ndim;
+        memcpy(res->desc.shape, res_desc->shape, sizeof(int32_t) * res_desc->ndim);
+        res->desc.size = 1;
+        for(int d=0; d<res->desc.ndim; ++d) res->desc.size *= res->desc.shape[d];
+        
+        size_t bytes = mf_tensor_size_bytes(&res->desc);
+        res->size_bytes = bytes;
+        
+        res->buffer_a = allocator->alloc(allocator, bytes);
+        if (res->buffer_a) memset(res->buffer_a, 0, bytes);
+        
+        if (res->persistent) {
+            res->buffer_b = allocator->alloc(allocator, bytes);
+            if (res->buffer_b) memset(res->buffer_b, 0, bytes);
+        } else {
+            res->buffer_b = NULL;
+        }
+    }
+
+    // 2. Load Kernels
+    engine->kernel_count = pipe->kernel_count;
+    engine->kernels = MF_ARENA_PUSH(&engine->arena, mf_kernel_inst, engine->kernel_count);
+    
+    for (u32 i = 0; i < pipe->kernel_count; ++i) {
+        mf_pipeline_kernel* ker_desc = &pipe->kernels[i];
+        mf_kernel_inst* ker = &engine->kernels[i];
+        
+        MF_LOG_INFO("  Kernel[%u]: %s (freq=%u, domain=%s)", i, ker_desc->id, ker_desc->frequency, ker_desc->domain == MF_DOMAIN_SPATIAL ? "spatial" : "scalar");
+
+        ker->id = strdup(ker_desc->id);
+        ker->program = programs[i];
+        ker->frequency = ker_desc->frequency;
+        ker->domain = ker_desc->domain;
+        
+        // Initialize Local State (Registers)
+        ker->state.allocator = allocator;
+        mf_state_reset(&ker->state, ker->program, &engine->arena);
+        
+        // 3. Setup Bindings
+        ker->binding_count = ker_desc->binding_count;
+        ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, ker->binding_count);
+        
+        for (u32 b = 0; b < ker_desc->binding_count; ++b) {
+            mf_pipeline_binding* bind = &ker_desc->bindings[b];
             
-            if (t_proto->data) {
-                memcpy(engine->state_buffers[i].buffer_a, t_proto->data, bytes);
-                memset(engine->state_buffers[i].buffer_b, 0, bytes);
+            // Find Local Reg Index
+            int32_t local_idx = -1;
+            for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+                if (strcmp(ker->program->symbols[s].name, bind->kernel_port) == 0) {
+                    local_idx = ker->program->symbols[s].register_idx;
+                    break;
+                }
+            }
+            
+            // Find Global Resource Index
+            int32_t global_idx = -1;
+            for (u32 r = 0; r < engine->resource_count; ++r) {
+                if (strcmp(engine->resources[r].name, bind->global_resource) == 0) {
+                    global_idx = r;
+                    break;
+                }
+            }
+            
+            if (local_idx != -1 && global_idx != -1) {
+                ker->bindings[b].local_reg = (u16)local_idx;
+                ker->bindings[b].global_res = (u16)global_idx;
             } else {
-                memset(engine->state_buffers[i].buffer_a, 0, bytes);
-                memset(engine->state_buffers[i].buffer_b, 0, bytes);
+                MF_LOG_ERROR("Failed to bind %s -> %s in kernel %s", bind->kernel_port, bind->global_resource, ker->id);
             }
         }
     }
 }
 
 void mf_engine_dispatch(mf_engine* engine, u32 count_x, u32 count_y) {
-    if (!engine || !engine->program) return;
-    
-    // Reset error state
-    engine->state.error_code = 0;
-    
-    MF_LOG_TRACE("Dispatching frame %llu: %ux%u", (unsigned long long)engine->frame_index, count_x, count_y);
+    if (!engine) return;
 
-    engine->global_size[0] = count_y;
-    engine->global_size[1] = count_x;
-    engine->global_size[2] = 1;
+    MF_LOG_TRACE("Dispatching Pipeline frame %llu", (unsigned long long)engine->frame_index);
+    
+    bool is_even = (engine->frame_index % 2 == 0);
 
-    if (engine->state_buffers && engine->program->meta.state_count > 0) {
-        bool is_even = (engine->frame_index % 2 == 0);
-        for (u32 i = 0; i < engine->program->meta.state_count; ++i) {
-            mf_bin_state_link* link = &engine->program->state_table[i];
-            mf_state_buffer* buf = &engine->state_buffers[i];
-            void* prev = is_even ? buf->buffer_a : buf->buffer_b;
-            void* next = is_even ? buf->buffer_b : buf->buffer_a;
+    for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
+        mf_kernel_inst* ker = &engine->kernels[k_idx];
+        MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
+        
+        // Zero-Copy Bindings: Map Global Resources to Local Registers
+        for (u32 b = 0; b < ker->binding_count; ++b) {
+            u16 local_reg = ker->bindings[b].local_reg;
+            u16 global_res = ker->bindings[b].global_res;
             
-            mf_tensor* t_read = &engine->state.registers[link->read_reg];
-            mf_tensor* t_write = &engine->state.registers[link->write_reg];
+            if (global_res >= engine->resource_count) continue;
             
-            if (t_read->flags & MF_TENSOR_OWNS_DATA) {
-                engine->state.allocator->free(engine->state.allocator, t_read->data);
-                t_read->flags &= ~MF_TENSOR_OWNS_DATA;
+            mf_resource_inst* res = &engine->resources[global_res];
+            mf_tensor* t = &ker->state.registers[local_reg];
+
+            void* data_ptr = is_even ? res->buffer_a : res->buffer_b;
+            if (!res->persistent) data_ptr = res->buffer_a;
+
+            // Check if this port is an Output for the kernel?
+            // Heuristic: if name starts with "out_" and resource is persistent, write to the *other* buffer?
+            // Actually, the ping-pong logic is:
+            // Input: Read from Buffer A (Previous)
+            // Output: Write to Buffer B (Next)
+            // On next frame, we swap A and B.
+            // But here "buffer_a" is just pointer. 
+            // If is_even: Read=A, Write=B.
+            // If !is_even: Read=B, Write=A.
+            
+            // To know if it's Write, we need port direction. The Symbol table doesn't explicitly say In/Out yet (compiler TODO).
+            // But we can use the naming convention or just map BOTH to the "Current Write" buffer if it's an output?
+            // Wait, for Phase 19, we rely on manual double buffering in pipeline desc?
+            // No, the engine manages it.
+            
+            // Let's stick to the logic:
+            // If Persistent:
+            //   Readers see "Previous Frame" (A if even, B if odd? No, A if even means A is "Current Read").
+            //   Writers write to "Next Frame" (B if even).
+            // But a kernel might do Read-Modify-Write? No, that's race condition.
+            
+            // Current simple logic:
+            // Host sees A (always?) or flips?
+            
+            // Let's keep it simple:
+            // Even Frame: Read A, Write B.
+            // Odd Frame: Read B, Write A.
+            
+            // How do we know if it's a Write?
+            // "out_" prefix is the standard convention in this engine.
+            const char* port_name = NULL;
+            if (ker->program->symbols) {
+                for(u32 s=0; s<ker->program->meta.symbol_count; ++s) {
+                    if (ker->program->symbols[s].register_idx == local_reg) {
+                        port_name = ker->program->symbols[s].name;
+                        break;
+                    }
+                }
             }
-            t_read->data = prev;
-            t_read->capacity_bytes = buf->size;
-             
-            if (t_write->flags & MF_TENSOR_OWNS_DATA) {
-                engine->state.allocator->free(engine->state.allocator, t_write->data);
-                t_write->flags &= ~MF_TENSOR_OWNS_DATA;
+
+            if (port_name && strncmp(port_name, "out_", 4) == 0 && res->persistent) {
+                // It is an output! Write to the "Next" buffer.
+                data_ptr = is_even ? res->buffer_b : res->buffer_a;
+            } else {
+                // Input or non-persistent (shared scratchpad)
+                // If non-persistent, A is the only buffer.
+                // If persistent input, read from "Current" (A if even).
+                data_ptr = is_even ? res->buffer_a : res->buffer_b;
+                if (!res->persistent) data_ptr = res->buffer_a;
             }
-            t_write->data = next;
-            t_write->capacity_bytes = buf->size;
+
+            t->data = data_ptr;
+            t->capacity_bytes = res->size_bytes;
+            
+            // CRITICAL: Update register shape to match global resource
+            t->ndim = res->desc.ndim;
+            t->size = res->desc.size;
+            memcpy(t->shape, res->desc.shape, sizeof(int32_t) * MF_MAX_DIMS);
+        }
+
+        // Execute Kernel
+        for (u32 f = 0; f < ker->frequency; ++f) {
+            if (engine->backend.dispatch) {
+                u32 dx = (ker->domain == MF_DOMAIN_SPATIAL) ? count_x : 1;
+                u32 dy = (ker->domain == MF_DOMAIN_SPATIAL) ? count_y : 1;
+                
+                engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, dx, dy);
+            }
         }
     }
-
-    if (engine->backend.dispatch) {
-        engine->backend.dispatch(engine->backend.state, engine->program, &engine->state, count_x, count_y);
-    }
+    
     engine->frame_index++;
 }
 
-int32_t mf_engine_find_register(mf_engine* engine, const char* name) {
-    if (!engine || !engine->program) return -1;
-    const mf_program* prog = engine->program;
-    if (!prog->symbols) return -1;
-    for (size_t i = 0; i < prog->meta.symbol_count; ++i) {
-        if (strcmp(prog->symbols[i].name, name) == 0) return (int32_t)prog->symbols[i].register_idx;
+mf_tensor* mf_engine_map_resource(mf_engine* engine, const char* name) {
+    if (!engine) return NULL;
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        if (strcmp(engine->resources[i].name, name) == 0) {
+            mf_resource_inst* res = &engine->resources[i];
+            
+            // Host always reads from the "Result of Previous Frame"?
+            // Or "Result of Current Frame" (which just finished)?
+            // frame_index incremented at end of dispatch.
+            // So frame_index is now Odd (if start 0). 0 was Even.
+            // Frame 0 executed: Read A, Write B.
+            // Now frame_index=1.
+            // We want to see what was written. That is B.
+            // Logic:
+            // Prev Frame (Index-1) was Even (0). Writes went to B.
+            // Current Frame (Index) is Odd (1). Reads come from B.
+            // So Host should read B?
+            
+            // Let's look at dispatch logic again:
+            // bool is_even = (engine->frame_index % 2 == 0);
+            // If frame=0 (even): Write to B.
+            // End of dispatch: frame=1.
+            // Host wants to read result of frame 0. It is in B.
+            // is_even (for frame 1) is False.
+            // data_ptr = is_even ? res->buffer_a : res->buffer_b => buffer_b.
+            
+            // Checks out. Host reads from the "Input for next frame", which is "Output of last frame".
+            
+            bool is_even = (engine->frame_index % 2 == 0);
+            res->desc.data = is_even ? res->buffer_a : res->buffer_b;
+            if (!res->persistent) res->desc.data = res->buffer_a;
+            
+            return &res->desc;
+        }
     }
-    return -1;
+    return NULL;
 }
 
-mf_tensor* mf_engine_map_tensor(mf_engine* engine, u16 reg_idx, mf_access_mode mode) {
-    (void)mode;
-    if (!engine || reg_idx >= engine->state.register_count) return NULL;
-    return &engine->state.registers[reg_idx];
-}
+bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_t* new_shape, uint8_t new_ndim) {
+    if (!engine || !name) return false;
+    
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        if (strcmp(engine->resources[i].name, name) == 0) {
+            mf_resource_inst* res = &engine->resources[i];
+            
+            // Calculate new size
+            size_t new_size = 1;
+            for(int d=0; d<new_ndim; ++d) new_size *= new_shape[d];
+            size_t new_bytes = new_size * mf_dtype_size(res->desc.dtype);
+            
+            // Reallocate Buffer A
+            if (res->buffer_a) {
+                // We use the engine's allocator (heap)
+                res->buffer_a = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_a, res->size_bytes, new_bytes);
+            } else {
+                res->buffer_a = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
+            }
+            
+            // Reallocate Buffer B if persistent
+            if (res->persistent) {
+                if (res->buffer_b) {
+                     res->buffer_b = ((mf_allocator*)&engine->heap)->realloc((mf_allocator*)&engine->heap, res->buffer_b, res->size_bytes, new_bytes);
+                } else {
+                     res->buffer_b = ((mf_allocator*)&engine->heap)->alloc((mf_allocator*)&engine->heap, new_bytes);
+                }
+            }
+            
+            // Update Descriptor
+            res->size_bytes = new_bytes;
+            res->desc.ndim = new_ndim;
+            res->desc.size = new_size;
+            res->desc.capacity_bytes = new_bytes;
+            memcpy(res->desc.shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS);
+            
+            // Update data pointer in descriptor immediately to avoid stale access
+            bool is_even = (engine->frame_index % 2 == 0);
+            res->desc.data = is_even ? res->buffer_a : res->buffer_b;
+            if (!res->persistent) res->desc.data = res->buffer_a;
 
-bool mf_engine_resize_tensor(mf_engine* engine, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
-    if (!engine) return false;
-    // We don't have a VM here, but we can use a temporary context or just the allocator
-    mf_exec_ctx tmp_ctx;
-    mf_exec_ctx_init(&tmp_ctx, engine->state.registers, engine->state.register_count, engine->state.allocator);
-    return mf_exec_ctx_resize_tensor(&tmp_ctx, tensor, new_shape, new_ndim);
+            return true;
+        }
+    }
+    return false;
 }
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
     if (!engine) return MF_ENGINE_ERR_NONE;
-    return (mf_engine_error)engine->state.error_code;
+    // TODO: Aggregate errors from all kernels?
+    // For now, return NONE.
+    return MF_ENGINE_ERR_NONE;
 }
 
-void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, void* user_data) {
+void mf_engine_iterate_resources(mf_engine* engine, mf_engine_resource_cb cb, void* user_data) {
     if (!engine || !cb) return;
-    for (size_t i = 0; i < engine->state.register_count; ++i) {
-        mf_tensor* t = &engine->state.registers[i];
-        const char* name = NULL;
-        if (engine->program && engine->program->symbols) {
-            for (size_t s = 0; s < engine->program->meta.symbol_count; ++s) {
-                if (engine->program->symbols[s].register_idx == i) {
-                    name = engine->program->symbols[s].name;
-                    break;
-                }
-            }
-        }
-        cb((u16)i, name, t, user_data);
+
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        mf_resource_inst* res = &engine->resources[i];
+        
+        bool is_even = (engine->frame_index % 2 == 0);
+        res->desc.data = is_even ? res->buffer_a : res->buffer_b;
+        if (!res->persistent) res->desc.data = res->buffer_a;
+
+        cb(res->name, &res->desc, user_data);
     }
 }

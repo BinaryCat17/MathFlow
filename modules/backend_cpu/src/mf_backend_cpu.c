@@ -96,6 +96,9 @@ static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
 
         // 1. Uniforms / Constants
         if (mf_tensor_same_shape(main_t, worker_t)) {
+            // Check if we already have data (program constant)
+            if (worker_t->data) continue;
+
             size_t size = mf_tensor_size_bytes(main_t);
             if (size > 0 && main_t->data) {
                 void* data = mf_arena_alloc((mf_allocator*)&state->temp_arena, size);
@@ -109,6 +112,8 @@ static void prepare_inputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
         }
     }
 }
+
+#include <stdio.h> // Added for debug
 
 static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, u32 tile_x, u32 tile_y, u32 active_w, u32 active_h) {
     mf_exec_ctx* worker_ctx = &state->ctx;
@@ -131,7 +136,10 @@ static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
             size_t elem_size = mf_dtype_size(main_t->dtype);
             for (int d=0; d<elem_dims; ++d) elem_size *= main_t->shape[2+d];
             
-            if (worker_t->size < batch_size) continue; 
+            if (worker_t->size < batch_size) {
+                 fprintf(stderr, "DEBUG: Skip Reg %zu. Worker Size %zu < Batch %zu\n", i, worker_t->size, batch_size);
+                 continue; 
+            }
             
             u8* src_ptr = (u8*)worker_t->data;
             u8* dst_base = (u8*)main_t->data;
@@ -139,6 +147,9 @@ static void commit_outputs(mf_backend_cpu_worker_state* state, const mf_cpu_para
             size_t main_row_stride = batch->width * elem_size;
             size_t tile_row_size = active_w * elem_size;
             
+            fprintf(stderr, "DEBUG: Commit Reg %zu. Tile [%u, %u]. DstBase: %p, Stride: %zu, RowSize: %zu\n", i, tile_x, tile_y, dst_base, main_row_stride, tile_row_size);
+            fflush(stderr);
+
             for (u32 y = 0; y < active_h; ++y) {
                 u32 global_y = tile_y * MF_CPU_TILE_SIZE + y;
                 u32 global_x = tile_x * MF_CPU_TILE_SIZE; 
@@ -158,6 +169,8 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_backend_cpu_worker_state* state = (mf_backend_cpu_worker_state*)thread_local_data;
     mf_cpu_parallel_batch* batch = (mf_cpu_parallel_batch*)user_data;
     
+    // fprintf(stderr, "DEBUG: Worker Job %u Start\n", job_idx); fflush(stderr);
+
     // 1. Calculate Tile Bounds
     u32 tile_y = job_idx / batch->tiles_x;
     u32 tile_x = job_idx % batch->tiles_x;
@@ -174,6 +187,8 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     if (active_w == 0 || active_h == 0) return;
     
     u32 batch_size = active_w * active_h;
+    
+    fprintf(stderr, "DEBUG: Job %u (Tile %u, %u) Size %ux%u\n", job_idx, tile_x, tile_y, active_w, active_h); fflush(stderr);
 
     // 2. Reset Context
     mf_arena_reset(&state->reg_arena);
@@ -183,8 +198,15 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_tensor* local_regs = MF_ARENA_PUSH(&state->reg_arena, mf_tensor, batch->program->meta.tensor_count);
     for (u32 i = 0; i < batch->program->meta.tensor_count; ++i) {
         local_regs[i] = batch->program->tensors[i];
-        local_regs[i].data = NULL; // Will be set in prepare_inputs or resize
-        local_regs[i].flags = MF_TENSOR_DYNAMIC;
+        
+        if (local_regs[i].data != NULL) {
+             // Keep program constant data
+             local_regs[i].flags &= ~MF_TENSOR_DYNAMIC;
+             local_regs[i].flags &= ~MF_TENSOR_OWNS_DATA;
+        } else {
+             local_regs[i].data = NULL; // Will be set in prepare_inputs or resize
+             local_regs[i].flags = MF_TENSOR_DYNAMIC;
+        }
     }
 
     mf_exec_ctx_init(&state->ctx, local_regs, batch->program->meta.tensor_count, (mf_allocator*)&state->temp_arena);
@@ -205,6 +227,7 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     prepare_inputs(state, batch, job_idx);
     
     // 5. Exec
+    // fprintf(stderr, "DEBUG: Exec Job %u\n", job_idx); fflush(stderr);
     mf_cpu_exec(&state->ctx, batch->program, batch->op_table);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {

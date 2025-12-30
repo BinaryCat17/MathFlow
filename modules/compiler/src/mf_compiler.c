@@ -41,11 +41,6 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
         fwrite(prog->symbols, sizeof(mf_bin_symbol), prog->meta.symbol_count, f);
     }
 
-    // 3.5. State Table
-    if (prog->meta.state_count > 0) {
-        fwrite(prog->state_table, sizeof(mf_bin_state_link), prog->meta.state_count, f);
-    }
-
     // 4. Tensor Metadata
     for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
         mf_tensor* t = &prog->tensors[i];

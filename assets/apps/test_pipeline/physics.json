@@ -1,0 +1,13 @@
+{
+  "nodes": [
+    { "id": "in_val", "type": "Input", "data": { "value": 0.0 } },
+    { "id": "step", "type": "Const", "data": { "value": 0.01 } },
+    { "id": "add", "type": "Add" },
+    { "id": "out_val", "type": "Output" }
+  ],
+  "links": [
+    { "src": "in_val", "src_port": 0, "dst": "add", "dst_port": 0 },
+    { "src": "step", "src_port": 0, "dst": "add", "dst_port": 1 },
+    { "src": "add", "src_port": 0, "dst": "out_val", "dst_port": 0 }
+  ]
+}

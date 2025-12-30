@@ -1,4 +1,5 @@
 #include <mathflow/host/mf_manifest_loader.h>
+#include <mathflow/base/mf_log.h>
 #include <cjson/cJSON.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -65,18 +66,26 @@ static char* join_path(const char* dir, const char* file) {
     return path;
 }
 
+static mf_dtype parse_dtype(const char* s) {
+    if (!s) return MF_DTYPE_F32;
+    if (strcmp(s, "F32") == 0) return MF_DTYPE_F32;
+    if (strcmp(s, "I32") == 0) return MF_DTYPE_I32;
+    if (strcmp(s, "U8") == 0) return MF_DTYPE_U8;
+    return MF_DTYPE_F32;
+}
+
 // --- Loader ---
 
 int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     char* json_str = read_file_content(mfapp_path);
     if (!json_str) {
-        fprintf(stderr, "Error: Could not read manifest %s\n", mfapp_path);
+        MF_LOG_ERROR("Could not read manifest %s", mfapp_path);
         return -1;
     }
 
     cJSON* root = cJSON_Parse(json_str);
     if (!root) {
-        fprintf(stderr, "Error: Failed to parse manifest JSON\n");
+        MF_LOG_ERROR("Failed to parse manifest JSON");
         free(json_str);
         return -2;
     }
@@ -89,16 +98,22 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     out_desc->width = 800;
     out_desc->height = 600;
     out_desc->window_title = "MathFlow App";
+    out_desc->graph_path = NULL;
+    out_desc->has_pipeline = false;
+    memset(&out_desc->pipeline, 0, sizeof(out_desc->pipeline));
+
+    char* base_dir = get_dir(mfapp_path);
 
     // 1. Runtime Section
     cJSON* runtime = cJSON_GetObjectItem(root, "runtime");
     if (runtime) {
         cJSON* entry = cJSON_GetObjectItem(runtime, "entry");
         if (entry && cJSON_IsString(entry)) {
-            char* base_dir = get_dir(mfapp_path);
             out_desc->graph_path = join_path(base_dir, entry->valuestring);
-            free(base_dir);
         }
+        
+        cJSON* threads = cJSON_GetObjectItem(runtime, "threads");
+        if (threads && cJSON_IsNumber(threads)) out_desc->num_threads = threads->valueint;
     }
 
     // 2. Window Section
@@ -125,11 +140,91 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
         if (fullscreen && cJSON_IsBool(fullscreen)) out_desc->fullscreen = cJSON_IsTrue(fullscreen);
     }
 
+    // 3. Pipeline Section
+    cJSON* pipeline = cJSON_GetObjectItem(root, "pipeline");
+    if (pipeline) {
+        out_desc->has_pipeline = true;
+        
+        // Resources
+        cJSON* resources = cJSON_GetObjectItem(pipeline, "resources");
+        if (cJSON_IsArray(resources)) {
+            out_desc->pipeline.resource_count = cJSON_GetArraySize(resources);
+            out_desc->pipeline.resources = calloc(out_desc->pipeline.resource_count, sizeof(mf_pipeline_resource));
+            
+            int i = 0;
+            cJSON* res = NULL;
+            cJSON_ArrayForEach(res, resources) {
+                mf_pipeline_resource* pr = &out_desc->pipeline.resources[i++];
+                cJSON* name = cJSON_GetObjectItem(res, "name");
+                if (name) pr->name = strdup(name->valuestring);
+                
+                pr->dtype = parse_dtype(cJSON_GetStringValue(cJSON_GetObjectItem(res, "dtype")));
+                
+                cJSON* shape = cJSON_GetObjectItem(res, "shape");
+                if (cJSON_IsArray(shape)) {
+                    pr->ndim = (uint8_t)cJSON_GetArraySize(shape);
+                    for(int d=0; d < pr->ndim && d < MF_MAX_DIMS; ++d) {
+                        pr->shape[d] = cJSON_GetArrayItem(shape, d)->valueint;
+                    }
+                }
+
+                cJSON* pers = cJSON_GetObjectItem(res, "persistent");
+                if (cJSON_IsBool(pers)) pr->persistent = cJSON_IsTrue(pers);
+            }
+        }
+
+        // Kernels
+        cJSON* kernels = cJSON_GetObjectItem(pipeline, "kernels");
+        if (cJSON_IsArray(kernels)) {
+            out_desc->pipeline.kernel_count = cJSON_GetArraySize(kernels);
+            out_desc->pipeline.kernels = calloc(out_desc->pipeline.kernel_count, sizeof(mf_pipeline_kernel));
+
+            int i = 0;
+            cJSON* ker = NULL;
+            cJSON_ArrayForEach(ker, kernels) {
+                mf_pipeline_kernel* pk = &out_desc->pipeline.kernels[i++];
+                cJSON* id = cJSON_GetObjectItem(ker, "id");
+                if (id) pk->id = strdup(id->valuestring);
+
+                cJSON* entry = cJSON_GetObjectItem(ker, "entry");
+                if (entry) pk->graph_path = join_path(base_dir, entry->valuestring);
+
+                cJSON* freq = cJSON_GetObjectItem(ker, "frequency");
+                if (cJSON_IsNumber(freq)) pk->frequency = freq->valueint;
+                else pk->frequency = 1;
+
+                cJSON* domain = cJSON_GetObjectItem(ker, "domain");
+                if (domain && cJSON_IsString(domain)) {
+                    if (strcmp(domain->valuestring, "spatial") == 0) pk->domain = MF_DOMAIN_SPATIAL;
+                    else pk->domain = MF_DOMAIN_SCALAR;
+                } else {
+                    pk->domain = MF_DOMAIN_SCALAR;
+                }
+
+                // Bindings
+                cJSON* bindings = cJSON_GetObjectItem(ker, "bindings");
+                if (cJSON_IsObject(bindings)) {
+                    pk->binding_count = cJSON_GetArraySize(bindings);
+                    pk->bindings = calloc(pk->binding_count, sizeof(mf_pipeline_binding));
+                    
+                    int b_idx = 0;
+                    cJSON* bind = NULL;
+                    cJSON_ArrayForEach(bind, bindings) {
+                        pk->bindings[b_idx].kernel_port = strdup(bind->string);
+                        pk->bindings[b_idx].global_resource = strdup(bind->valuestring);
+                        b_idx++;
+                    }
+                }
+            }
+        }
+    }
+
+    free(base_dir);
     cJSON_Delete(root);
     free(json_str);
     
-    if (!out_desc->graph_path) {
-        fprintf(stderr, "Error: Manifest missing runtime.entry\n");
+    if (!out_desc->graph_path && !out_desc->has_pipeline) {
+        MF_LOG_ERROR("Manifest missing runtime.entry or pipeline section");
         return -3;
     }
 

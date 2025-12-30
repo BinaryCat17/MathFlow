@@ -20,14 +20,10 @@ static void visit_node(sort_ctx* ctx, u32 node_idx) {
     
     ctx->visited[node_idx] = 1;
 
-    // Special case: MEMORY nodes act as sources (Inputs) for the current frame.
-    // Their dependencies are for the Next Frame (Write Phase), so we ignore them during Topo Sort.
-    if (ctx->ir->nodes[node_idx].type != MF_NODE_MEMORY) {
-        // Visit dependencies
-        for (size_t i = 0; i < ctx->ir->link_count; ++i) {
-            if (ctx->ir->links[i].dst_node_idx == node_idx) {
-                visit_node(ctx, ctx->ir->links[i].src_node_idx);
-            }
+    // Visit dependencies
+    for (size_t i = 0; i < ctx->ir->link_count; ++i) {
+        if (ctx->ir->links[i].dst_node_idx == node_idx) {
+            visit_node(ctx, ctx->ir->links[i].src_node_idx);
         }
     }
 

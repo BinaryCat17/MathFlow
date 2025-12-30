@@ -5,13 +5,8 @@
 #include <stdio.h>
 
 bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, size_t sorted_count, mf_arena* arena) {
-    // 1. Count State Nodes (Memory)
-    u32 state_count = 0;
-    for (size_t i = 0; i < ir->node_count; ++i) {
-        if (ir->nodes[i].type == MF_NODE_MEMORY) state_count++;
-    }
-    prog->meta.state_count = state_count;
-    prog->meta.tensor_count = (u32)ir->node_count + state_count; 
+    prog->meta.reserved_state = 0;
+    prog->meta.tensor_count = (u32)ir->node_count; 
     
     // 2. Count symbols (named nodes)
     u32 symbol_count = 0;
@@ -23,27 +18,14 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     prog->meta.symbol_count = symbol_count;
     prog->symbols = MF_ARENA_PUSH(arena, mf_bin_symbol, symbol_count);
 
-    // 3. Allocate Tables
-    if (state_count > 0) {
-        prog->state_table = MF_ARENA_PUSH(arena, mf_bin_state_link, state_count);
-    }
-
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, prog->meta.tensor_count);
     memset(prog->tensors, 0, sizeof(mf_tensor) * prog->meta.tensor_count);
 
-    mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, ir->node_count * 2 + state_count);
+    mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, ir->node_count * 3);
     
-    // Temp array to store write sources for state updates
-    u16* write_sources = NULL;
-    if (state_count > 0) {
-        write_sources = MF_ARENA_PUSH(arena, u16, state_count);
-        for(u32 k=0; k<state_count; ++k) write_sources[k] = 0xFFFF;
-    }
-
     // 4. Generation Loop
     size_t instr_count = 0;
     u32 current_symbol = 0;
-    u32 current_state = 0;
 
     for (size_t i = 0; i < sorted_count; ++i) {
         mf_ir_node* node = sorted[i];
@@ -93,32 +75,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                  return false;
              }
         }
-        // 4. MEMORY (State)
-        else if (node->type == MF_NODE_MEMORY) {
-            // Read Register (Input for this frame)
-            *t_desc = node->constant;
-            node->out_shape = node->constant;
-            
-            // Write Register (Output for next frame)
-            u32 write_reg = (u32)ir->node_count + current_state;
-            mf_tensor* w_desc = &prog->tensors[write_reg];
-            *w_desc = node->constant; // Same prototype
-            w_desc->data = NULL;      // Variable (Destination)
-            
-            // Record Link
-            mf_bin_state_link* link = &prog->state_table[current_state];
-            link->read_reg = node->out_reg_idx;
-            link->write_reg = write_reg;
-            
-            // Save Source for Copy Instruction
-            if (s1) {
-                // Since Memory nodes break the topo-sort dependency, s1 might not be processed yet.
-                // We rely on 1-to-1 mapping: Register Index = Node Index.
-                write_sources[current_state] = (u16)(s1 - ir->nodes);
-            }
-            
-            current_state++;
-        }
         else {
             // Logic Node
             if (!mf_infer_shape(node, s1, s2, s3)) {
@@ -150,9 +106,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 instr_count++;
                 break;
             
-            case MF_NODE_MEMORY:
-                break;
-                
             case MF_NODE_ADD: inst->opcode = MF_OP_ADD; instr_count++; break;
             case MF_NODE_SUB: inst->opcode = MF_OP_SUB; instr_count++; break;
             case MF_NODE_MUL: inst->opcode = MF_OP_MUL; instr_count++; break;
@@ -272,18 +225,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 break;
 
             default: break;
-        }
-    }
-
-    // 5. Generate State Updates (Write Phase)
-    for (u32 s = 0; s < state_count; ++s) {
-        if (write_sources[s] != 0xFFFF) {
-            mf_bin_state_link* link = &prog->state_table[s];
-            mf_instruction* inst = &instrs[instr_count++];
-            inst->opcode = MF_OP_COPY;
-            inst->dest_idx = (u16)link->write_reg;
-            inst->src1_idx = write_sources[s];
-            inst->src2_idx = 0;
         }
     }
 

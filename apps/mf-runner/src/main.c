@@ -39,18 +39,16 @@ int main(int argc, char** argv) {
     if (mf_app_load_config(mfapp_path, &app_desc) != 0) {
         const char* ext = strrchr(mfapp_path, '.');
         if (ext && (strcmp(ext, ".json") == 0 || strcmp(ext, ".bin") == 0)) {
-            printf("Warning: Loading raw graph directly. Consider using .mfapp.\n");
+            MF_LOG_WARN("Loading raw graph directly. Consider using .mfapp.");
             app_desc.graph_path = mfapp_path;
             app_desc.window_title = "Raw Graph";
         } else {
-             printf("Error: Failed to load manifest %s\n", mfapp_path);
+             MF_LOG_ERROR("Failed to load manifest %s", mfapp_path);
              return 1;
         }
     }
 
-    printf("MathFlow Runner\n");
-    printf("App: %s\n", app_desc.window_title);
-    printf("Graph: %s\n", app_desc.graph_path);
+    MF_LOG_INFO("MathFlow Runner | App: %s | Graph: %s", app_desc.window_title, app_desc.graph_path);
 
     int result = mf_host_run_headless(&app_desc, frames);
 

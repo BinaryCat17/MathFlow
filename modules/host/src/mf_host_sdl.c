@@ -2,6 +2,7 @@
 #include <mathflow/loader/mf_loader.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/base/mf_platform.h>
+#include <mathflow/base/mf_log.h>
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
@@ -46,7 +47,7 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
 
 int mf_host_run(const mf_host_desc* desc) {
     if (SDL_Init(SDL_INIT_VIDEO) != 0) {
-        printf("[Host] SDL Init Error: %s\n", SDL_GetError());
+        MF_LOG_ERROR("SDL Init Error: %s", SDL_GetError());
         return 1;
     }
 
@@ -61,7 +62,7 @@ int mf_host_run(const mf_host_desc* desc) {
     );
 
     if (!window) {
-        printf("[Host] Window Creation Error: %s\n", SDL_GetError());
+        MF_LOG_ERROR("Window Creation Error: %s", SDL_GetError());
         SDL_Quit();
         return 1;
     }
@@ -81,39 +82,49 @@ int mf_host_run(const mf_host_desc* desc) {
 
     mf_engine* engine = mf_engine_create(&engine_desc);
     if (!engine) {
-        printf("[Host] Failed to create engine\n");
+        MF_LOG_ERROR("Failed to create engine");
         SDL_DestroyWindow(window); SDL_Quit();
         return 1;
     }
 
-    if (!mf_loader_load_graph(engine, desc->graph_path)) {
-        printf("[Host] Failed to load graph: %s\n", desc->graph_path);
-        mf_engine_destroy(engine);
-        SDL_DestroyWindow(window); SDL_Quit();
-        return 1;
-    }
-    
-    // --- Register Lookup ---
-    mf_tensor* t_time = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Time"), MF_ACCESS_WRITE);
-    mf_tensor* t_res  = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Resolution"), MF_ACCESS_WRITE);
-    mf_tensor* t_mouse = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "u_Mouse"), MF_ACCESS_WRITE);
-    mf_tensor* t_out   = mf_engine_map_tensor(engine, mf_engine_find_register(engine, "out_Color"), MF_ACCESS_READ);
-    
-    // Set Resolution Uniform (Legacy support for graphs using u_Resolution)
-    if (t_res && t_res->data) {
-        // Resize if needed or just update data
-        if (t_res->size >= 2) {
-             f32* d = (f32*)t_res->data;
-             d[0] = (f32)desc->width;
-             d[1] = (f32)desc->height;
+    // Unified Pipeline Loading
+    if (desc->has_pipeline) {
+        if (!mf_loader_load_pipeline(engine, &desc->pipeline)) {
+            MF_LOG_ERROR("Failed to load pipeline");
+            mf_engine_destroy(engine);
+            SDL_DestroyWindow(window); SDL_Quit();
+            return 1;
+        }
+    } else {
+        // Automatically synthesizes a pipeline from the graph
+        if (!mf_loader_load_graph(engine, desc->graph_path)) {
+            MF_LOG_ERROR("Failed to load graph: %s", desc->graph_path);
+            mf_engine_destroy(engine);
+            SDL_DestroyWindow(window); SDL_Quit();
+            return 1;
         }
     }
     
-    // Resize Output to match Screen Size
-    if (t_out) {
-        // Shape: [Height, Width, 4] (Row-Major for SDL Texture)
-        int32_t shape[] = { desc->height, desc->width, 4 };
-        mf_engine_resize_tensor(engine, t_out, shape, 3);
+    // Resize Output to match Screen Size initially
+    int32_t screen_shape[] = { desc->height, desc->width, 4 };
+    mf_engine_resize_resource(engine, "out_Color", screen_shape, 3);
+    mf_engine_resize_resource(engine, "u_Resolution", screen_shape, 3); // Often resolution is vec3(w,h,0)
+
+    // Lookup Resources
+    mf_tensor *t_time, *t_res, *t_mouse, *t_out;
+    t_time  = mf_engine_map_resource(engine, "u_Time");
+    t_res   = mf_engine_map_resource(engine, "u_Resolution");
+    t_mouse = mf_engine_map_resource(engine, "u_Mouse");
+    t_out   = mf_engine_map_resource(engine, "out_Color");
+    
+    // Set Resolution Uniform (if using vec2/3 uniform style)
+    if (t_res && t_res->data) {
+        f32* d = (f32*)t_res->data;
+        // Check size? Assume at least 2 floats
+        if (t_res->size >= 2) {
+            d[0] = (f32)desc->width;
+            d[1] = (f32)desc->height;
+        }
     }
 
     u32* frame_buffer = malloc(desc->width * desc->height * 4);
@@ -121,11 +132,58 @@ int mf_host_run(const mf_host_desc* desc) {
     bool running = true;
     SDL_Event event;
     u32 start_time = SDL_GetTicks();
+    int win_w = desc->width;
+    int win_h = desc->height;
 
     while (running) {
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
+            else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
+                win_w = event.window.data1;
+                win_h = event.window.data2;
+                
+                // Recreate Texture
+                SDL_DestroyTexture(texture);
+                texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, win_w, win_h);
+                
+                // Resize Framebuffer
+                free(frame_buffer);
+                frame_buffer = malloc(win_w * win_h * 4);
+                
+                // Resize Engine Resources
+                int32_t shape[] = { win_h, win_w, 4 };
+                mf_engine_resize_resource(engine, "out_Color", shape, 3);
+                
+                // Update Resolution Uniform
+                // Note: We need to re-map because resize might have changed pointers? 
+                // Wait, map_resource always returns the current descriptor.
+                // We should re-map every frame or check if pointer changed?
+                // The Engine promises that map_resource returns a descriptor that points to the correct buffer for the current frame.
+                // But resize invalidates the buffer.
+                // So we definitely need to update our cached tensor pointers or re-map.
+                
+                // For simplicity, let's re-map everything inside the loop (it's cheap string lookup).
+                // Or just re-map here.
+                t_out = mf_engine_map_resource(engine, "out_Color");
+                t_res = mf_engine_map_resource(engine, "u_Resolution");
+                
+                 if (t_res && t_res->data && t_res->size >= 2) {
+                    f32* d = (f32*)t_res->data;
+                    d[0] = (f32)win_w;
+                    d[1] = (f32)win_h;
+                }
+            }
         }
+        
+        // Per-Frame Re-Mapping (Ping-Pong Safety)
+        // Because of Double Buffering, the 'data' pointer flips every frame.
+        // We MUST call map_resource every frame to get the correct pointer.
+        t_time  = mf_engine_map_resource(engine, "u_Time");
+        t_mouse = mf_engine_map_resource(engine, "u_Mouse");
+        t_out   = mf_engine_map_resource(engine, "out_Color"); // Read from result of LAST frame? Or write to NEXT? 
+        // Host reads OUTPUT. Output is produced by kernel.
+        // Kernel writes to B. Host should read B?
+        // Map returns "Current Data".
         
         // Update Inputs
         if (t_time && t_time->data) {
@@ -143,16 +201,24 @@ int mf_host_run(const mf_host_desc* desc) {
         }
 
         // Dispatch!
-        // New API: Run on the domain of the screen [Width, Height]
-        // The engine/backend handles tiling automatically.
-        mf_engine_dispatch(engine, desc->width, desc->height);
+        mf_engine_dispatch(engine, win_w, win_h);
         
         // Read Back
-        if (t_out) {
-            convert_to_pixels(t_out, frame_buffer, desc->width * 4, desc->width, desc->height);
+        // NOTE: We need to re-map t_out AFTER dispatch if we want to read what was just written?
+        // Or BEFORE?
+        // Engine dispatch logic: "Executes kernel, writes to B".
+        // Frame index increments.
+        // Next map_resource call returns B (because is_even flipped).
+        // So we should call map_resource NOW.
+        t_out = mf_engine_map_resource(engine, "out_Color");
+
+        if (t_out && t_out->data && frame_buffer) {
+            convert_to_pixels(t_out, frame_buffer, win_w * 4, win_w, win_h);
         }
         
-        SDL_UpdateTexture(texture, NULL, frame_buffer, desc->width * 4);
+        if (frame_buffer) {
+            SDL_UpdateTexture(texture, NULL, frame_buffer, win_w * 4);
+        }
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
     }

@@ -8,6 +8,7 @@ if(TARGET MathFlow::host_sdl)
     target_link_libraries(mf-window 
         PRIVATE 
             MathFlow::host_sdl
+            MathFlow::base
     )
 else()
     message(STATUS "Skipping mf-window (MathFlow::host_sdl not available)")

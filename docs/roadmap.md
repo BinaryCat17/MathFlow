@@ -48,13 +48,13 @@
 ## Phase 17.6: System Logging (Advanced)
 **Objective:** Replace raw `printf` calls with a structured, thread-safe logging system in `base`. The system must support multiple output sinks (Console, File) with independent verbosity levels and minimal overhead when disabled.
 
-- [ ] **Step 1: Logging Core (Base):**
+- [x] **Step 1: Logging Core (Base):**
     - **Interface:** Implement `mf_log.h` using macros (`MF_LOG_INFO(...)`) to capture call-site context (`__FILE__`, `__LINE__`).
     - **Zero-Cost Overhead:** Ensure logging macros check the global log level *before* formatting strings or acquiring locks.
     - **Sink API:** Define sinks as `void (*mf_log_sink_fn)(void* user_data, int level, const char* file, int line, const char* msg)`.
     - **Thread Safety:** Use `mf_mutex` to prevent interleaved output from concurrent workers.
     - **Default Sink:** Implement a Console Sink with ANSI color support.
-- [ ] **Step 2: Integration:**
+- [x] **Step 2: Integration:**
     - Replace `printf` / `fprintf` in `Compiler` (Parsing errors) and `Loader` (Asset loading events).
     - Add `MF_LOG_TRACE` calls in `Engine` dispatch loop for high-frequency debugging (guarded by zero-cost checks).
 
@@ -90,23 +90,32 @@
     - Ensure no "magic" updates happen inside the VM execution loop.
     - Verify thread safety (Parallel workers read from 'Read' and write to 'Write').
 
-## Phase 19: Multi-Stream Architecture (Dataflow Engine)
-**Objective:** Transform MathFlow from a single-threaded executor into a true Dataflow Engine capable of running heterogeneous workloads (Audio, Video, Physics) efficiently. We move complexity into the Compiler (Graph Partitioning) and Engine (Scheduling), keeping the Backend simple and fast.
+## Phase 19: Pipeline Architecture (Explicit Kernels)
+**Objective:** Transition from a "Monolithic Script" to a "System of Interacting Programs". We abandon automatic graph partitioning in favor of explicit, modular Kernels (Programs) connected via a Global State. This mirrors GPU Compute Shader architectures.
 
-- [ ] **Step 1: Multi-Stream ISA (Contract):**
-    - Update `mf_program` to support multiple instruction streams (Entry Points) sharing a single Register File.
-    - Define `mf_stream_desc` in ISA: contains code range, domain type (1D/2D), and dependencies (e.g., "Video depends on Physics").
-- [ ] **Step 2: Graph Partitioning (Compiler):**
-    - Implement smart graph traversal to identify connected components for each Output Node.
-    - **Extract Shared Subgraphs:** Automatically isolate common logic (e.g., Physics, Time, Noise) into a "Shared Stream" to avoid redundant calculations and state desynchronization.
-    - Generate optimized instruction lists for each stream.
-- [ ] **Step 3: Engine Scheduler (Orchestrator):**
-    - Implement a topological scheduler in `mf_engine`.
-    - `mf_engine_dispatch(stream_id)`: Automatically resolves and executes prerequisite streams (e.g., Run Physics -> Then Run Video).
-    - Manage **Snapshot Isolation**: Ensure that concurrent streams read consistent versions of shared data (Robust Double/Triple Buffering).
-- [ ] **Step 4: Backend Adaptation:**
-    - Update `mf_backend` to accept `mf_stream_desc` instead of raw dimensions.
-    - Backend simply executes the provided instruction slice, oblivious to the larger graph structure.
+> **Philosophy:** "1 JSON = 1 Kernel". A graph defines a stateless function $Y = F(X)$. State persistence and communication between Kernels happen strictly via external Buffers managed by the Engine.
+
+- [ ] **Step 1: Compiler & ISA Cleanup:**
+    - **Remove `Memory` Nodes:** Delete internal state logic (`MF_NODE_MEMORY`). All state must be passed via Input/Output.
+    - **Multi-Output Support:** Ensure Compiler correctly exports metadata for graphs with multiple `Output` nodes (MRT - Multiple Render Targets).
+    - **ISA Update:** Update `mf_program` to list explicit Input/Output symbol requirements.
+
+- [ ] **Step 2: The Pipeline Manifest (.mfapp Extension):**
+    - Extend the existing `.mfapp` JSON format to describe the System:
+        - **Resources:** Global Buffers (e.g., `Physics.Pos`, `Render.Color`).
+        - **Kernels:** List of programs to load (`physics.bin`, `render.bin`).
+        - **Bindings:** Map Kernel I/O to Global Resources (e.g., `Physics.Out -> State.Pos`, `Render.In -> State.Pos`).
+        - **Scheduling:** Execution order and frequency (e.g., Physics x10, Render x1).
+
+- [ ] **Step 3: Engine Orchestrator:**
+    - Implement `mf_pipeline` loader.
+    - **Resource Manager:** Allocates global buffers (including Ping-Pong pairs for time-dependent data).
+    - **Scheduler:** Replaces the single `dispatch` call with a loop over active Kernels, binding the correct buffers (Zero-Copy) before execution.
+
+- [ ] **Step 4: Dual-Use Graphs:**
+    - Verify that the same JSON graph can be used as:
+        1.  **Inline Subgraph:** Embedded into another graph (Compiled to one binary, max performance).
+        2.  **Standalone Kernel:** Running independently in the pipeline (Modular, easy testing).
 
 ---
 

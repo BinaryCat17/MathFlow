@@ -265,10 +265,6 @@ bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node
             }
             break;
 
-        case MF_NODE_MEMORY:
-            *out = node->constant;
-            break;
-
         default: break;
     }
     return true;

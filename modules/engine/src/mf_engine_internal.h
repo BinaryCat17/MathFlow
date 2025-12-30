@@ -6,12 +6,35 @@
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/isa/mf_backend.h>
 
-// Internal State Buffer Pair
+#include <mathflow/engine/mf_pipeline.h>
+
 typedef struct {
+    u16 local_reg;
+    u16 global_res;
+} mf_kernel_binding;
+
+// Instance of a loaded kernel within the engine
+typedef struct {
+    char* id;
+    mf_program* program;
+    mf_state state; // Local registers for this kernel
+    uint32_t frequency;
+    mf_kernel_domain domain;
+    
+    // Cached mapping: Local Reg Index -> Global Resource Index
+    mf_kernel_binding* bindings;
+    u32 binding_count;
+} mf_kernel_inst;
+
+// Concrete implementation of a Global Resource instance
+typedef struct {
+    char* name;
     void* buffer_a;
-    void* buffer_b;
-    size_t size;
-} mf_state_buffer;
+    void* buffer_b; // Used if persistent=true
+    size_t size_bytes;
+    mf_tensor desc; // Prototype
+    bool persistent;
+} mf_resource_inst;
 
 // The concrete implementation of the Engine.
 // Combines Static Resources (Code) and Execution State (Data).
@@ -19,19 +42,21 @@ struct mf_engine {
     // Static Resources
     mf_arena arena;
     void* arena_buffer;
-    mf_program* program;
     mf_backend backend;
 
     // Execution State (Single Source of Truth)
-    mf_state state;
     mf_heap heap;
     void* heap_buffer;
     
+    // --- Pipeline Mode ---
+    mf_resource_inst* resources;
+    u32 resource_count;
+    
+    mf_kernel_inst* kernels;
+    u32 kernel_count;
+
     // Global Config (used for dispatch)
     u32 global_size[3];
-    
-    // State Management (Double Buffering)
-    mf_state_buffer* state_buffers;
     uint64_t frame_index;
 };
 

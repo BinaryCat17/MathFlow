@@ -1,0 +1,35 @@
+{
+  "window": {
+    "title": "Pipeline Test",
+    "width": 800,
+    "height": 600
+  },
+  "pipeline": {
+    "resources": [
+      { "name": "Global_Counter", "dtype": "F32", "shape": [1], "persistent": true },
+      { "name": "out_Color", "dtype": "F32", "shape": [600, 800, 4], "persistent": false }
+    ],
+    "kernels": [
+      {
+        "id": "physics",
+        "entry": "physics.json",
+        "frequency": 1,
+        "domain": "scalar",
+        "bindings": {
+          "in_val": "Global_Counter",
+          "out_val": "Global_Counter"
+        }
+      },
+      {
+        "id": "render",
+        "entry": "render.json",
+        "frequency": 1,
+        "domain": "spatial",
+        "bindings": {
+          "in_val": "Global_Counter",
+          "out_Color": "out_Color"
+        }
+      }
+    ]
+  }
+}

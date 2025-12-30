@@ -1,17 +1,17 @@
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/loader/mf_loader.h>
+#include <mathflow/base/mf_log.h>
 #include <stdio.h>
 #include <string.h>
 
-static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
+static void print_tensor(const char* name, mf_tensor* t) {
     if (!t || !t->data) {
-        printf("  [%u]%s: (Empty)\n", idx, name ? name : "");
+        printf("  %s: (Empty)\n", name ? name : "?");
         return;
     }
     
-    printf("  [%u] ", idx);
-    if (name) printf("'%s' ", name); 
+    printf("  '%s' ", name ? name : "?"); 
     
     printf("Shape: [");
     for(int i=0; i<t->ndim; ++i) printf("%d%s", t->shape[i], i < t->ndim-1 ? "," : "");
@@ -40,20 +40,13 @@ static void print_tensor(u32 idx, const char* name, mf_tensor* t) {
     }
 }
 
-static void debug_print_callback(u16 idx, const char* name, mf_tensor* t, void* user_data) {
-    // Simple filter: print first 20 registers or any named output
-    if (idx < 20 || (name && strncmp(name, "out_", 4) == 0)) {
-        print_tensor(idx, name, t);
-    }
-}
-
-static void final_print_callback(u16 idx, const char* name, mf_tensor* t, void* user_data) {
-    // Always print
-    print_tensor(idx, name, t);
+static void debug_print_resource_callback(const char* name, mf_tensor* t, void* user_data) {
+    print_tensor(name, t);
 }
 
 int mf_host_run_headless(const mf_host_desc* desc, int frames) {
-    if (!desc || !desc->graph_path) return 1;
+    if (!desc) return 1;
+    if (!desc->graph_path && !desc->has_pipeline) return 1;
 
     mf_engine_desc engine_desc = {0};
     
@@ -63,32 +56,39 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     mf_engine* engine = mf_engine_create(&engine_desc);
     if (!engine) return 1;
 
-    if (!mf_loader_load_graph(engine, desc->graph_path)) {
+    bool loaded = false;
+    if (desc->has_pipeline) {
+        loaded = mf_loader_load_pipeline(engine, &desc->pipeline);
+    } else {
+        // Now this automatically synthesizes a pipeline internally
+        loaded = mf_loader_load_graph(engine, desc->graph_path);
+    }
+
+    if (!loaded) {
         mf_engine_destroy(engine);
         return 1;
     }
 
-    // No explicit instance creation needed. Engine owns the state.
-
-    printf("Running for %d frames...\n", frames);
+    MF_LOG_INFO("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
-        // Dispatch 1x1 = Script Mode (Stateful)
-        mf_engine_dispatch(engine, 1, 1);
+        // Dispatch always using pipeline logic
+        // For implicit single-graph pipelines, we use the requested size
+        mf_engine_dispatch(engine, desc->width > 0 ? desc->width : 1, desc->height > 0 ? desc->height : 1);
         
         mf_engine_error err = mf_engine_get_error(engine);
         if (err != MF_ENGINE_ERR_NONE) {
-            printf("Error: Runtime error %d\n", err);
+            MF_LOG_ERROR("Runtime error %d\n", err);
             break;
         }
         
         if (f < 3) {
-             printf("--- Frame %d ---\n", f);
-             mf_engine_iterate_registers(engine, debug_print_callback, NULL);
+             MF_LOG_INFO("--- Frame %d ---\n", f);
+             mf_engine_iterate_resources(engine, debug_print_resource_callback, NULL);
         }
     }
     
-    printf("\n--- Final State ---\n");
-    mf_engine_iterate_registers(engine, final_print_callback, NULL);
+    MF_LOG_INFO("--- Final State ---\n");
+    mf_engine_iterate_resources(engine, debug_print_resource_callback, NULL);
 
     mf_engine_destroy(engine);
     return 0;

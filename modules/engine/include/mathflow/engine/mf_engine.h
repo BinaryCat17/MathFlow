@@ -4,6 +4,7 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_backend.h>
 #include <mathflow/base/mf_types.h>
+#include <mathflow/engine/mf_pipeline.h>
 
 // Forward declarations
 typedef struct mf_program mf_program;
@@ -46,19 +47,16 @@ mf_arena* mf_engine_get_arena(mf_engine* engine);
 
 // --- Setup ---
 
-// Binds a loaded program to the engine.
-// Initializes the Execution Context and allocates registers in the Heap.
-// @param prog Pointer to program data (must be valid for engine lifetime).
-void mf_engine_bind_program(mf_engine* engine, mf_program* prog);
+// Binds a pipeline configuration to the engine.
+// Allocates global resources and initializes all kernels.
+// @param programs Array of mf_program* matching pipe->kernel_count order.
+void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs);
 
 // --- Execution ---
 
 /**
- * @brief Dispatches the current program over a 2D domain.
+ * @brief Dispatches the current pipeline over a 2D domain.
  * Automatically uses the active backend and thread pool.
- * 
- * If count_x=1 and count_y=1, it runs as a single task (Script Mode).
- * Otherwise, it runs in parallel (Shader Mode), propagating state from the Main VM.
  */
 void mf_engine_dispatch(
     mf_engine* engine, 
@@ -67,14 +65,12 @@ void mf_engine_dispatch(
 
 // --- State Access (Single Source of Truth) ---
 
-// Finds a register index by name. Returns -1 if not found.
-int32_t mf_engine_find_register(mf_engine* engine, const char* name);
+// Maps a global resource by name.
+// Returns a tensor descriptor pointing to the current buffer (Ping or Pong).
+mf_tensor* mf_engine_map_resource(mf_engine* engine, const char* name);
 
-// Maps a tensor from the Engine's main state.
-mf_tensor* mf_engine_map_tensor(mf_engine* engine, u16 reg_idx, mf_access_mode mode);
-
-// Resizes a tensor in the Engine's main state.
-bool mf_engine_resize_tensor(mf_engine* engine, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim);
+// Resizes a global resource buffer (e.g. for window resize).
+bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_t* new_shape, uint8_t new_ndim);
 
 typedef enum {
     MF_ENGINE_ERR_NONE = 0,
@@ -85,9 +81,9 @@ typedef enum {
 
 mf_engine_error mf_engine_get_error(mf_engine* engine);
 
-typedef void (*mf_engine_register_cb)(u16 reg_idx, const char* name, mf_tensor* tensor, void* user_data);
+typedef void (*mf_engine_resource_cb)(const char* name, mf_tensor* tensor, void* user_data);
 
-// Iterates over all registers in the Engine's main state.
-void mf_engine_iterate_registers(mf_engine* engine, mf_engine_register_cb cb, void* user_data);
+// Iterates over all global resources in the Pipeline.
+void mf_engine_iterate_resources(mf_engine* engine, mf_engine_resource_cb cb, void* user_data);
 
 #endif // MF_ENGINE_H

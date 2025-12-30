@@ -3,6 +3,7 @@
 
 #include <mathflow/base/mf_types.h>
 #include <mathflow/isa/mf_backend.h>
+#include <mathflow/engine/mf_pipeline.h>
 // Forward declarations
 typedef struct mf_engine mf_engine;
 
@@ -27,5 +28,15 @@ void mf_loader_init_backend(mf_backend* backend, int num_threads);
  * @return true if successful.
  */
 bool mf_loader_load_graph(mf_engine* engine, const char* path);
+
+/**
+ * @brief Loads a complete pipeline description and binds it to the engine.
+ * Loads all kernel programs (.bin/.json) referenced in the pipeline.
+ * 
+ * @param engine The engine instance.
+ * @param pipe The pipeline description (parsed from .mfapp).
+ * @return true if successful.
+ */
+bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe);
 
 #endif // MF_LOADER_H

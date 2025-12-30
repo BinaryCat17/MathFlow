@@ -2,6 +2,7 @@
 #define MF_HOST_DESC_H
 
 #include <stdbool.h>
+#include <mathflow/engine/mf_pipeline.h>
 
 // Configuration for the Host Application
 typedef struct mf_host_desc {
@@ -9,9 +10,12 @@ typedef struct mf_host_desc {
     int width;
     int height;
     
-    // Path to the .json graph file to load on startup
-    // (If loaded via .mfapp, this will be the resolved absolute path)
+    // Path to the .json graph file to load on startup (Legacy Single-Graph mode)
     const char* graph_path;
+    
+    // Pipeline configuration (New Multi-Kernel mode)
+    mf_pipeline_desc pipeline;
+    bool has_pipeline;
     
     // Optional: Number of worker threads (0 = Auto)
     int num_threads;

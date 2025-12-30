@@ -12,9 +12,10 @@ target_include_directories(mf_host_core
     PRIVATE src
 )
 target_link_libraries(mf_host_core 
+    PUBLIC
+        MathFlow::engine
     PRIVATE 
         cjson
-        MathFlow::engine
         MathFlow::loader
 )
 
