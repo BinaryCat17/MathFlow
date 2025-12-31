@@ -191,20 +191,20 @@
 - [x] **Step 3: Graph-Driven Resizing:**
     - Implement a mechanism for Kernels to request output resizing (or propagate Input shape to Output shape explicitly).
 
-## Phase 28: Interaction & Feedback Loops (The Inventory Demo)
+## Phase 28: Interaction & Feedback Loops (The Inventory Demo) (Completed)
 **Objective:** Prove the engine's capability to handle stateful, interactive applications by implementing a fully functional Inventory system. This requires closing the loop between Input, State Update, and Rendering.
 
-- [ ] **Step 1: Random Access Memory (The Gather Op):**
+- [x] **Step 1: Random Access Memory (The Gather Op):**
     - Implement `MF_OP_GATHER`: `Dest[i] = Source[ Index[i] ]`.
     - **Why?** A pixel shader needs to read `Inventory[SlotID]`, where `SlotID` is calculated from `UV`. Standard stream processing (SIMD) processes data linearly; UI requires random access to state.
-- [ ] **Step 2: Read-Write Feedback:**
+- [x] **Step 2: Read-Write Feedback:**
     - Verify the "Ping-Pong" stability for persistent state.
     - **Scenario:** `LogicKernel` reads `Inventory_Front`, writes `Inventory_Back`. `RenderKernel` reads `Inventory_Back`, writes `Screen`.
     - Ensure the Engine correctly manages these dependencies and swaps buffers at the end of the frame.
-- [ ] **Step 3: The Interaction Kernel:**
+- [x] **Step 3: The Interaction Kernel:**
     - Implement logic to map `u_Mouse` coordinates to array indices.
     - Use `MF_OP_SELECT` to conditionally update the state (only change the slot under the mouse if clicked).
-- [ ] **Step 4: Demo Construction:**
+- [x] **Step 4: Demo Construction:**
     - `inventory_logic.json`: Handles clicks, moves items.
     - `inventory_render.json`: Draws the grid and items based on state.
     - `inventory.mfapp`: Orchestrates the pipeline.

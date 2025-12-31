@@ -81,15 +81,18 @@ graph TD
 
 #### **Compiler** (`modules/compiler`)
 *   **Role:** Translates human-readable Graphs (JSON) into machine-efficient Bytecode (`mf_program`).
+*   **Architecture:** Modular Pipeline of independent passes.
 *   **Process:**
-    1.  **Parse:** JSON -> `mf_graph_ir` (Intermediate Representation).
-    2.  **Semantics:** Infers output shapes and types (Static Analysis).
-    3.  **CodeGen:** Topologically sorts nodes and emits instructions.
-    4.  **Output:** Produces a flat binary compatible with the VM.
+    1.  **Parse:** JSON -> `mf_ast`. Includes source tracking (line/column) for error reporting.
+    2.  **Lower:** AST -> `mf_graph_ir`. Maps named ports to numeric indices and resolves constants.
+    3.  **Inline:** Recursively expands `Call` nodes, embedding subgraphs into the flat IR.
+    4.  **Analyze:** Static analysis pass. Performs type checking and shape inference (including wildcard `0` broadcasting for dynamic shapes).
+    5.  **CodeGen:** Topologically sorts the graph and emits `mf_instruction` bytecode.
 
 #### **Loader** (`modules/loader`)
 *   **Role:** IO Bridge.
-*   **Function:** Reads files from disk, calls the Compiler, and hydrates the Engine with the resulting Programs. Synthesizes Pipelines from single graphs.
+*   **Function:** Reads files from disk, calls the Compiler, and hydrates the Engine with the resulting Programs.
+*   **Optimization:** Names are converted to FNV-1a hashes during loading for `O(1)` resource binding.
 
 ### 3. Runtime Core
 
@@ -164,3 +167,56 @@ MathFlow distinguishes between **Storage** and **View**.
     *   **Dispatch:** Backend splits domain into jobs.
     *   **Execute:** Workers compute math, writing directly to Output Buffers (via Views).
     *   Host reads Output Resource (`out_Color`) and renders to screen.
+
+## Pipeline Manifest (.mfapp)
+
+The `.mfapp` file is the entry point for applications. It defines the window settings and the computation pipeline.
+
+**Schema (Strict Arrays):**
+
+```json
+{
+    "window": {
+        "title": "My App",
+        "width": 800,
+        "height": 600
+    },
+    "pipeline": {
+        "resources": [
+            { "name": "State", "dtype": "F32", "shape": [1024] },
+            { "name": "Screen", "dtype": "F32", "shape": [800, 600, 4] }
+        ],
+        "kernels": [
+            {
+                "id": "logic",
+                "entry": "logic.json",
+                "bindings": [
+                    { "port": "State", "resource": "State" }
+                ]
+            },
+            {
+                "id": "render",
+                "entry": "render.json",
+                "bindings": [
+                    { "port": "Data", "resource": "State" },
+                    { "port": "Out",  "resource": "Screen" }
+                ]
+            }
+        ]
+    }
+}
+```
+
+## Random Access & Domain Iteration
+
+### Domain Iteration
+The Backend determines the "Execution Domain" based on the shape of the bound **Output Tensor(s)**.
+*   If Output is `[800, 600, 4]`, the kernel executes `800 * 600 * 4` times (conceptually).
+*   **`Index` Nodes:** To know "where" the current thread is running (e.g., pixel coordinate), the graph must use `Index` nodes (`u_FragX`, `u_FragY`). These read from the thread context.
+
+### Random Access (Gather)
+Standard operations (Add, Mul) operate on streams linearly. To implement logic like "Read the value at index `i`", MathFlow uses `MF_OP_GATHER`.
+
+*   **Logic:** `Output[i] = Source[ Indices[i] ]`
+*   **Usage:** Used for looking up state, texture sampling (future), or indirect addressing.
+*   **Input:** Requires a `Data` tensor and an `Indices` tensor. The Output shape follows the `Indices` shape.
