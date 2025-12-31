@@ -19,8 +19,8 @@
 
         { "id": "out_Color", "type": "Output" },
 
-        { "id": "u_FragX", "type": "Index", "data": {"axis": 0} },
-        { "id": "u_FragY", "type": "Index", "data": {"axis": 1} },
+        { "id": "u_FragX", "type": "Index", "data": {"axis": 1} },
+        { "id": "u_FragY", "type": "Index", "data": {"axis": 0} },
 
         { "id": "aa_edges", "type": "Join" },
         { "id": "diff", "type": "Sub" },
@@ -74,6 +74,6 @@
         { "src": "edge1", "src_port": "out", "dst": "aa_edges", "dst_port": "b" },
         { "src": "sdf", "src_port": "out", "dst": "sdf_result", "dst_port": "x" },
         { "src": "aa_edges", "src_port": "out", "dst": "sdf_result", "dst_port": "edges" },
-        { "src": "sdf_result", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
+        { "src": "x_norm", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
     ]
 }

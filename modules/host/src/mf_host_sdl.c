@@ -171,25 +171,65 @@ int mf_host_run(const mf_host_desc* desc) {
             }
         }
         
+        // --- Standard Uniforms ---
         t_time  = mf_engine_map_resource(engine, "u_Time");
         t_mouse = mf_engine_map_resource(engine, "u_Mouse");
         
+        mf_tensor* t_rx = mf_engine_map_resource(engine, "u_ResX");
+        mf_tensor* t_ry = mf_engine_map_resource(engine, "u_ResY");
+        mf_tensor* t_aspect = mf_engine_map_resource(engine, "u_Aspect");
+        mf_tensor* t_mx = mf_engine_map_resource(engine, "u_MouseX");
+        mf_tensor* t_my = mf_engine_map_resource(engine, "u_MouseY");
+
         if (t_time) {
             void* time_data = mf_tensor_data(t_time);
             if (time_data) *((f32*)time_data) = current_time;
         }
+
+        f32 mx_val = 0, my_val = 0;
         
-        if (t_mouse) {
-            void* mouse_data = mf_tensor_data(t_mouse);
-            if (mouse_data) {
-                int mx, my;
-                u32 buttons = SDL_GetMouseState(&mx, &my);
-                f32* d = (f32*)mouse_data;
-                d[0] = (f32)mx;
-                d[1] = (f32)my;
-                d[2] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1.0f : 0.0f;
-                d[3] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1.0f : 0.0f;
+        if (t_mouse || t_mx || t_my) {
+            int mx, my;
+            u32 buttons = SDL_GetMouseState(&mx, &my);
+            mx_val = (f32)mx;
+            my_val = (f32)my;
+
+            if (t_mouse) {
+                void* mouse_data = mf_tensor_data(t_mouse);
+                if (mouse_data) {
+                    f32* d = (f32*)mouse_data;
+                    d[0] = mx_val;
+                    d[1] = my_val;
+                    d[2] = (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) ? 1.0f : 0.0f;
+                    d[3] = (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) ? 1.0f : 0.0f;
+                }
             }
+            if (t_mx) {
+                 void* d = mf_tensor_data(t_mx);
+                 if (d) *((f32*)d) = mx_val;
+            }
+            if (t_my) {
+                 void* d = mf_tensor_data(t_my);
+                 if (d) *((f32*)d) = my_val;
+            }
+        }
+        
+        if (t_rx) {
+            void* d = mf_tensor_data(t_rx);
+            if (d) {
+                *((f32*)d) = (f32)win_w;
+                MF_LOG_INFO("Set u_ResX to %f", *((f32*)d));
+            }
+        } else {
+            MF_LOG_ERROR("u_ResX not found!");
+        }
+        if (t_ry) {
+            void* d = mf_tensor_data(t_ry);
+            if (d) *((f32*)d) = (f32)win_h;
+        }
+        if (t_aspect) {
+            void* d = mf_tensor_data(t_aspect);
+            if (d) *((f32*)d) = (f32)win_w / (f32)win_h;
         }
 
         mf_engine_dispatch(engine);

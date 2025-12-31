@@ -2,6 +2,7 @@
 #include "mf_engine_internal.h"
 #include <mathflow/isa/mf_exec_ctx.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_utils.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -14,29 +15,18 @@ static void mf_state_shutdown(mf_state* state) {
     
     for (u32 i = 0; i < state->register_count; ++i) {
         mf_tensor* t = &state->registers[i];
-        // If tensor has a buffer and owns it (via alloc)
-        // In the new view model, registers in state might own their buffers if they are temps.
-        // If they are bound to globals, they point to engine buffers.
-        // For temps: mf_tensor_alloc creates a buffer.
         
-        // Check if buffer exists and is owned by this tensor context?
-        // Simplification: We rely on mf_buffer's own flags.
-        // But we need to know if we should free the *mf_buffer struct* itself?
-        // If it was allocated on heap, yes. If on arena/stack, no.
-        // Currently mf_tensor_alloc (in mf_tensor.c) does: buffer = alloc(...);
-        
-        if (t->buffer) {
-            mf_buffer_free(t->buffer); // Frees the raw data
-            // We should free the struct too if we allocated it dynamically
-            // But tracking that is hard without a flag in tensor.
-            // Assuming for now that registers created via mf_tensor_alloc use the state allocator for the struct.
-            if (t->buffer->alloc == state->allocator) {
-                 state->allocator->free(state->allocator, t->buffer);
+        // Only free buffers that are explicitly owned by this state
+        if (state->ownership_flags && state->ownership_flags[i]) {
+            if (t->buffer) {
+                mf_buffer_free(t->buffer); 
+                state->allocator->free(state->allocator, t->buffer);
+                t->buffer = NULL;
             }
-            t->buffer = NULL;
         }
     }
     state->registers = NULL;
+    state->ownership_flags = NULL;
     state->register_count = 0;
 }
 
@@ -45,6 +35,8 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
     
     state->register_count = prog->meta.tensor_count;
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
+    state->ownership_flags = MF_ARENA_PUSH(arena, uint8_t, state->register_count);
+    memset(state->ownership_flags, 0, state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
         // Init temp registers
@@ -75,21 +67,25 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
                 t_reg->info = t_prog->info;
             } else {
                 // Internal Temporary -> Alloc
-                // Handle dynamic shapes in temps (unsafe but prevents crash)
                 mf_type_info alloc_info = t_prog->info;
                 bool is_dynamic = false;
                 for(int k=0; k<alloc_info.ndim; ++k) {
                     if (alloc_info.shape[k] < 0) {
-                        alloc_info.shape[k] = 1;
                         is_dynamic = true;
+                        break;
                     }
                 }
-                if (is_dynamic) {
-                    MF_LOG_WARN("Temp register %u has dynamic shape. Allocating stub [1].", i);
-                }
 
-                if (!mf_tensor_alloc(t_reg, state->allocator, &alloc_info)) {
-                    MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+                if (is_dynamic) {
+                    // Stay unallocated for now
+                    memset(t_reg, 0, sizeof(mf_tensor));
+                    t_reg->info = alloc_info;
+                } else {
+                    if (!mf_tensor_alloc(t_reg, state->allocator, &alloc_info)) {
+                        MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+                    } else {
+                        state->ownership_flags[i] = 1; // Mark as owned
+                    }
                 }
             }
         }
@@ -194,6 +190,7 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         MF_LOG_TRACE("  Resource[%u]: %s (%s)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other");
 
         res->name = strdup(res_desc->name);
+        res->name_hash = mf_fnv1a_hash(res->name);
         
         // Descriptor Prototype
         memset(&res->desc, 0, sizeof(mf_tensor));
@@ -206,30 +203,32 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         for (int k = 0; k < res->desc.info.ndim; ++k) {
             if (res->desc.info.shape[k] < 0) {
                 is_dynamic = true;
-                res->desc.info.shape[k] = 1; // Default stub size
+                break;
             }
-        }
-        if (is_dynamic) {
-            MF_LOG_WARN("Resource '%s' has dynamic shape. Allocating stub buffer [1].", res->name);
         }
 
         // Init strides
         int32_t stride = 1;
         for (int k = res->desc.info.ndim - 1; k >= 0; --k) {
             res->desc.info.strides[k] = stride;
-            stride *= res->desc.info.shape[k];
+            if (res->desc.info.shape[k] > 0) stride *= res->desc.info.shape[k];
         }
         
-        size_t bytes = mf_tensor_size_bytes(&res->desc);
+        size_t bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
         res->size_bytes = bytes;
         
         // Allocate Buffers
-        // The structs live on the arena, the data lives on the heap
         res->buffer_a = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
-        mf_buffer_alloc(res->buffer_a, allocator, bytes);
-        
         res->buffer_b = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
-        mf_buffer_alloc(res->buffer_b, allocator, bytes);
+        
+        if (bytes > 0) {
+            mf_buffer_alloc(res->buffer_a, allocator, bytes);
+            mf_buffer_alloc(res->buffer_b, allocator, bytes);
+        } else {
+            memset(res->buffer_a, 0, sizeof(mf_buffer));
+            memset(res->buffer_b, 0, sizeof(mf_buffer));
+            MF_LOG_WARN("Resource '%s' has dynamic shape. Staying unallocated.", res->name);
+        }
     }
 
     // 2. Load Kernels
@@ -258,7 +257,8 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
             if (mf_tensor_is_valid(t_prog)) {
                 // Find matching resource
                 for (u32 r = 0; r < engine->resource_count; ++r) {
-                    if (strcmp(engine->resources[r].name, sym->name) == 0) {
+                    // Optimized: Compare hashes first
+                    if (engine->resources[r].name_hash == sym->name_hash) {
                         mf_resource_inst* res = &engine->resources[r];
                         void* prog_data = mf_tensor_data(t_prog);
                         size_t bytes = mf_tensor_size_bytes(t_prog);
@@ -277,17 +277,20 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         // 3. Setup Bindings
         ker->binding_count = ker_desc->binding_count;
         ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, ker->binding_count);
-        ker->master_binding_idx = 0xFFFF; // Default to Invalid
+        
+        mf_resource_inst* reference_output = NULL;
 
         for (u32 b = 0; b < ker_desc->binding_count; ++b) {
             mf_pipeline_binding* bind = &ker_desc->bindings[b];
+            u32 port_hash = mf_fnv1a_hash(bind->kernel_port);
+            u32 res_hash = mf_fnv1a_hash(bind->global_resource);
             
             // Find Local Reg Index
             int32_t local_idx = -1;
             u8 symbol_flags = 0;
             
             for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
-                if (strcmp(ker->program->symbols[s].name, bind->kernel_port) == 0) {
+                if (ker->program->symbols[s].name_hash == port_hash) {
                     local_idx = ker->program->symbols[s].register_idx;
                     symbol_flags = ker->program->symbols[s].flags;
                     break;
@@ -297,7 +300,7 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
             // Find Global Resource Index
             int32_t global_idx = -1;
             for (u32 r = 0; r < engine->resource_count; ++r) {
-                if (strcmp(engine->resources[r].name, bind->global_resource) == 0) {
+                if (engine->resources[r].name_hash == res_hash) {
                     global_idx = r;
                     break;
                 }
@@ -306,18 +309,30 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
             if (local_idx != -1 && global_idx != -1) {
                 ker->bindings[b].local_reg = (u16)local_idx;
                 ker->bindings[b].global_res = (u16)global_idx;
+                ker->bindings[b].flags = symbol_flags; // Cache flags
 
-                if ((symbol_flags & MF_SYMBOL_FLAG_OUTPUT) && ker->master_binding_idx == 0xFFFF) {
-                    ker->master_binding_idx = (u16)b;
-                    MF_LOG_TRACE("  Kernel %s master driven by output '%s' (Res: %s)", 
-                        ker->id, bind->kernel_port, bind->global_resource);
+                if (symbol_flags & MF_SYMBOL_FLAG_OUTPUT) {
+                    mf_resource_inst* curr_res = &engine->resources[global_idx];
+                    
+                    if (!reference_output) {
+                        reference_output = curr_res;
+                        MF_LOG_TRACE("  Kernel %s domain set by output '%s' (%zu bytes)", 
+                            ker->id, bind->kernel_port, curr_res->size_bytes);
+                    } else {
+                        // Validate Uniform Grid Rule: All outputs must have same shape (size in bytes is a good proxy for now)
+                        if (reference_output->size_bytes != curr_res->size_bytes) {
+                            MF_LOG_ERROR("Kernel %s: Output shape mismatch! '%s' (%zu bytes) vs reference '%s' (%zu bytes). All outputs must match.",
+                                ker->id, bind->kernel_port, curr_res->size_bytes, 
+                                reference_output->name, reference_output->size_bytes);
+                        }
+                    }
                 }
             } else {
                 MF_LOG_ERROR("Failed to bind %s -> %s in kernel %s", bind->kernel_port, bind->global_resource, ker->id);
             }
         }
         
-        if (ker->master_binding_idx == 0xFFFF) {
+        if (!reference_output) {
             MF_LOG_WARN("Kernel %s has no bound OUTPUT symbols. It will not execute!", ker->id);
         }
     }
@@ -333,9 +348,59 @@ void mf_engine_dispatch(mf_engine* engine) {
     for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
         
-        if (ker->master_binding_idx == 0xFFFF) continue; 
+        // --- Step 1: Auto-Resize based on Reference Inputs ---
+        if (ker->program->symbols) {
+             for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+                 mf_bin_symbol* sym = &ker->program->symbols[s];
+                 // Check if it's an OUTPUT with a declared dependency
+                 if ((sym->flags & MF_SYMBOL_FLAG_OUTPUT) && sym->related_name_hash != 0) {
+                     
+                     // 1. Find Binding for Output
+                     u32 out_res_idx = 0xFFFFFFFF;
+                     for(u32 kb=0; kb < ker->binding_count; ++kb) {
+                         if (ker->bindings[kb].local_reg == sym->register_idx) {
+                             out_res_idx = ker->bindings[kb].global_res;
+                             break;
+                         }
+                     }
+                     if (out_res_idx >= engine->resource_count) continue;
+                     
+                     // 2. Find Input Symbol (by Hash)
+                     u32 related_reg_idx = 0xFFFFFFFF;
+                     for (u32 s2 = 0; s2 < ker->program->meta.symbol_count; ++s2) {
+                         if (ker->program->symbols[s2].name_hash == sym->related_name_hash) {
+                             related_reg_idx = ker->program->symbols[s2].register_idx;
+                             break;
+                         }
+                     }
+                     if (related_reg_idx == 0xFFFFFFFF) continue;
+                     
+                     // 3. Find Binding for Input
+                     u32 in_res_idx = 0xFFFFFFFF;
+                     for(u32 kb=0; kb < ker->binding_count; ++kb) {
+                         if (ker->bindings[kb].local_reg == related_reg_idx) {
+                             in_res_idx = ker->bindings[kb].global_res;
+                             break;
+                         }
+                     }
+                     if (in_res_idx >= engine->resource_count) continue;
+                     
+                     // 4. Compare & Resize
+                     mf_resource_inst* res_in = &engine->resources[in_res_idx];
+                     mf_resource_inst* res_out = &engine->resources[out_res_idx];
+                     
+                     if (!mf_tensor_same_shape(&res_in->desc, &res_out->desc)) {
+                         // Only resize if input is valid (allocated)
+                         if (res_in->desc.buffer && res_in->desc.buffer->data) {
+                             MF_LOG_TRACE("Auto-Resizing '%s' to match '%s'", res_out->name, res_in->name);
+                             mf_engine_resize_resource(engine, res_out->name, res_in->desc.info.shape, res_in->desc.info.ndim);
+                         }
+                     }
+                 }
+             }
+        }
 
-        MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
+        const mf_tensor* kernel_domain = NULL;
         
         // Zero-Copy Bindings: Map Global Resources to Local Registers
         for (u32 b = 0; b < ker->binding_count; ++b) {
@@ -348,20 +413,17 @@ void mf_engine_dispatch(mf_engine* engine) {
             mf_tensor* t = &ker->state.registers[local_reg];
 
             // Determine if Output or Input based on flags
-            u8 flags = 0;
-            if (ker->program->symbols) {
-                for(u32 s=0; s<ker->program->meta.symbol_count; ++s) {
-                    if (ker->program->symbols[s].register_idx == local_reg) {
-                        flags = ker->program->symbols[s].flags;
-                        break;
-                    }
-                }
-            }
+            u8 flags = ker->bindings[b].flags;
 
             mf_buffer* active_buf;
             if (flags & MF_SYMBOL_FLAG_OUTPUT) {
                 // Write to Next Frame (Back Buffer)
                 active_buf = is_even ? res->buffer_b : res->buffer_a;
+                
+                // Use the first output found as the execution domain
+                if (!kernel_domain) {
+                    kernel_domain = t;
+                }
             } else {
                 // Read from Previous Frame (Front Buffer)
                 active_buf = is_even ? res->buffer_a : res->buffer_b;
@@ -374,10 +436,35 @@ void mf_engine_dispatch(mf_engine* engine) {
             // Sync metadata from resource
             t->info = res->desc.info;
         }
+        
+        if (!kernel_domain) continue;
 
-        // Determine Execution Domain from Master Binding
-        u16 master_local_reg = ker->bindings[ker->master_binding_idx].local_reg;
-        const mf_tensor* kernel_domain = &ker->state.registers[master_local_reg];
+        // --- Step 2: Pre-Dispatch Validation ---
+        bool can_execute = true;
+        for (u32 b = 0; b < ker->binding_count; ++b) {
+            if (ker->bindings[b].flags & MF_SYMBOL_FLAG_OUTPUT) {
+                u16 local_reg = ker->bindings[b].local_reg;
+                mf_tensor* t = &ker->state.registers[local_reg];
+                if (!mf_tensor_is_valid(t)) {
+                    const char* port_name = "unknown";
+                    if (ker->program->symbols) {
+                        for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+                            if (ker->program->symbols[s].register_idx == local_reg) {
+                                port_name = ker->program->symbols[s].name;
+                                break;
+                            }
+                        }
+                    }
+                    MF_LOG_ERROR("Kernel %s: Output port '%s' is unallocated! Resize the resource before dispatch.", 
+                        ker->id, port_name);
+                    can_execute = false;
+                    break;
+                }
+            }
+        }
+        if (!can_execute) continue;
+
+        MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
 
         // Execute Kernel
         for (u32 f = 0; f < ker->frequency; ++f) {

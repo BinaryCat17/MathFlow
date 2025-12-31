@@ -10,6 +10,7 @@
  */
 typedef struct mf_state {
     mf_tensor* registers;
+    uint8_t* ownership_flags; // [register_count] 1 if owned, 0 if view
     size_t register_count;
     mf_allocator* allocator;
     

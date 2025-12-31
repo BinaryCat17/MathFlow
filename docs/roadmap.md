@@ -155,17 +155,41 @@
 - [x] **Step 4: Error Reporting:**
     - Use `mf_source_loc` to print GCC-style error messages (e.g., `graph.json:15:4: error: shape mismatch`).
 
-## Phase 25: Zero-Overhead Linking (Hash-Based)
-**Objective:** Optimize the binding process and reduce memory overhead by replacing string comparisons with hash lookups.
+## Phase 25: Zero-Overhead Linking & Dispatch Optimization (Completed)
+**Objective:** Eliminate string comparisons during setup and remove symbol lookups from the hot execution loop (`mf_engine_dispatch`).
 
-- [ ] **Step 1: ISA Hashing:**
+- [x] **Step 1: ISA Hashing (Setup Optimization):**
     - Update `mf_bin_symbol` to store `u32 name_hash` (FNV-1a).
     - Keep string names in a separate "Debug Table" (stripped in Release builds).
-- [ ] **Step 2: Engine Update:**
     - `mf_engine_bind_pipeline` matches resources using hashes (`O(1)`).
-- [ ] **Step 3: Loader Update:**
+- [x] **Step 2: Binding Flag Caching (Hot Loop Optimization):**
+    - Update `mf_kernel_binding` struct to include `u8 flags` (Input/Output).
+    - Populate these flags once during `mf_engine_bind_pipeline` by looking up the symbol.
+    - **Refactor:** `mf_engine_dispatch` should read `bind->flags` directly instead of iterating through `ker->program->symbols` every frame.
+- [x] **Step 3: Loader Update:**
     - Compute hashes during JSON parsing/Binary loading.
-    - Ensure collision detection (optional but recommended for robustness).
+
+## Phase 26: Explicit Memory Ownership (Safety) (Completed)
+**Objective:** Resolve the ambiguity in `mf_state` regarding which registers own their memory and which are views. Prevent Double-Free and leaks.
+
+- [x] **Step 1: Ownership Tracking:**
+    - Introduce an explicit tracking mechanism in `mf_state` (e.g., `u64 owned_mask` or `u8* ownership_flags`) to know exactly which register indices hold allocated memory.
+    - Remove reliance on `buffer->alloc` checks.
+- [x] **Step 2: Lifecycle API:**
+    - Distinct API for `mf_tensor_alloc_owned` (sets bit) vs `mf_tensor_view` (clears bit).
+    - Update `mf_state_shutdown` to only free buffers marked as owned.
+
+## Phase 27: Robust Dynamic Shapes (Completed)
+**Objective:** Eliminate the unsafe "Stub [1]" allocation for dynamic tensors. Prevent heap corruption when writing to unresized buffers.
+
+- [x] **Step 1: Uninitialized State:**
+    - Allow `mf_buffer` to exist in an "Uncommitted" state (valid handle, but `data == NULL`).
+    - Accessing an uncommitted buffer should trigger a hard assertion/crash, not silent corruption.
+- [x] **Step 2: Pre-Dispatch Validation:**
+    - Engine must validate that all bound Output Resources have a valid size (> 0 bytes) before calling Backend.
+    - Error out gracefully if a Kernel tries to write to a "Stub".
+- [x] **Step 3: Graph-Driven Resizing:**
+    - Implement a mechanism for Kernels to request output resizing (or propagate Input shape to Output shape explicitly).
 
 ---
 

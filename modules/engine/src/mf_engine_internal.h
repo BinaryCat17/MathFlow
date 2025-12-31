@@ -12,6 +12,7 @@
 typedef struct {
     u16 local_reg;
     u16 global_res;
+    u8 flags; // Cached MF_SYMBOL_FLAG_*
 } mf_kernel_binding;
 
 // Instance of a loaded kernel within the engine
@@ -24,15 +25,12 @@ typedef struct {
     // Cached mapping: Local Reg Index -> Global Resource Index
     mf_kernel_binding* bindings;
     u32 binding_count;
-    
-    // Index into 'bindings' array that drives the execution domain (First Output).
-    // If 0xFFFF, the kernel has no outputs and might not run correctly.
-    u16 master_binding_idx;
 } mf_kernel_inst;
 
 // Concrete implementation of a Global Resource instance
 typedef struct {
     char* name;
+    u32 name_hash; // FNV-1a
     mf_buffer* buffer_a;
     mf_buffer* buffer_b; // Used if persistent=true
     size_t size_bytes;

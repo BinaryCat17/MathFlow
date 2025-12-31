@@ -4,6 +4,32 @@
 #include <string.h>
 #include <stdio.h>
 
+// Helper to trace back the shape dependency
+static mf_ir_node* find_shape_source(mf_graph_ir* ir, mf_ir_node* node) {
+    // Limit depth to prevent infinite loops/stack overflow (though graph is DAG)
+    for (int i = 0; i < 32; ++i) {
+        if (node->type == MF_NODE_INPUT) return node;
+        if (node->type == MF_NODE_CONST) return NULL;
+        
+        // Stop at shape-changing ops (simplification for Phase 27)
+        // Ideally we should support partial propagation, but this is Step 3 start.
+        if (node->type == MF_NODE_RESHAPE || 
+            node->type == MF_NODE_SLICE || 
+            node->type == MF_NODE_MATMUL ||
+            node->type == MF_NODE_INDEX ||
+            node->type == MF_NODE_COMPRESS ||
+            node->type == MF_NODE_JOIN) {
+            return NULL;
+        }
+
+        // Trace up via src1 (primary operand convention)
+        mf_ir_node* parent = find_input_source(ir, (u32)(node - ir->nodes), 0);
+        if (!parent) return NULL;
+        node = parent;
+    }
+    return NULL;
+}
+
 bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, size_t sorted_count, mf_arena* arena) {
     prog->meta.reserved_state = 0;
     prog->meta.tensor_count = (u32)ir->node_count; 
@@ -39,17 +65,26 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             mf_bin_symbol* sym = &prog->symbols[current_symbol++];
             strncpy(sym->name, node->id, MF_MAX_SYMBOL_NAME - 1);
             sym->name[MF_MAX_SYMBOL_NAME - 1] = '\0';
+            sym->name_hash = mf_fnv1a_hash(sym->name); // Compute Hash
             sym->register_idx = node_idx;
+            sym->related_name_hash = 0;
             
             sym->flags = 0;
             if (node->type == MF_NODE_INPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_INPUT;
-            } else if (node->type == MF_NODE_CONST) {
-                // Constants are neither Input nor Output state, they are static
-                sym->flags = 0; 
-            } else {
-                // Any other named node is an Output (State Update)
+            } else if (node->type == MF_NODE_OUTPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_OUTPUT;
+                
+                // Try to find the input that drives this output's shape
+                mf_ir_node* source = find_shape_source(ir, node);
+                if (source && source->id) {
+                    sym->related_name_hash = mf_fnv1a_hash(source->id);
+                    MF_LOG_TRACE("Linked Output '%s' to Input '%s' (Shape Propagation)", node->id, source->id);
+                }
+            } else {
+                // Constants and Named Logic nodes are internal state, 
+                // neither Input nor Output for the Pipeline interface.
+                sym->flags = 0; 
             }
         }
 
@@ -161,7 +196,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             case MF_NODE_NOT: inst->opcode = MF_OP_NOT; instr_count++; break;
             
             case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
-            case MF_NODE_INDEX: inst->opcode = MF_OP_INDEX; instr_count++; break;
+            case MF_NODE_INDEX: 
+                inst->opcode = MF_OP_INDEX; 
+                if (!s1) inst->src1_idx = inst->dest_idx; // Read Axis from self-constant
+                instr_count++; 
+                break;
             case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
             case MF_NODE_COMPRESS: 
                 inst->opcode = MF_OP_COMPRESS; 

@@ -2,16 +2,14 @@
 #include "mf_kernel_utils.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
+#include <mathflow/base/mf_log.h>
 
 // --- Op: Range (Iota) ---
-// Src1: Scalar count (e.g. 5)
-// Dest: Vector [0, 1, 2, 3, 4]
 static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !count_tensor) return;
 
-    // Determine count
     int count = 0;
     if (count_tensor->info.dtype == MF_DTYPE_F32) {
         count = (int)((f32*)mf_tensor_data(count_tensor))[0];
@@ -21,12 +19,10 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     if (count < 0) count = 0;
 
-    // Resize Dest
-    dst->info.dtype = MF_DTYPE_F32; // Always F32 for now
+    dst->info.dtype = MF_DTYPE_F32;
     int32_t shape[] = { count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
-    // Fill
     f32* d = (f32*)mf_tensor_data(dst);
     for (int i = 0; i < count; ++i) {
         d[i] = (f32)i;
@@ -34,18 +30,14 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // --- Op: CumSum (Prefix Sum) ---
-// Src1: Vector [10, 20, 30]
-// Dest: Vector [10, 30, 60]
 static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
-    // Shape matches source
     if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return;
 
-    // Implementation (F32 only for now)
-    if (src->info.dtype != MF_DTYPE_F32) return; // TODO: Support others
+    if (src->info.dtype != MF_DTYPE_F32) return;
 
     f32* s = (f32*)mf_tensor_data(src);
     f32* d = (f32*)mf_tensor_data(dst);
@@ -58,9 +50,6 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // --- Op: Compress (Filter) ---
-// Src1: Data [10, 20, 30]
-// Src2: Mask [1, 0, 1]
-// Dest: [10, 30]
 static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
@@ -72,23 +61,20 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t mask_count = mf_tensor_count(mask);
     size_t count = (data_count < mask_count) ? data_count : mask_count;
     
-    // Pass 1: Count True
     size_t true_count = 0;
     for(size_t i=0; i<count; ++i) {
         bool keep = false;
         if (mask->info.dtype == MF_DTYPE_U8) keep = ((u8*)mf_tensor_data(mask))[i] != 0;
-        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f; // Threshold
+        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f;
         else if (mask->info.dtype == MF_DTYPE_I32) keep = ((int32_t*)mf_tensor_data(mask))[i] != 0;
         
         if (keep) true_count++;
     }
 
-    // Resize Dest
     dst->info.dtype = data->info.dtype;
     int32_t new_shape[] = { (int32_t)true_count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, new_shape, 1)) return;
 
-    // Pass 2: Copy
     size_t write_idx = 0;
     size_t elem_size = mf_dtype_size(data->info.dtype);
     u8* src_ptr = (u8*)mf_tensor_data(data);
@@ -108,8 +94,6 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // --- Op: Index (Intrinsic Coordinate) ---
-// Src1: Axis (0=Slowest, e.g. Y/Batch, N=Fastest, e.g. X)
-// Dest: Vector of global coordinates
 static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
@@ -119,7 +103,6 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
     else if (axis_t->info.dtype == MF_DTYPE_I32) axis = ((int32_t*)mf_tensor_data(axis_t))[0];
     
-    // Safety check for axis
     if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
 
     size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
@@ -130,38 +113,28 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     f32* d = (f32*)mf_tensor_data(dst);
     
-    // Pre-calculate strides for unflattening the batch index inside the tile
-    // The batch corresponds to the TILE shape (ctx->tile_size).
-    // We assume the tile execution is iterating over the tile dimensions in standard order.
+    // Unflattening Logic: Linear (Flat) -> N-Dimensional Coordinate
+    // We assume standard layout: (Row, Col) -> Row * Width + Col
+    // Global Index = ctx->tile_offset[0] + i
+    // Coord[axis] = (Global Index / Stride[axis]) % Shape[axis]
     
-    u32 tile_strides[MF_MAX_DIMS];
-    u32 current_stride = 1;
-    // Iterate from fastest dim (last) to slowest (0)
-    for (int i = ctx->ndim - 1; i >= 0; --i) {
-        tile_strides[i] = current_stride;
-        current_stride *= ctx->tile_size[i];
+    // Calculate Stride for the requested axis
+    u32 axis_stride = 1;
+    // Iterate from fastest (last) to just after axis
+    for (int i = ctx->ndim - 1; i > axis; --i) {
+        axis_stride *= ctx->domain_shape[i];
     }
+    u32 axis_size = ctx->domain_shape[axis];
     
-    u32 axis_offset = ctx->tile_offset[axis];
-    u32 axis_stride = tile_strides[axis];
-    
-    // Optimization: If stride is 1 (Fastest Axis), simple increment
-    if (axis_stride == 1) {
-        for (size_t i = 0; i < count; ++i) {
-            d[i] = (f32)(axis_offset + i);
-        }
-    } else {
-        // Generic Unflattening (only for the requested axis)
-        // local_coord = (i / stride) % size
-        // But since we only need ONE axis, we can optimize.
-        // Actually, "stride" here accumulates lower dims.
-        // The formula is: (i / stride) % dim_size
-        u32 dim_size = ctx->tile_size[axis];
-        
-        for (size_t i = 0; i < count; ++i) {
-            u32 local_coord = (i / axis_stride) % dim_size;
-            d[i] = (f32)(axis_offset + local_coord);
-        }
+    if (axis_size == 0) axis_size = 1;
+
+    u32 start_linear = ctx->tile_offset[0];
+
+    for (size_t i = 0; i < count; ++i) {
+        u32 global_idx = start_linear + (u32)i;
+        u32 coord = (global_idx / axis_stride) % axis_size;
+        d[i] = (f32)coord;
+        // if (i == 0) MF_LOG_INFO("  Idx[%zu] = %f", i, d[i]);
     }
 }
 

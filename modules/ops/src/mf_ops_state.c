@@ -10,6 +10,33 @@ static void op_copy(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
+    // Broadcasting: If Src is Scalar and Dst is pre-allocated (Spatial Window), fill it.
+    // Note: In windowed mode, 'dst' has a buffer set by the backend.
+    bool dst_allocated = (dst->buffer != NULL);
+    bool broadcast = mf_tensor_is_scalar(src) && !mf_tensor_is_scalar(dst) && dst_allocated;
+
+    if (broadcast) {
+        // Simple Fill
+        size_t count = mf_tensor_count(dst);
+        void* d_ptr = mf_tensor_data(dst);
+        void* s_ptr = mf_tensor_data(src);
+        
+        if (dst->info.dtype == MF_DTYPE_F32) {
+             f32 val = (src->info.dtype == MF_DTYPE_F32) ? *((f32*)s_ptr) : 0.0f; // Minimal cast
+             f32* d = (f32*)d_ptr;
+             for(size_t i=0; i<count; ++i) d[i] = val;
+        } else if (dst->info.dtype == MF_DTYPE_I32) {
+             i32 val = *((i32*)s_ptr);
+             i32* d = (i32*)d_ptr;
+             for(size_t i=0; i<count; ++i) d[i] = val;
+        } else if (dst->info.dtype == MF_DTYPE_U8) {
+             u8 val = *((u8*)s_ptr);
+             u8* d = (u8*)d_ptr;
+             for(size_t i=0; i<count; ++i) d[i] = val;
+        }
+        return;
+    }
+
     dst->info.dtype = src->info.dtype;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, src->info.shape, src->info.ndim)) return;
 

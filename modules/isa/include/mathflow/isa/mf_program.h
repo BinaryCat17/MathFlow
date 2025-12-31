@@ -6,7 +6,7 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 8        // Explicit IO Flags + Pure State
+#define MF_BINARY_VERSION 10       // Explicit IO Flags + Pure State + Symbol Hashes + Shape Propagation
 
 #define MF_MAX_SYMBOL_NAME 64
 
@@ -17,7 +17,9 @@
 // Map Name -> Register Index
 typedef struct {
     char name[MF_MAX_SYMBOL_NAME];
+    uint32_t name_hash; // FNV-1a
     uint32_t register_idx;
+    uint32_t related_name_hash; // Hash of the Input symbol that drives this Output's shape (0 if none)
     uint8_t flags;       // MF_SYMBOL_FLAG_*
     uint8_t reserved[3]; // Padding/Alignment
 } mf_bin_symbol;

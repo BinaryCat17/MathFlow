@@ -85,25 +85,48 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         // Default: Initialize from program descriptor (shape/type)
         *worker_t = batch->program->tensors[i];
 
-        // 1. Is this an output/spatial tensor? (Matches domain size)
-        bool is_spatial = true;
-        if (main_t->info.ndim != batch->ndim) is_spatial = false;
-        else {
+        bool is_spatial = false;
+        int channels = 1;
+
+        // 1. Strict Match ([Domain])
+        if (main_t->info.ndim == batch->ndim) {
+            bool match = true;
             for(int d=0; d<batch->ndim; ++d) {
-                if ((u32)main_t->info.shape[d] != batch->domain_shape[d]) { is_spatial = false; break; }
+                if ((u32)main_t->info.shape[d] != batch->domain_shape[d]) { match = false; break; }
+            }
+            if (match) is_spatial = true;
+        }
+        // 2. Vector Match ([Domain, C])
+        else if (main_t->info.ndim == batch->ndim + 1) {
+            bool match = true;
+            for(int d=0; d<batch->ndim; ++d) {
+                if ((u32)main_t->info.shape[d] != batch->domain_shape[d]) { match = false; break; }
+            }
+            if (match) {
+                is_spatial = true;
+                channels = main_t->info.shape[batch->ndim];
             }
         }
 
         if (is_spatial && mf_tensor_is_valid(main_t)) {
             // ZERO-COPY WINDOW: Point worker tensor directly to a subset of the main buffer
-            size_t elem_size = mf_dtype_size(main_t->info.dtype);
+            size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
+            size_t elem_size = dtype_sz * channels;
+            
             worker_t->buffer = main_t->buffer;
             worker_t->byte_offset = main_t->byte_offset + (start_idx * elem_size);
             
-            // Adjust metadata for the worker (it thinks it's a flat 1D chunk of size 'count')
-            worker_t->info.ndim = 1;
-            worker_t->info.shape[0] = (int32_t)count;
-            worker_t->info.strides[0] = 1;
+            if (channels == 1) {
+                worker_t->info.ndim = 1;
+                worker_t->info.shape[0] = (int32_t)count;
+                worker_t->info.strides[0] = 1;
+            } else {
+                worker_t->info.ndim = 2;
+                worker_t->info.shape[0] = (int32_t)count;
+                worker_t->info.shape[1] = channels;
+                worker_t->info.strides[1] = 1; // Channel stride
+                worker_t->info.strides[0] = channels; // Element stride
+            }
         }
         else {
             // 2. Uniform Propagation (Scalars or small constants)
@@ -149,10 +172,10 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     
     // 4. Fill Context & Bind Windows
     state->ctx.batch_size = (u32)count;
-    state->ctx.ndim = 1; // Workers always process 1D flat spans now
-    state->ctx.tile_offset[0] = (u32)start_idx;
-    state->ctx.tile_size[0] = (u32)count;
-    state->ctx.domain_shape[0] = (u32)batch->total_elements;
+    state->ctx.ndim = batch->ndim; // Logical Dimensions
+    state->ctx.tile_offset[0] = (u32)start_idx; // Store Linear Offset in [0]
+    // Copy logical domain shape
+    for(int d=0; d<batch->ndim; ++d) state->ctx.domain_shape[d] = batch->domain_shape[d];
 
     prepare_registers(state, batch, start_idx, count);
 
