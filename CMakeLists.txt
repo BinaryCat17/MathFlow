@@ -9,6 +9,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Global dependencies can still be found here if they are common, 
 # but modules should ideally find what they need.
 find_package(SDL2 CONFIG QUIET)
+find_package(Stb REQUIRED)
 
 # --- Modules ---
 add_subdirectory(modules/base)

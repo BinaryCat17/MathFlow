@@ -104,6 +104,45 @@ char* mf_file_read(const char* path, mf_arena* arena) {
     return buf;
 }
 
+size_t mf_utf8_to_utf32(const char* utf8, u32* out_buffer, size_t max_out) {
+    size_t count = 0;
+    const unsigned char* p = (const unsigned char*)utf8;
+    while (*p) {
+        u32 codepoint = 0;
+        int len = 0;
+        
+        if ((*p & 0x80) == 0) {
+            codepoint = *p;
+            len = 1;
+        } else if ((*p & 0xE0) == 0xC0) {
+            codepoint = (*p & 0x1F) << 6;
+            codepoint |= (p[1] & 0x3F);
+            len = 2;
+        } else if ((*p & 0xF0) == 0xE0) {
+            codepoint = (*p & 0x0F) << 12;
+            codepoint |= (p[1] & 0x3F) << 6;
+            codepoint |= (p[2] & 0x3F);
+            len = 3;
+        } else if ((*p & 0xF8) == 0xF0) {
+            codepoint = (*p & 0x07) << 18;
+            codepoint |= (p[1] & 0x3F) << 12;
+            codepoint |= (p[2] & 0x3F) << 6;
+            codepoint |= (p[3] & 0x3F);
+            len = 4;
+        } else {
+            p++; 
+            continue;
+        }
+        
+        if (out_buffer && count < max_out) {
+            out_buffer[count] = codepoint;
+        }
+        count++;
+        p += len;
+    }
+    return count;
+}
+
 // --- String Map ---
 
 void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena) {

@@ -1,0 +1,23 @@
+{
+    "nodes": [
+        { "id": "out", "type": "Output" },
+        { "id": "font", "type": "Input", "data": {"shape": [262144], "dtype": "f32"} },
+        { "id": "font_info", "type": "Input", "data": {"shape": [9600], "dtype": "f32"} },
+        { "id": "time", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        
+        { "id": "msg", "type": "Const", "data": {"value": "Hello, MathFlow! Привет!"} },
+        { "id": "pos", "type": "Const", "data": {"value": [50.0, 100.0]} },
+        { "id": "size", "type": "Const", "data": {"value": 48.0} },
+        
+        { "id": "draw_text", "type": "Call", "data": {"path": "../../lib/text/render_text.json"} }
+    ],
+    "links": [
+        { "src": "pos", "dst": "draw_text", "dst_port": "pos" },
+        { "src": "msg", "dst": "draw_text", "dst_port": "text" },
+        { "src": "font", "dst": "draw_text", "dst_port": "fontatlas" },
+        { "src": "font_info", "dst": "draw_text", "dst_port": "fontinfo" },
+        { "src": "size", "dst": "draw_text", "dst_port": "fontsize" },
+        
+        { "src": "draw_text", "src_port": "alpha", "dst": "out", "dst_port": "in" }
+    ]
+}

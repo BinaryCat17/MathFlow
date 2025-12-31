@@ -22,14 +22,25 @@ static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int te
     int total_pixels = tex_w * tex_h;
     
     size_t count = mf_tensor_count(tensor);
-    size_t required_floats = (size_t)total_pixels * 4; 
-    if (count < required_floats) return; 
+    int channels = tensor->info.ndim >= 3 ? tensor->info.shape[tensor->info.ndim - 1] : 1;
 
     for (int i = 0; i < total_pixels; ++i) {
-        float r = src[i*4 + 0];
-        float g = src[i*4 + 1];
-        float b = src[i*4 + 2];
-        float a = src[i*4 + 3];
+        float r, g, b, a;
+        if (channels >= 4) {
+            r = src[i*4 + 0];
+            g = src[i*4 + 1];
+            b = src[i*4 + 2];
+            a = src[i*4 + 3];
+        } else if (channels == 3) {
+            r = src[i*3 + 0];
+            g = src[i*3 + 1];
+            b = src[i*3 + 2];
+            a = 1.0f;
+        } else {
+            // Grayscale / Single channel
+            r = g = b = src[i];
+            a = 1.0f;
+        }
 
         if (r < 0) r = 0; if (r > 1) r = 1;
         if (g < 0) g = 0; if (g > 1) g = 1;
@@ -91,25 +102,22 @@ int mf_host_run(const mf_host_desc* desc) {
             SDL_DestroyWindow(window); SDL_Quit();
             return 1;
         }
-        
-        // --- Init Hack: Inventory ---
-        mf_tensor* t_inv = mf_engine_map_resource(engine, "Inventory");
-        if (t_inv) {
-            MF_LOG_INFO("Initializing Inventory Resource...");
-            f32* d = (f32*)mf_tensor_data(t_inv);
-            if (d && mf_tensor_count(t_inv) >= 4) {
-                d[0] = 1.0f; // Item 1 (Red)
-                d[1] = 2.0f; // Item 2 (Green)
-                d[2] = 3.0f; // Item 3 (Blue)
-                d[3] = 0.0f; // Empty
-            }
-        }
     } else {
         if (!mf_loader_load_graph(engine, desc->graph_path)) {
             MF_LOG_ERROR("Failed to load graph: %s", desc->graph_path);
             mf_engine_destroy(engine);
             SDL_DestroyWindow(window); SDL_Quit();
             return 1;
+        }
+    }
+    
+    // --- Load Assets ---
+    for (int i = 0; i < desc->asset_count; ++i) {
+        mf_host_asset* asset = &desc->assets[i];
+        if (asset->type == MF_ASSET_IMAGE) {
+            mf_loader_load_image(engine, asset->resource_name, asset->path);
+        } else if (asset->type == MF_ASSET_FONT) {
+            mf_loader_load_font(engine, asset->resource_name, asset->path, asset->font_size);
         }
     }
     

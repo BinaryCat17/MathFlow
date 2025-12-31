@@ -39,4 +39,26 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path);
  */
 bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe);
 
+/**
+ * @brief Loads an image from disk into a global resource buffer.
+ * Supports PNG, BMP, etc. (via stb_image).
+ * 
+ * @param engine The engine instance (for allocation).
+ * @param resource_name Name of the global resource to bind the image to.
+ * @param path Path to the image file.
+ * @return true if successful.
+ */
+bool mf_loader_load_image(mf_engine* engine, const char* resource_name, const char* path);
+
+/**
+ * @brief Loads a TTF font and bakes an SDF Font Atlas into a global resource.
+ * 
+ * @param engine The engine instance.
+ * @param resource_name Name of the global resource for the texture.
+ * @param path Path to the .ttf file.
+ * @param font_size Height of the font in pixels for baking.
+ * @return true if successful.
+ */
+bool mf_loader_load_font(mf_engine* engine, const char* resource_name, const char* path, float font_size);
+
 #endif // MF_LOADER_H

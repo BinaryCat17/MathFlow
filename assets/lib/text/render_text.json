@@ -1,0 +1,157 @@
+{
+    "nodes": [
+        { "id": "pos", "type": "Input", "data": {"shape": [2], "dtype": "f32"} },
+        { "id": "text", "type": "Input", "data": {"shape": [-1], "dtype": "i32"} },
+        { "id": "fontatlas", "type": "Input", "data": {"shape": [262144], "dtype": "f32"} },
+        { "id": "fontinfo", "type": "Input", "data": {"shape": [9600], "dtype": "f32"} },
+        { "id": "fontsize", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        
+        { "id": "pixelx", "type": "Index", "data": {"axis": 1} },
+        { "id": "pixely", "type": "Index", "data": {"axis": 0} },
+
+        { "id": "idx0", "type": "Const", "data": {"value": 0, "dtype": "i32"} },
+        { "id": "idx1", "type": "Const", "data": {"value": 1, "dtype": "i32"} },
+        { "id": "idx2", "type": "Const", "data": {"value": 2, "dtype": "i32"} },
+        { "id": "idx3", "type": "Const", "data": {"value": 3, "dtype": "i32"} },
+        { "id": "idx4", "type": "Const", "data": {"value": 4, "dtype": "i32"} },
+        { "id": "eight", "type": "Const", "data": {"value": 8, "dtype": "i32"} },
+
+        { "id": "posx", "type": "Gather" },
+        { "id": "posy", "type": "Gather" },
+
+        { "id": "dx", "type": "Sub" },
+        { "id": "dy", "type": "Sub" },
+
+        { "id": "adv_factor", "type": "Const", "data": {"value": 0.55} },
+        { "id": "charw", "type": "Mul" },
+        
+        { "id": "charidx_f", "type": "Div" },
+        { "id": "charidx", "type": "Floor" },
+        
+        { "id": "charcode", "type": "Gather" },
+        
+        { "id": "base_idx", "type": "Mul" },
+        { "id": "u0_idx", "type": "Add" },
+        { "id": "v0_idx", "type": "Add" },
+        { "id": "u1_idx", "type": "Add" },
+        { "id": "v1_idx", "type": "Add" },
+
+        { "id": "u0", "type": "Gather" },
+        { "id": "v0", "type": "Gather" },
+        { "id": "u1", "type": "Gather" },
+        { "id": "v1", "type": "Gather" },
+        
+        { "id": "localx", "type": "Sub" },
+        { "id": "localy", "type": "Div" },
+
+        { "id": "atlasu", "type": "Mix" },
+        { "id": "atlasv", "type": "Mix" },
+        
+        { "id": "atlasw", "type": "Const", "data": {"value": 512.0} },
+        { "id": "au_px", "type": "Mul" },
+        { "id": "av_px", "type": "Mul" },
+        { "id": "au_idx", "type": "Floor" },
+        { "id": "av_idx", "type": "Floor" },
+        
+        { "id": "rowoff", "type": "Mul" },
+        { "id": "flatidx", "type": "Add" },
+        
+        { "id": "sdf", "type": "Gather" },
+        
+        { "id": "e0", "type": "Const", "data": {"value": 0.45} },
+        { "id": "e1", "type": "Const", "data": {"value": 0.55} },
+        { "id": "mask", "type": "SmoothStep" },
+
+        { "id": "zero", "type": "Const", "data": {"value": 0.0} },
+        { "id": "ispos", "type": "Greater" },
+        { "id": "final_alpha", "type": "Select" },
+        
+        { "id": "alpha", "type": "Output" }
+    ],
+    "links": [
+        { "src": "pixelx", "dst": "dx", "dst_port": "a" },
+        { "src": "pos", "dst": "posx", "dst_port": "data" },
+        { "src": "idx0", "dst": "posx", "dst_port": "indices" },
+        { "src": "posx", "dst": "dx", "dst_port": "b" },
+        
+        { "src": "pixely", "dst": "dy", "dst_port": "a" },
+        { "src": "pos", "dst": "posy", "dst_port": "data" },
+        { "src": "idx1", "dst": "posy", "dst_port": "indices" },
+        { "src": "posy", "dst": "dy", "dst_port": "b" },
+
+        { "src": "fontsize", "dst": "charw", "dst_port": "a" },
+        { "src": "adv_factor", "dst": "charw", "dst_port": "b" },
+
+        { "src": "dx", "dst": "charidx_f", "dst_port": "a" },
+        { "src": "charw", "dst": "charidx_f", "dst_port": "b" },
+        { "src": "charidx_f", "dst": "charidx", "dst_port": "in" },
+        
+        { "src": "text", "dst": "charcode", "dst_port": "data" },
+        { "src": "charidx", "dst": "charcode", "dst_port": "indices" },
+
+        { "src": "charcode", "dst": "base_idx", "dst_port": "a" },
+        { "src": "eight", "dst": "base_idx", "dst_port": "b" },
+
+        { "src": "base_idx", "dst": "u0_idx", "dst_port": "a" },
+        { "src": "idx1", "dst": "u0_idx", "dst_port": "b" },
+        { "src": "fontinfo", "dst": "u0", "dst_port": "data" },
+        { "src": "u0_idx", "dst": "u0", "dst_port": "indices" },
+
+        { "src": "base_idx", "dst": "v0_idx", "dst_port": "a" },
+        { "src": "idx2", "dst": "v0_idx", "dst_port": "b" },
+        { "src": "fontinfo", "dst": "v0", "dst_port": "data" },
+        { "src": "v0_idx", "dst": "v0", "dst_port": "indices" },
+
+        { "src": "base_idx", "dst": "u1_idx", "dst_port": "a" },
+        { "src": "idx3", "dst": "u1_idx", "dst_port": "b" },
+        { "src": "fontinfo", "dst": "u1", "dst_port": "data" },
+        { "src": "u1_idx", "dst": "u1", "dst_port": "indices" },
+
+        { "src": "base_idx", "dst": "v1_idx", "dst_port": "a" },
+        { "src": "idx4", "dst": "v1_idx", "dst_port": "b" },
+        { "src": "fontinfo", "dst": "v1", "dst_port": "data" },
+        { "src": "v1_idx", "dst": "v1", "dst_port": "indices" },
+
+        { "src": "charidx_f", "dst": "localx", "dst_port": "a" },
+        { "src": "charidx", "dst": "localx", "dst_port": "b" },
+
+        { "src": "dy", "dst": "localy", "dst_port": "a" },
+        { "src": "fontsize", "dst": "localy", "dst_port": "b" },
+
+        { "src": "u0", "dst": "atlasu", "dst_port": "a" },
+        { "src": "u1", "dst": "atlasu", "dst_port": "b" },
+        { "src": "localx", "dst": "atlasu", "dst_port": "t" },
+
+        { "src": "v0", "dst": "atlasv", "dst_port": "a" },
+        { "src": "v1", "dst": "atlasv", "dst_port": "b" },
+        { "src": "localy", "dst": "atlasv", "dst_port": "t" },
+
+        { "src": "atlasu", "dst": "au_px", "dst_port": "a" },
+        { "src": "atlasw", "dst": "au_px", "dst_port": "b" },
+        { "src": "au_px", "dst": "au_idx", "dst_port": "in" },
+
+        { "src": "atlasv", "dst": "av_px", "dst_port": "a" },
+        { "src": "atlasw", "dst": "av_px", "dst_port": "b" },
+        { "src": "av_px", "dst": "av_idx", "dst_port": "in" },
+
+        { "src": "av_idx", "dst": "rowoff", "dst_port": "a" },
+        { "src": "atlasw", "dst": "rowoff", "dst_port": "b" },
+        { "src": "rowoff", "dst": "flatidx", "dst_port": "a" },
+        { "src": "au_idx", "dst": "flatidx", "dst_port": "b" },
+
+        { "src": "fontatlas", "dst": "sdf", "dst_port": "data" },
+        { "src": "flatidx", "dst": "sdf", "dst_port": "indices" },
+
+        { "src": "sdf", "dst": "mask", "dst_port": "x" },
+        { "src": "e0", "dst": "mask", "dst_port": "edges" },
+        
+        { "src": "charidx", "dst": "ispos", "dst_port": "a" },
+        { "src": "zero", "dst": "ispos", "dst_port": "b" },
+        
+        { "src": "ispos", "dst": "final_alpha", "dst_port": "cond" },
+        { "src": "mask", "dst": "final_alpha", "dst_port": "true" },
+        { "src": "zero", "dst": "final_alpha", "dst_port": "false" },
+
+        { "src": "final_alpha", "dst": "alpha", "dst_port": "in" }
+    ]
+}

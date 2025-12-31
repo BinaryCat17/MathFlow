@@ -164,6 +164,37 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
         }
     }
 
+    // 4. Assets Section
+    const mf_json_value* assets = mf_json_get_field(root, "assets");
+    if (assets && assets->type == MF_JSON_VAL_ARRAY) {
+        out_desc->asset_count = (int)assets->as.array.count;
+        out_desc->assets = calloc(out_desc->asset_count, sizeof(mf_host_asset));
+        
+        for (size_t i = 0; i < assets->as.array.count; ++i) {
+            mf_host_asset* pa = &out_desc->assets[i];
+            const mf_json_value* asset = &assets->as.array.items[i];
+            
+            const mf_json_value* type = mf_json_get_field(asset, "type");
+            if (type && type->type == MF_JSON_VAL_STRING) {
+                if (strcmp(type->as.s, "image") == 0) pa->type = MF_ASSET_IMAGE;
+                else if (strcmp(type->as.s, "font") == 0) pa->type = MF_ASSET_FONT;
+            }
+            
+            const mf_json_value* res = mf_json_get_field(asset, "resource");
+            if (res && res->type == MF_JSON_VAL_STRING) pa->resource_name = strdup(res->as.s);
+            
+            const mf_json_value* path = mf_json_get_field(asset, "path");
+            if (path && path->type == MF_JSON_VAL_STRING) {
+                char* full_path = mf_path_join(base_dir, path->as.s, &arena);
+                pa->path = strdup(full_path);
+            }
+            
+            const mf_json_value* size = mf_json_get_field(asset, "size");
+            if (size && size->type == MF_JSON_VAL_NUMBER) pa->font_size = (float)size->as.n;
+            else pa->font_size = 32.0f;
+        }
+    }
+
     // Cleanup
     free(arena_mem);
     

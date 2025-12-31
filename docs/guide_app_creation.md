@@ -159,10 +159,12 @@ Build the project and run `mf-window`:
 
 ```bash
 # Linux
+cmake --preset x64-debug-linux
 cmake --build out/build/x64-debug-linux
 ./out/build/x64-debug-linux/apps/mf-window/mf-window assets/projects/my_game/my_game.mfapp
 
 # Windows
+cmake --preset x64-debug-win
 cmake --build out/build/x64-debug-win
 .\out\build\x64-debug-win\apps\mf-window\mf-window.exe assets\projects\my_game\my_game.mfapp
 ```

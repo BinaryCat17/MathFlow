@@ -25,6 +25,11 @@ char* mf_path_join(const char* dir, const char* file, mf_arena* arena);
 // Read entire file into arena memory (null-terminated)
 char* mf_file_read(const char* path, mf_arena* arena);
 
+// Decodes a UTF-8 string into UTF-32 codepoints.
+// Returns the number of codepoints produced.
+// If out_buffer is NULL, only calculates the count.
+size_t mf_utf8_to_utf32(const char* utf8, u32* out_buffer, size_t max_out);
+
 // --- String Map (Key -> U32) ---
 
 typedef struct {

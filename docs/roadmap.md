@@ -210,23 +210,24 @@
     - `inventory.mfapp`: Orchestrates the pipeline.
 
 ## Phase 29: Text Rendering (SDF & Strings)
-**Objective:** Enable text rendering without violating the "Pure Math" philosophy. Instead of imperative "Draw" commands, we treat text as a sampling problem using **SDF (Signed Distance Field) Font Atlases**.
+**Objective:** Enable text rendering without violating the "Pure Math" philosophy. Instead of imperative "Draw" commands, we treat text as a sampling problem using **SDF (Signed Distance Field) Font Atlases** generated from **TrueType Fonts**.
 
-- [ ] **Step 1: Image Loader (The Font Atlas):**
-    - Update `mf_loader` to support loading images (PNG/BMP) directly into Global Resources (`mf_buffer`).
-    - **Why?** We need to load the pre-baked SDF font texture into the engine memory.
+- [ ] **Step 1: Asset Loader (Image & Font):**
+    - Add `stb` (includes `stb_image` and `stb_truetype`) to dependencies.
+    - Update `mf_loader` to support loading images (PNG/BMP) into `mf_buffer`.
+    - Implement `mf_loader_load_font`: Loads a `.ttf`, uses `stb_truetype` to bake an **SDF Atlas** into a Global Resource (`mf_buffer`).
 - [ ] **Step 2: String Literals (Data):**
-    - Update the Compiler to treat String Consts as `u8` Arrays.
-    - Example: `"value": "Score"` in JSON becomes a Tensor `[83, 99, 111, 114, 101]`.
-    - This allows passing dynamic text data to the Render Kernel.
-- [ ] **Step 3: Text Sampling Subgraph (The Logic):**
-    - Create a reusable SubGraph `lib/text/render_text.json`.
-    - **Logic:**
-        1. Map Screen UV to Character Cell Index.
-        2. `MF_OP_GATHER` the ASCII code from the String Input.
-        3. Calculate UV offset in the Font Atlas.
-        4. `MF_OP_GATHER` (Sample) the SDF value from the Atlas.
-        5. Apply `SmoothStep` for anti-aliasing.
+    - Update `mf_pass_lower.c` to compile String Consts as `i32` Arrays (UTF-32 Code Points) instead of Hash IDs.
+    - Allows Basic Unicode support (Latin + Cyrillic) without complex UTF-8 decoding in the kernel.
+    - Example: `"value": "Hi"` -> Tensor `[72, 105]`.
+- [ ] **Step 3: Text Sampling Subgraph:**
+    - Create `lib/text/render_text.json`.
+    - Logic:
+        1. Map Screen UV -> Character Index in String.
+        2. `MF_OP_GATHER` char code.
+        3. Map Char Code -> Atlas UV (using baked glyph metadata).
+        4. `MF_OP_GATHER` (Sample) SDF from Atlas.
+        5. `SmoothStep` for crisp edges.
 
 ---
 

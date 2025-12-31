@@ -1,0 +1,37 @@
+{
+    "window": {
+        "title": "MathFlow Text Demo",
+        "width": 800,
+        "height": 600
+    },
+    "pipeline": {
+        "resources": [
+            { "name": "u_Time", "dtype": "F32", "shape": [] },
+            { "name": "u_ResX", "dtype": "F32", "shape": [] },
+            { "name": "u_ResY", "dtype": "F32", "shape": [] },
+            { "name": "out_Color", "dtype": "F32", "shape": [600, 800] },
+            { "name": "MyFont", "dtype": "F32", "shape": [262144] },
+            { "name": "MyFont_Info", "dtype": "F32", "shape": [9600] }
+        ],
+        "kernels": [
+            {
+                "id": "render",
+                "entry": "render.json",
+                "bindings": [
+                    { "port": "out", "resource": "out_Color" },
+                    { "port": "font", "resource": "MyFont" },
+                    { "port": "font_info", "resource": "MyFont_Info" },
+                    { "port": "time", "resource": "u_Time" }
+                ]
+            }
+        ]
+    },
+    "assets": [
+        { 
+            "type": "font", 
+            "resource": "MyFont", 
+            "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 
+            "size": 32 
+        }
+    ]
+}

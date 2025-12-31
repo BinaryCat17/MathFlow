@@ -121,17 +121,25 @@ static mf_dtype parse_dtype(const char* s) {
     return MF_DTYPE_F32;
 }
 
-static void parse_const_tensor(const mf_json_value* val, mf_tensor* t, mf_arena* arena) {
+static void parse_const_tensor(const mf_json_value* val, const mf_json_value* node_data, mf_tensor* t, mf_arena* arena) {
+    mf_dtype target_dtype = MF_DTYPE_F32;
+    if (node_data) {
+        const mf_json_value* v_dt = mf_json_get_field(node_data, "dtype");
+        if (v_dt && v_dt->type == MF_JSON_VAL_STRING) target_dtype = parse_dtype(v_dt->as.s);
+    }
+
     if (val->type == MF_JSON_VAL_NUMBER) {
-        t->info.dtype = MF_DTYPE_F32;
+        t->info.dtype = target_dtype;
         t->info.ndim = 0;
-        size_t bytes = sizeof(f32);
+        size_t bytes = mf_dtype_size(target_dtype);
         mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
         void* mem = MF_ARENA_PUSH(arena, u8, bytes);
         mf_buffer_init_view(buf, mem, bytes);
         t->buffer = buf;
         t->byte_offset = 0;
-        *((f32*)mem) = (f32)val->as.n;
+        if (target_dtype == MF_DTYPE_F32) *((f32*)mem) = (f32)val->as.n;
+        else if (target_dtype == MF_DTYPE_I32) *((int32_t*)mem) = (int32_t)val->as.n;
+        else if (target_dtype == MF_DTYPE_U8) *((u8*)mem) = (u8)val->as.n;
     } 
     else if (val->type == MF_JSON_VAL_BOOL) {
         t->info.dtype = MF_DTYPE_U8;
@@ -145,15 +153,20 @@ static void parse_const_tensor(const mf_json_value* val, mf_tensor* t, mf_arena*
         *((u8*)mem) = (u8)(val->as.b ? 1 : 0);
     }
     else if (val->type == MF_JSON_VAL_STRING) {
+        size_t cp_count = mf_utf8_to_utf32(val->as.s, NULL, 0);
         t->info.dtype = MF_DTYPE_I32;
-        t->info.ndim = 0;
-        size_t bytes = sizeof(int32_t);
+        t->info.ndim = 1;
+        t->info.shape[0] = (int32_t)cp_count;
+        t->info.strides[0] = 1;
+
+        size_t bytes = cp_count * sizeof(int32_t);
         mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
         void* mem = MF_ARENA_PUSH(arena, u8, bytes);
         mf_buffer_init_view(buf, mem, bytes);
         t->buffer = buf;
         t->byte_offset = 0;
-        *((int32_t*)mem) = (int32_t)mf_fnv1a_hash(val->as.s);
+        
+        mf_utf8_to_utf32(val->as.s, (u32*)mem, cp_count);
     }
     else if (val->type == MF_JSON_VAL_ARRAY) {
         int count = (int)val->as.array.count;
@@ -181,6 +194,10 @@ static void parse_const_tensor(const mf_json_value* val, mf_tensor* t, mf_arena*
             }
         }
         else if (first->type == MF_JSON_VAL_STRING) {
+            // Arrays of strings are still problematic for layout, 
+            // but let's at least store them as hashes for now if needed, 
+            // OR we don't support them yet. 
+            // For Phase 29 we only need single strings as constants.
             t->info.dtype = MF_DTYPE_I32;
             t->info.ndim = 1;
             t->info.shape[0] = count;
@@ -270,7 +287,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
             else if (dst->type == MF_NODE_CONST || dst->type == MF_NODE_STEP) {
                 const mf_json_value* v_val = mf_json_get_field(src->data, "value");
                 if (v_val) {
-                    parse_const_tensor(v_val, &dst->constant, arena);
+                    parse_const_tensor(v_val, src->data, &dst->constant, arena);
                 }
             }
             else if (dst->type == MF_NODE_INDEX) {

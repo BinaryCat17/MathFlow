@@ -4,6 +4,18 @@
 #include <stdbool.h>
 #include <mathflow/engine/mf_pipeline.h>
 
+typedef enum {
+    MF_ASSET_IMAGE,
+    MF_ASSET_FONT
+} mf_asset_type;
+
+typedef struct {
+    mf_asset_type type;
+    const char* resource_name;
+    const char* path;
+    float font_size; // only for fonts
+} mf_host_asset;
+
 // Configuration for the Host Application
 typedef struct mf_host_desc {
     const char* window_title;
@@ -16,6 +28,10 @@ typedef struct mf_host_desc {
     // Pipeline configuration (New Multi-Kernel mode)
     mf_pipeline_desc pipeline;
     bool has_pipeline;
+
+    // Assets to load into resources
+    mf_host_asset* assets;
+    int asset_count;
     
     // Optional: Number of worker threads (0 = Auto)
     int num_threads;

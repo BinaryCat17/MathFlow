@@ -48,9 +48,11 @@ static void skip_whitespace(mf_lexer* l) {
                 l->loc.column++;
             }
             l->cursor++;
-        } else if (c == '/') {
-            MF_LOG_ERROR("Comments are not supported in JSON at %u:%u", l->loc.line, l->loc.column);
-            l->cursor++; // Skip anyway to avoid infinite loop
+        } else if (c == '/' && l->cursor[1] == '/') {
+            while (*l->cursor && *l->cursor != '\n') {
+                l->cursor++;
+                l->loc.column++;
+            }
         } else {
             break;
         }

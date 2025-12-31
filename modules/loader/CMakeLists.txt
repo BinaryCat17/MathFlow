@@ -5,7 +5,7 @@ add_library(MathFlow::loader ALIAS mf_loader)
 
 target_include_directories(mf_loader 
     PUBLIC include
-    PRIVATE src
+    PRIVATE src ${Stb_INCLUDE_DIR}
 )
 
 target_link_libraries(mf_loader 
