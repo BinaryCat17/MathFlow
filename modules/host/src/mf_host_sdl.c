@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 // --- Pixel Conversion Utility ---
 static void convert_to_pixels(mf_tensor* tensor, void* pixels, int pitch, int tex_w, int tex_h) {
@@ -120,6 +121,7 @@ int mf_host_run(const mf_host_desc* desc) {
     u32* frame_buffer = malloc((size_t)desc->width * (size_t)desc->height * 4);
 
     bool running = true;
+    bool first_frame = true;
     SDL_Event event;
     u32 start_time = SDL_GetTicks();
     int win_w = desc->width;
@@ -190,6 +192,28 @@ int mf_host_run(const mf_host_desc* desc) {
         }
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
+
+        if (first_frame && frame_buffer) {
+            time_t now = time(NULL);
+            struct tm* t = localtime(&now);
+            char shot_path[256];
+            strftime(shot_path, sizeof(shot_path), "logs/screenshot_%Y-%m-%d_%H-%M-%S.bmp", t);
+            
+            SDL_Surface* ss = SDL_CreateRGBSurfaceFrom(
+                frame_buffer, win_w, win_h, 32, win_w * 4,
+                0x000000FF, 0x0000FF00, 0x00FF0000, 0xFF000000
+            );
+            
+            if (ss) {
+                if (SDL_SaveBMP(ss, shot_path) == 0) {
+                    MF_LOG_INFO("Screenshot saved: %s", shot_path);
+                } else {
+                    MF_LOG_ERROR("Failed to save screenshot: %s", SDL_GetError());
+                }
+                SDL_FreeSurface(ss);
+            }
+            first_frame = false;
+        }
     }
     
     free(frame_buffer);

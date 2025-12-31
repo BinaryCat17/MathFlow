@@ -89,6 +89,10 @@ if __name__ == "__main__":
     files = []
     for pattern in ['**/*.json', '**/*.mfapp']:
         files.extend(glob.glob(pattern, recursive=True))
-    files = [f for f in files if not any(x in f for x in ['build/', 'out/', 'vcpkg', '.git/'])]
+    
+    # Exclude system files and build directories
+    exclude_list = ['build/', 'out/', 'vcpkg', '.git/', 'CMakePresets.json', 'vcpkg.json']
+    files = [f for f in files if not any(x in f for x in exclude_list)]
+    
     for f in files:
         format_json_mathflow(f)

@@ -7,6 +7,17 @@
 int main(int argc, char** argv) {
     mf_log_init();
 
+    // Setup File Logging
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    char log_path[256];
+    // Create logs directory just in case (system specific, but assuming pre-existence or simple fail)
+    // Using a timestamp format for unique logs
+    strftime(log_path, sizeof(log_path), "logs/log_%Y-%m-%d_%H-%M-%S.txt", t);
+    
+    // Log everything (TRACE) to file, while Console keeps its default (INFO) or user config
+    mf_log_add_file_sink(log_path, MF_LOG_LEVEL_TRACE);
+
     if (argc < 2) {
         printf("Usage: mf-window <app.mfapp>\n");
         return 1;

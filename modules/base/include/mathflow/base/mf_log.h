@@ -48,6 +48,13 @@ void mf_log_shutdown(void);
 void mf_log_add_sink(mf_log_sink_fn sink_fn, void* user_data, mf_log_level level);
 
 /**
+ * Helper: Adds a file sink.
+ * filename: Path to the log file.
+ * level: The maximum log level.
+ */
+void mf_log_add_file_sink(const char* filename, mf_log_level level);
+
+/**
  * Helper: Sets the global "gatekeeper" level manually (rarely needed, usually auto-managed).
  */
 void mf_log_set_global_level(mf_log_level level);

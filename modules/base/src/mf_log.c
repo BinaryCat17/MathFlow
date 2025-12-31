@@ -56,15 +56,40 @@ static void console_sink(void* user_data, mf_log_level level, const char* file, 
     const char* reset = "\x1b[0m";
     const char* name = (level <= MF_LOG_LEVEL_TRACE) ? level_names[level] : "UNK";
 
-    // Format: [TIME] [LEVEL] Message (File:Line)
-    // We use fprintf directly to stdout/stderr
+    // Format: [TIME] [LEVEL] Message
+    // File path removed from console as per request
     FILE* stream = (level <= MF_LOG_LEVEL_ERROR) ? stderr : stdout;
     
-    fprintf(stream, "%s %s[%s]%s %s \x1b[90m(%s:%d)%s\n", 
-            time_buf, color, name, reset, message, file, line, reset);
+    fprintf(stream, "%s %s[%s]%s %s%s\n", 
+            time_buf, color, name, reset, message, reset);
             
     // Flush to ensure we see logs immediately if crash happens
     fflush(stream);
+}
+
+// --- File Sink ---
+
+static void file_sink(void* user_data, mf_log_level level, const char* file, int line, const char* message) {
+    FILE* f = (FILE*)user_data;
+    if (!f) return;
+
+    // Get time
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    char time_buf[16];
+    if (t) {
+        strftime(time_buf, sizeof(time_buf), "%H:%M:%S", t);
+    } else {
+        strcpy(time_buf, "00:00:00");
+    }
+
+    const char* name = (level <= MF_LOG_LEVEL_TRACE) ? level_names[level] : "UNK";
+
+    // Format: [TIME] [LEVEL] Message (File:Line)
+    fprintf(f, "%s [%s] %s (%s:%d)\n", 
+            time_buf, name, message, file, line);
+            
+    fflush(f);
 }
 
 // --- Implementation ---
@@ -110,6 +135,16 @@ void mf_log_add_sink(mf_log_sink_fn sink_fn, void* user_data, mf_log_level level
         update_global_level();
     }
     mf_mutex_unlock(&g_logger.mutex);
+}
+
+void mf_log_add_file_sink(const char* filename, mf_log_level level) {
+    FILE* f = fopen(filename, "w");
+    if (f) {
+        mf_log_add_sink(file_sink, f, level);
+    } else {
+        // Fallback: log to stderr that we couldn't open the log file
+        fprintf(stderr, "Failed to open log file: %s\n", filename);
+    }
 }
 
 void mf_log_set_global_level(mf_log_level level) {
