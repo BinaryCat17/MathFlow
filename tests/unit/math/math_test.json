@@ -1,24 +1,21 @@
 {
-  "nodes": [
-    { "id": "1", "type": "Input", "data": { "value": -2.5 } }, 
-    { "id": "2", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "3", "type": "Input", "data": { "value": 10.0 } },
-    
-    { "id": "10", "type": "Floor" },
-    { "id": "11", "type": "Ceil" },
-    { "id": "12", "type": "Clamp" },
-    { "id": "13", "type": "Sin" },
-    { "id": "14", "type": "Cos" }
-  ],
-  "links": [
-    { "src": "1", "src_port": 0, "dst": "10", "dst_port": 0 },
-    { "src": "1", "src_port": 0, "dst": "11", "dst_port": 0 },
-    
-    { "src": "1", "src_port": 0, "dst": "12", "dst_port": 0 },
-    { "src": "2", "src_port": 0, "dst": "12", "dst_port": 1 },
-    { "src": "3", "src_port": 0, "dst": "12", "dst_port": 2 },
-    
-    { "src": "2", "src_port": 0, "dst": "13", "dst_port": 0 },
-    { "src": "2", "src_port": 0, "dst": "14", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "1", "type": "Const", "data": {"value": -2.5} },
+        { "id": "2", "type": "Const", "data": {"value": 0.0} },
+        { "id": "3", "type": "Const", "data": {"value": 10.0} },
+        { "id": "10", "type": "Floor" },
+        { "id": "11", "type": "Ceil" },
+        { "id": "12", "type": "Clamp" },
+        { "id": "13", "type": "Sin" },
+        { "id": "14", "type": "Cos" }
+    ],
+    "links": [
+        { "src": "1", "src_port": "out", "dst": "10", "dst_port": "x" },
+        { "src": "1", "src_port": "out", "dst": "11", "dst_port": "x" },
+        { "src": "1", "src_port": "out", "dst": "12", "dst_port": "x" },
+        { "src": "2", "src_port": "out", "dst": "12", "dst_port": "min" },
+        { "src": "3", "src_port": "out", "dst": "12", "dst_port": "max" },
+        { "src": "2", "src_port": "out", "dst": "13", "dst_port": "x" },
+        { "src": "2", "src_port": "out", "dst": "14", "dst_port": "x" }
+    ]
 }

@@ -1,15 +1,15 @@
 {
-  "nodes": [
-    { "id": "val", "type": "Input", "data": { "value": 0.5 } },
-    { "id": "min", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "max", "type": "Input", "data": { "value": 1.0 } },
-    { "id": "edges", "type": "Join" },
-    { "id": "res_smooth", "type": "SmoothStep" }
-  ],
-  "links": [
-    { "src": "min", "src_port": 0, "dst": "edges", "dst_port": 0 },
-    { "src": "max", "src_port": 0, "dst": "edges", "dst_port": 1 },
-    { "src": "val", "src_port": 0, "dst": "res_smooth", "dst_port": 0 },
-    { "src": "edges", "src_port": 0, "dst": "res_smooth", "dst_port": 1 }
-  ]
+    "nodes": [
+        { "id": "val", "type": "Const", "data": {"value": 0.5} },
+        { "id": "min", "type": "Const", "data": {"value": 0.0} },
+        { "id": "max", "type": "Const", "data": {"value": 1.0} },
+        { "id": "edges", "type": "Join" },
+        { "id": "res_smooth", "type": "SmoothStep" }
+    ],
+    "links": [
+        { "src": "min", "src_port": "out", "dst": "edges", "dst_port": "a" },
+        { "src": "max", "src_port": "out", "dst": "edges", "dst_port": "b" },
+        { "src": "val", "src_port": "out", "dst": "res_smooth", "dst_port": "x" },
+        { "src": "edges", "src_port": "out", "dst": "res_smooth", "dst_port": "edges" }
+    ]
 }

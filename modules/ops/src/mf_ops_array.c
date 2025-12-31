@@ -165,36 +165,10 @@ static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
     }
 }
 
-// --- Op: Resolution (Domain Size) ---
-// Src1: Axis (0=Height, 1=Width)
-// Dest: Scalar Size
-static void op_resolution(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    if (!dst || !axis_t) return;
-
-    int axis = 0;
-    if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
-    else if (axis_t->info.dtype == MF_DTYPE_I32) axis = ((int32_t*)mf_tensor_data(axis_t))[0];
-    
-    // Output: Scalar [1]
-    dst->info.dtype = MF_DTYPE_F32;
-    int32_t shape[] = { 1 };
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 0)) return; 
-
-    f32* d = (f32*)mf_tensor_data(dst);
-    if (axis >= 0 && axis < MF_MAX_DIMS) {
-        d[0] = (f32)ctx->domain_shape[axis];
-    } else {
-        d[0] = 0.0f;
-    }
-}
-
 // --- Registration ---
 void mf_ops_array_register(mf_op_func* table) {
     table[MF_OP_RANGE] = op_range;
     table[MF_OP_INDEX] = op_index;
-    table[MF_OP_RESOLUTION] = op_resolution;
     table[MF_OP_CUMSUM] = op_cumsum;
     table[MF_OP_COMPRESS] = op_compress;
 }

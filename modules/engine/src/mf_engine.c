@@ -58,9 +58,39 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
             // Constant -> View
             mf_tensor_view(t_reg, t_prog);
         } else {
-            // Temp -> Alloc
-            if (!mf_tensor_alloc(t_reg, state->allocator, &t_prog->info)) {
-                MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+            // Check if this register is an external binding (Input/Output)
+            bool is_external = false;
+            if (prog->symbols) {
+                for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
+                    if (prog->symbols[s].register_idx == i) {
+                        is_external = true;
+                        break;
+                    }
+                }
+            }
+
+            if (is_external) {
+                // External registers are bound at dispatch time. No allocation needed.
+                memset(t_reg, 0, sizeof(mf_tensor));
+                t_reg->info = t_prog->info;
+            } else {
+                // Internal Temporary -> Alloc
+                // Handle dynamic shapes in temps (unsafe but prevents crash)
+                mf_type_info alloc_info = t_prog->info;
+                bool is_dynamic = false;
+                for(int k=0; k<alloc_info.ndim; ++k) {
+                    if (alloc_info.shape[k] < 0) {
+                        alloc_info.shape[k] = 1;
+                        is_dynamic = true;
+                    }
+                }
+                if (is_dynamic) {
+                    MF_LOG_WARN("Temp register %u has dynamic shape. Allocating stub [1].", i);
+                }
+
+                if (!mf_tensor_alloc(t_reg, state->allocator, &alloc_info)) {
+                    MF_LOG_ERROR("Failed to allocate register %u during reset.", i);
+                }
             }
         }
     }
@@ -171,6 +201,18 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         res->desc.info.ndim = res_desc->ndim;
         memcpy(res->desc.info.shape, res_desc->shape, sizeof(int32_t) * res_desc->ndim);
         
+        // Handle Dynamic Shapes
+        bool is_dynamic = false;
+        for (int k = 0; k < res->desc.info.ndim; ++k) {
+            if (res->desc.info.shape[k] < 0) {
+                is_dynamic = true;
+                res->desc.info.shape[k] = 1; // Default stub size
+            }
+        }
+        if (is_dynamic) {
+            MF_LOG_WARN("Resource '%s' has dynamic shape. Allocating stub buffer [1].", res->name);
+        }
+
         // Init strides
         int32_t stride = 1;
         for (int k = res->desc.info.ndim - 1; k >= 0; --k) {

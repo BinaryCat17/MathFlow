@@ -65,17 +65,14 @@ typedef enum {
 
     // Array Ops
     MF_NODE_RANGE,
-    MF_NODE_INDEX, // Intrinsic Coordinate Generator
-    MF_NODE_RESOLUTION,
-    MF_NODE_CUMSUM,
+    MF_NODE_INDEX,      // Current execution index
+    MF_NODE_CUMSUM,     // Cumulative Sum
     MF_NODE_COMPRESS,
     MF_NODE_SLICE,   // Slice(Input, Range[Start, Count]) -> View
     MF_NODE_RESHAPE, // Reshape(Input, ShapeTensor) -> View
     
     // Sub-Graph
     MF_NODE_CALL,         // Call("path/to/graph.json")
-    MF_NODE_EXPORT_INPUT, // Defines an Input Port for the SubGraph
-    MF_NODE_EXPORT_OUTPUT,// Defines an Output Port for the SubGraph
 
     MF_NODE_COUNT
 } mf_node_type;
@@ -98,8 +95,11 @@ typedef struct {
 typedef struct {
     u32 src_node_idx; 
     u32 src_port;
+    const char* src_port_name;
+
     u32 dst_node_idx; 
     u32 dst_port;
+    const char* dst_port_name;
 } mf_ir_link;
 
 typedef struct {

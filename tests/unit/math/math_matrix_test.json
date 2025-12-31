@@ -1,20 +1,18 @@
 {
-  "nodes": [
-    { "id": "1", "type": "Input", "data": { "value": [2,0,0, 0,2,0, 0,0,2] } },
-    { "id": "2", "type": "Input", "data": { "value": [1,0,0, 0,1,0, 0,0,1] } },
-    { "id": "10", "type": "MatMul" },
-    { "id": "11", "type": "Inverse" },
-    
-    { "id": "20", "type": "Input", "data": { "value": [1,0,0,0, 0,1,0,0, 0,0,1,0, 1,2,3,1] } },
-    { "id": "21", "type": "Transpose" },
-    { "id": "22", "type": "Inverse" }
-  ],
-  "links": [
-    { "src": "1", "src_port": 0, "dst": "10", "dst_port": 0 },
-    { "src": "2", "src_port": 0, "dst": "10", "dst_port": 1 },
-    { "src": "1", "src_port": 0, "dst": "11", "dst_port": 0 },
-    
-    { "src": "20", "src_port": 0, "dst": "21", "dst_port": 0 },
-    { "src": "20", "src_port": 0, "dst": "22", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "1", "type": "Const", "data": {"value": [2, 0, 0, 0, 2, 0, 0, 0, 2]} },
+        { "id": "2", "type": "Const", "data": {"value": [1, 0, 0, 0, 1, 0, 0, 0, 1]} },
+        { "id": "10", "type": "MatMul" },
+        { "id": "11", "type": "Inverse" },
+        { "id": "20", "type": "Const", "data": {"value": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]} },
+        { "id": "21", "type": "Transpose" },
+        { "id": "22", "type": "Inverse" }
+    ],
+    "links": [
+        { "src": "1", "src_port": "out", "dst": "10", "dst_port": "a" },
+        { "src": "2", "src_port": "out", "dst": "10", "dst_port": "b" },
+        { "src": "1", "src_port": "out", "dst": "11", "dst_port": "in" },
+        { "src": "20", "src_port": "out", "dst": "21", "dst_port": "in" },
+        { "src": "20", "src_port": "out", "dst": "22", "dst_port": "in" }
+    ]
 }

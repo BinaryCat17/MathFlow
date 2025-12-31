@@ -1,33 +1,59 @@
 {
-  "window": {
-    "title": "Pipeline Test",
-    "width": 800,
-    "height": 600
-  },
-  "pipeline": {
-    "resources": [
-      { "name": "Global_Counter", "dtype": "F32", "shape": [1] },
-      { "name": "out_Color", "dtype": "F32", "shape": [600, 800, 4] }
-    ],
-    "kernels": [
-      {
-        "id": "physics",
-        "entry": "physics.json",
-        "frequency": 1,
-        "bindings": [
-          { "port": "in_val", "resource": "Global_Counter" },
-          { "port": "out_val", "resource": "Global_Counter" }
+    "window": {
+        "title": "Pipeline Test",
+        "width": 800,
+        "height": 600
+    },
+    "pipeline": {
+        "resources": [
+            {
+                "name": "Global_Counter",
+                "dtype": "F32",
+                "shape": [
+                    1
+                ]
+            },
+            {
+                "name": "out_Color",
+                "dtype": "F32",
+                "shape": [
+                    600,
+                    800,
+                    4
+                ]
+            }
+        ],
+        "kernels": [
+            {
+                "id": "physics",
+                "entry": "physics.json",
+                "frequency": 1,
+                "bindings": [
+                    {
+                        "port": "in_val",
+                        "resource": "Global_Counter"
+                    },
+                    {
+                        "port": "out_val",
+                        "resource": "Global_Counter"
+                    }
+                ]
+            },
+            {
+                "id": "render",
+                "entry": "render.json",
+                "frequency": 1,
+                "bindings": [
+                    {
+                        "port": "in_val",
+                        "resource": "Global_Counter"
+                    },
+                    {
+                        "port": "out_Color",
+                        "resource": "out_Color"
+                    }
+                ]
+            }
         ]
-      },
-      {
-        "id": "render",
-        "entry": "render.json",
-        "frequency": 1,
-        "bindings": [
-          { "port": "in_val", "resource": "Global_Counter" },
-          { "port": "out_Color", "resource": "out_Color" }
-        ]
-      }
-    ]
-  }
+    }
 }

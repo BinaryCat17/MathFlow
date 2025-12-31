@@ -1,11 +1,11 @@
 {
-  "nodes": [
-    { "id": "in", "type": "ExportInput", "data": { "index": 0 } },
-    { "id": "inner_call", "type": "Call", "data": { "path": "tests/graphs/sub_inner.json" } },
-    { "id": "out", "type": "ExportOutput", "data": { "index": 0 } }
-  ],
-  "links": [
-    { "src": "in", "src_port": 0, "dst": "inner_call", "dst_port": 0 },
-    { "src": "inner_call", "src_port": 0, "dst": "out", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "in", "type": "ExportInput", "data": {"index": 0} },
+        { "id": "inner_call", "type": "Call", "data": {"path": "tests/graphs/sub_inner.json"} },
+        { "id": "out", "type": "ExportOutput", "data": {"index": 0} }
+    ],
+    "links": [
+        { "src": "in", "src_port": "out", "dst": "inner_call", "dst_port": 0 },
+        { "src": "inner_call", "src_port": "out", "dst": "out", "dst_port": 0 }
+    ]
 }

@@ -92,13 +92,26 @@
     - Update `mf_backend_cpu` to create "Window Views" for worker threads.
     - Workers see a local tensor (0..width) that maps to the global buffer via strides/offsets.
 
+## Phase 22.5: SubGraph Interface & Named Ports (Completed)
+**Objective:** Simplify the SubGraph system by removing dedicated `ExportInput`/`ExportOutput` nodes and numerical indices in JSON. Transition to purely named ports.
+
+- [x] **Step 1: Named Links:**
+    - Update JSON Parser to accept strings for `src_port` and `dst_port` in links.
+    - Compiler resolves these names to internal indices during the build process.
+- [x] **Step 2: Interface Definition:**
+    - `Input` nodes inside a SubGraph automatically become named input ports.
+    - `Output` nodes automatically become named output ports.
+    - Remove `ExportInput`/`ExportOutput`.
+- [x] **Step 3: Call Node Update:**
+    - The `Call` node dynamically exposes ports matching the `Input`/`Output` names of the referenced graph.
+
 ## Phase 23: Compiler Modularization
 **Objective:** Decompose the monolithic `mf_json_parser.c` into a pipeline of independent passes. This prepares the ground for advanced features like Generics and Optimizations.
 
 - [ ] **Step 1: AST Separation:**
     - Create a distinct `mf_ast` (Abstract Syntax Tree) representing the raw JSON structure, separating it from the `mf_graph_ir` (Semantic Graph).
 - [ ] **Step 2: Pass Architecture:**
-    - `Pass_Desugar`: Converts legacy nodes (e.g., `Resolution`) to standard `Input`/`Const` nodes.
+    - `Pass_Desugar`: Converts legacy nodes to standard `Input`/`Const` nodes.
     - `Pass_Inline`: Recursively expands Subgraphs (`MF_NODE_CALL`).
     - `Pass_Lower`: Converts AST to IR (Index allocation, basic validation).
 - [ ] **Step 3: Clean Implementation:**

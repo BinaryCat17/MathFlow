@@ -1,15 +1,15 @@
 {
-  "nodes": [
-    { "id": "v1", "type": "Input", "data": { "value": 50.0 } },
-    { "id": "v2", "type": "Input", "data": { "value": 10.0 } },
-    { "id": "calc", "type": "Call", "data": { "path": "tests/graphs/subgraph_child_multi.json" } },
-    { "id": "final_sum", "type": "ExportOutput", "data": { "index": 0 } },
-    { "id": "final_diff", "type": "ExportOutput", "data": { "index": 1 } }
-  ],
-  "links": [
-    { "src": "v1", "src_port": 0, "dst": "calc", "dst_port": 0 },
-    { "src": "v2", "src_port": 0, "dst": "calc", "dst_port": 1 },
-    { "src": "calc", "src_port": 0, "dst": "final_sum", "dst_port": 0 },
-    { "src": "calc", "src_port": 1, "dst": "final_diff", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "v1", "type": "Const", "data": {"value": 50.0} },
+        { "id": "v2", "type": "Const", "data": {"value": 10.0} },
+        { "id": "calc", "type": "Call", "data": {"path": "tests/graphs/subgraph_child_multi.json"} },
+        { "id": "final_sum", "type": "ExportOutput", "data": {"index": 0} },
+        { "id": "final_diff", "type": "ExportOutput", "data": {"index": 1} }
+    ],
+    "links": [
+        { "src": "v1", "src_port": "out", "dst": "calc", "dst_port": 0 },
+        { "src": "v2", "src_port": "out", "dst": "calc", "dst_port": 1 },
+        { "src": "calc", "src_port": "out", "dst": "final_sum", "dst_port": 0 },
+        { "src": "calc", "src_port": 1, "dst": "final_diff", "dst_port": 0 }
+    ]
 }

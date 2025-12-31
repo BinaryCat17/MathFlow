@@ -1,13 +1,13 @@
 {
-  "nodes": [
-    { "id": "val_in", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "step", "type": "Input", "data": { "value": 1.0 } },
-    { "id": "next_val", "type": "Add" },
-    { "id": "counter_out", "type": "Output" }
-  ],
-  "links": [
-    { "src": "val_in", "src_port": 0, "dst": "next_val", "dst_port": 0 },
-    { "src": "step", "src_port": 0, "dst": "next_val", "dst_port": 1 },
-    { "src": "next_val", "src_port": 0, "dst": "counter_out", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "val_in", "type": "Const", "data": {"value": 0.0} },
+        { "id": "step", "type": "Const", "data": {"value": 1.0} },
+        { "id": "next_val", "type": "Add" },
+        { "id": "counter_out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "val_in", "src_port": "out", "dst": "next_val", "dst_port": "a" },
+        { "src": "step", "src_port": "out", "dst": "next_val", "dst_port": "b" },
+        { "src": "next_val", "src_port": "out", "dst": "counter_out", "dst_port": "in" }
+    ]
 }

@@ -114,22 +114,40 @@ void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena) {
 }
 
 void mf_map_put(mf_str_map* map, const char* key, u32 value) {
-    if (map->capacity == 0) return;
+    if (map->count >= map->capacity / 2) return; 
+
     u32 hash = mf_fnv1a_hash(key);
     size_t idx = hash % map->capacity;
-    
-    // Linear probing
-    size_t start_idx = idx;
+
     while (map->entries[idx].key != NULL) {
         if (strcmp(map->entries[idx].key, key) == 0) {
-            map->entries[idx].value = value; 
+            map->entries[idx].value = value;
             return;
         }
         idx = (idx + 1) % map->capacity;
-        if (idx == start_idx) return; // Map full
     }
+
     map->entries[idx].key = key;
     map->entries[idx].value = value;
+    map->count++;
+}
+
+void mf_map_put_ptr(mf_str_map* map, const char* key, void* ptr) {
+    if (map->count >= map->capacity / 2) return; 
+
+    u32 hash = mf_fnv1a_hash(key);
+    size_t idx = hash % map->capacity;
+
+    while (map->entries[idx].key != NULL) {
+        if (strcmp(map->entries[idx].key, key) == 0) {
+            map->entries[idx].ptr_value = ptr;
+            return;
+        }
+        idx = (idx + 1) % map->capacity;
+    }
+
+    map->entries[idx].key = key;
+    map->entries[idx].ptr_value = ptr;
     map->count++;
 }
 
@@ -137,15 +155,28 @@ bool mf_map_get(mf_str_map* map, const char* key, u32* out_val) {
     if (map->capacity == 0) return false;
     u32 hash = mf_fnv1a_hash(key);
     size_t idx = hash % map->capacity;
-    
-    size_t start_idx = idx;
+
     while (map->entries[idx].key != NULL) {
         if (strcmp(map->entries[idx].key, key) == 0) {
-            *out_val = map->entries[idx].value;
+            if (out_val) *out_val = map->entries[idx].value;
             return true;
         }
         idx = (idx + 1) % map->capacity;
-        if (idx == start_idx) break;
+    }
+    return false;
+}
+
+bool mf_map_get_ptr(mf_str_map* map, const char* key, void** out_ptr) {
+    if (map->capacity == 0) return false;
+    u32 hash = mf_fnv1a_hash(key);
+    size_t idx = hash % map->capacity;
+
+    while (map->entries[idx].key != NULL) {
+        if (strcmp(map->entries[idx].key, key) == 0) {
+            if (out_ptr) *out_ptr = map->entries[idx].ptr_value;
+            return true;
+        }
+        idx = (idx + 1) % map->capacity;
     }
     return false;
 }

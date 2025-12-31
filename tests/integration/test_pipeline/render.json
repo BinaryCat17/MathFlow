@@ -1,30 +1,26 @@
 {
-  "nodes": [
-    { "id": "in_val", "type": "Input", "data": { "value": 0.0 } },
-    { "id": "u_Resolution", "type": "Input", "data": { "value": [800, 600] } },
-    { "id": "frag_coord", "type": "Index", "data": { "axis": 0 } },
-    { "id": "res_x", "type": "Const", "data": { "value": 800.0 } },
-    { "id": "res_y", "type": "Const", "data": { "value": 600.0 } },
-    
-    { "id": "norm_x", "type": "Div" },
-    { "id": "pos_x", "type": "Sin" },
-    { "id": "circle_pos_x", "type": "Add" },
-    
-    { "id": "dist", "type": "Sub" },
-    { "id": "abs_dist", "type": "Abs" },
-    { "id": "color_val", "type": "Step", "data": { "value": 0.1 } },
-    { "id": "out_Color", "type": "Output" }
-  ],
-  "links": [
-    { "src": "in_val", "src_port": 0, "dst": "pos_x", "dst_port": 0 },
-    { "src": "pos_x", "src_port": 0, "dst": "circle_pos_x", "dst_port": 0 },
-    { "src": "res_x", "src_port": 0, "dst": "circle_pos_x", "dst_port": 1 },
-    
-    { "src": "frag_coord", "src_port": 0, "dst": "dist", "dst_port": 0 },
-    { "src": "circle_pos_x", "src_port": 0, "dst": "dist", "dst_port": 1 },
-    
-    { "src": "dist", "src_port": 0, "dst": "abs_dist", "dst_port": 0 },
-    { "src": "abs_dist", "src_port": 0, "dst": "color_val", "dst_port": 0 },
-    { "src": "color_val", "src_port": 0, "dst": "out_Color", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "in_val", "type": "Const", "data": {"value": 0.0} },
+        { "id": "u_Resolution", "type": "Const", "data": {"value": [800, 600]} },
+        { "id": "frag_coord", "type": "Index", "data": {"axis": 0} },
+        { "id": "res_x", "type": "Const", "data": {"value": 800.0} },
+        { "id": "res_y", "type": "Const", "data": {"value": 600.0} },
+        { "id": "norm_x", "type": "Div" },
+        { "id": "pos_x", "type": "Sin" },
+        { "id": "circle_pos_x", "type": "Add" },
+        { "id": "dist", "type": "Sub" },
+        { "id": "abs_dist", "type": "Abs" },
+        { "id": "color_val", "type": "Step", "data": {"value": 0.1} },
+        { "id": "out_Color", "type": "Output" }
+    ],
+    "links": [
+        { "src": "in_val", "src_port": "out", "dst": "pos_x", "dst_port": "x" },
+        { "src": "pos_x", "src_port": "out", "dst": "circle_pos_x", "dst_port": "a" },
+        { "src": "res_x", "src_port": "out", "dst": "circle_pos_x", "dst_port": "b" },
+        { "src": "frag_coord", "src_port": "out", "dst": "dist", "dst_port": "a" },
+        { "src": "circle_pos_x", "src_port": "out", "dst": "dist", "dst_port": "b" },
+        { "src": "dist", "src_port": "out", "dst": "abs_dist", "dst_port": "x" },
+        { "src": "abs_dist", "src_port": "out", "dst": "color_val", "dst_port": "edge" },
+        { "src": "color_val", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
+    ]
 }

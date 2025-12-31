@@ -1,62 +1,32 @@
 {
-  "nodes": [
-    { 
-      "id": "prices", 
-      "type": "Const", 
-      "data": { "value": [100.0, 500.0, 1200.0, 50.0, 2000.0] } 
-    },
-    { 
-      "id": "quantities", 
-      "type": "Const", 
-      "data": { "value": [10.0, 2.0, 1.0, 100.0, 5.0] } 
-    },
-    { 
-      "id": "categories", 
-      "type": "Const", 
-      "data": { "value": ["Food", "Electronics", "Electronics", "Food", "Electronics"] } 
-    },
-    { 
-      "id": "tax_rate", 
-      "type": "Const", 
-      "data": { "value": 1.2 } 
-    },
-    { 
-      "id": "target_cat", 
-      "type": "Const", 
-      "data": { "value": "Electronics" } 
-    },
-    { 
-      "id": "threshold", 
-      "type": "Const", 
-      "data": { "value": 1000.0 } 
-    },
-    { "id": "calc_total", "type": "Mul" },
-    { "id": "calc_tax", "type": "Mul" },
-    { "id": "check_cat", "type": "Equal" },
-    { "id": "check_price", "type": "Greater" },
-    { "id": "filter_logic", "type": "And" },
-    { "id": "calc_final", "type": "Select" },
-    { "id": "out_Color", "type": "Output" }
-  ],
-  "links": [
-    { "src": "prices", "src_port": 0, "dst": "calc_total", "dst_port": 0 },
-    { "src": "quantities", "src_port": 0, "dst": "calc_total", "dst_port": 1 },
-
-    { "src": "calc_total", "src_port": 0, "dst": "calc_tax", "dst_port": 0 },
-    { "src": "tax_rate", "src_port": 0, "dst": "calc_tax", "dst_port": 1 },
-
-    { "src": "categories", "src_port": 0, "dst": "check_cat", "dst_port": 0 },
-    { "src": "target_cat", "src_port": 0, "dst": "check_cat", "dst_port": 1 },
-
-    { "src": "calc_tax", "src_port": 0, "dst": "check_price", "dst_port": 0 },
-    { "src": "threshold", "src_port": 0, "dst": "check_price", "dst_port": 1 },
-
-    { "src": "check_cat", "src_port": 0, "dst": "filter_logic", "dst_port": 0 },
-    { "src": "check_price", "src_port": 0, "dst": "filter_logic", "dst_port": 1 },
-
-    { "src": "filter_logic", "src_port": 0, "dst": "calc_final", "dst_port": 0 },
-    { "src": "calc_tax", "src_port": 0, "dst": "calc_final", "dst_port": 1 },
-    
-    { "src": "calc_final", "src_port": 0, "dst": "out_Color", "dst_port": 0 }
-  ]
+    "nodes": [
+        { "id": "prices", "type": "Const", "data": {"value": [100.0, 500.0, 1200.0, 50.0, 2000.0]} },
+        { "id": "quantities", "type": "Const", "data": {"value": [10.0, 2.0, 1.0, 100.0, 5.0]} },
+        { "id": "categories", "type": "Const", "data": {"value": ["Food", "Electronics", "Electronics", "Food", "Electronics"]} },
+        { "id": "tax_rate", "type": "Const", "data": {"value": 1.2} },
+        { "id": "target_cat", "type": "Const", "data": {"value": "Electronics"} },
+        { "id": "threshold", "type": "Const", "data": {"value": 1000.0} },
+        { "id": "calc_total", "type": "Mul" },
+        { "id": "calc_tax", "type": "Mul" },
+        { "id": "check_cat", "type": "Equal" },
+        { "id": "check_price", "type": "Greater" },
+        { "id": "filter_logic", "type": "And" },
+        { "id": "calc_final", "type": "Select" },
+        { "id": "out_Color", "type": "Output" }
+    ],
+    "links": [
+        { "src": "prices", "src_port": "out", "dst": "calc_total", "dst_port": "a" },
+        { "src": "quantities", "src_port": "out", "dst": "calc_total", "dst_port": "b" },
+        { "src": "calc_total", "src_port": "out", "dst": "calc_tax", "dst_port": "a" },
+        { "src": "tax_rate", "src_port": "out", "dst": "calc_tax", "dst_port": "b" },
+        { "src": "categories", "src_port": "out", "dst": "check_cat", "dst_port": "a" },
+        { "src": "target_cat", "src_port": "out", "dst": "check_cat", "dst_port": "b" },
+        { "src": "calc_tax", "src_port": "out", "dst": "check_price", "dst_port": "a" },
+        { "src": "threshold", "src_port": "out", "dst": "check_price", "dst_port": "b" },
+        { "src": "check_cat", "src_port": "out", "dst": "filter_logic", "dst_port": "a" },
+        { "src": "check_price", "src_port": "out", "dst": "filter_logic", "dst_port": "b" },
+        { "src": "filter_logic", "src_port": "out", "dst": "calc_final", "dst_port": "cond" },
+        { "src": "calc_tax", "src_port": "out", "dst": "calc_final", "dst_port": "true" },
+        { "src": "calc_final", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
+    ]
 }

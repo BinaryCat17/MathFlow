@@ -30,6 +30,7 @@ char* mf_file_read(const char* path, mf_arena* arena);
 typedef struct {
     const char* key;
     u32 value;
+    void* ptr_value;
 } mf_map_entry;
 
 typedef struct {
@@ -40,6 +41,8 @@ typedef struct {
 
 void mf_map_init(mf_str_map* map, size_t capacity, mf_arena* arena);
 void mf_map_put(mf_str_map* map, const char* key, u32 value);
+void mf_map_put_ptr(mf_str_map* map, const char* key, void* ptr);
 bool mf_map_get(mf_str_map* map, const char* key, u32* out_val);
+bool mf_map_get_ptr(mf_str_map* map, const char* key, void** out_ptr);
 
 #endif // MF_UTILS_H

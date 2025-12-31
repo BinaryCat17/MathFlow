@@ -1,26 +1,22 @@
 {
-  "nodes": [
-    { "id": "A", "type": "Input", "data": { "value": [1.0, 2.0, 3.0] } },
-    { "id": "B", "type": "Input", "data": { "value": [4.0, 5.0, 6.0] } },
-    { "id": "T", "type": "Input", "data": { "value": 0.5 } },
-    { "id": "Edge", "type": "Input", "data": { "value": 2.5 } },
-
-    { "id": "MixRes", "type": "Mix" },
-    { "id": "DotRes", "type": "Dot" },
-    { "id": "LenRes", "type": "Length" },
-    { "id": "StepRes", "type": "Step" }
-  ],
-  "links": [
-    { "src": "A", "dst": "MixRes", "src_port": 0, "dst_port": 0 },
-    { "src": "B", "dst": "MixRes", "src_port": 0, "dst_port": 1 },
-    { "src": "T", "dst": "MixRes", "src_port": 0, "dst_port": 2 },
-
-    { "src": "A", "dst": "DotRes", "src_port": 0, "dst_port": 0 },
-    { "src": "B", "dst": "DotRes", "src_port": 0, "dst_port": 1 },
-
-    { "src": "A", "dst": "LenRes", "src_port": 0, "dst_port": 0 },
-
-    { "src": "Edge", "dst": "StepRes", "src_port": 0, "dst_port": 0 },
-    { "src": "A", "dst": "StepRes", "src_port": 0, "dst_port": 1 }
-  ]
+    "nodes": [
+        { "id": "A", "type": "Const", "data": {"value": [1.0, 2.0, 3.0]} },
+        { "id": "B", "type": "Const", "data": {"value": [4.0, 5.0, 6.0]} },
+        { "id": "T", "type": "Const", "data": {"value": 0.5} },
+        { "id": "Edge", "type": "Const", "data": {"value": 2.5} },
+        { "id": "MixRes", "type": "Mix" },
+        { "id": "DotRes", "type": "Dot" },
+        { "id": "LenRes", "type": "Length" },
+        { "id": "StepRes", "type": "Step" }
+    ],
+    "links": [
+        { "src": "A", "dst": "MixRes", "src_port": "out", "dst_port": "a" },
+        { "src": "B", "dst": "MixRes", "src_port": "out", "dst_port": "b" },
+        { "src": "T", "dst": "MixRes", "src_port": "out", "dst_port": "t" },
+        { "src": "A", "dst": "DotRes", "src_port": "out", "dst_port": "a" },
+        { "src": "B", "dst": "DotRes", "src_port": "out", "dst_port": "b" },
+        { "src": "A", "dst": "LenRes", "src_port": "out", "dst_port": "x" },
+        { "src": "Edge", "dst": "StepRes", "src_port": "out", "dst_port": "edge" },
+        { "src": "A", "dst": "StepRes", "src_port": "out", "dst_port": "x" }
+    ]
 }

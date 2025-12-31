@@ -42,7 +42,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->register_idx = node_idx;
             
             sym->flags = 0;
-            if (node->type == MF_NODE_INPUT || node->type == MF_NODE_EXPORT_INPUT) {
+            if (node->type == MF_NODE_INPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_INPUT;
             } else if (node->type == MF_NODE_CONST) {
                 // Constants are neither Input nor Output state, they are static
@@ -71,10 +71,18 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         } 
         // 2. INPUT
         else if (node->type == MF_NODE_INPUT) {
-            *t_desc = node->constant;
-            t_desc->buffer = NULL;
-            t_desc->byte_offset = 0;
-            node->out_shape = node->constant;
+            if (s1) {
+                // Inlined Input node with a connection! Treat as COPY.
+                node->out_shape = s1->out_shape;
+                *t_desc = node->out_shape;
+                t_desc->buffer = NULL;
+                t_desc->byte_offset = 0;
+            } else {
+                // True global input
+                *t_desc = node->constant;
+                // Note: Keep buffer if valid to allow Engine to initialize global resources from JSON values
+                node->out_shape = node->constant;
+            }
         }
         // 3. OUTPUT
         else if (node->type == MF_NODE_OUTPUT) {
@@ -107,12 +115,17 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
         switch (node->type) {
             case MF_NODE_CONST:
+                break;
+            
             case MF_NODE_INPUT: 
+                if (s1) {
+                    inst->opcode = MF_OP_COPY;
+                    inst->src1_idx = s1->out_reg_idx;
+                    instr_count++;
+                }
                 break;
             
             case MF_NODE_OUTPUT:
-            case MF_NODE_EXPORT_INPUT:
-            case MF_NODE_EXPORT_OUTPUT:
                 inst->opcode = MF_OP_COPY;
                 inst->dest_idx = node->out_reg_idx;
                 inst->src1_idx = s1 ? s1->out_reg_idx : 0;
@@ -154,7 +167,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             
             case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
             case MF_NODE_INDEX: inst->opcode = MF_OP_INDEX; instr_count++; break;
-            case MF_NODE_RESOLUTION: inst->opcode = MF_OP_RESOLUTION; instr_count++; break;
             case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
             case MF_NODE_COMPRESS: 
                 inst->opcode = MF_OP_COMPRESS; 

@@ -1,19 +1,11 @@
 {
-  "nodes": [
-    { 
-      "id": "data", 
-      "type": "Input", 
-      "data": { "value": [10.0, 20.0, 30.0, 40.0] } 
-    },
-    { 
-      "id": "mask", 
-      "type": "Input", 
-      "data": { "value": [1.0, 0.0, 1.0, 0.0] } 
-    },
-    { "id": "filtered", "type": "Filter" }
-  ],
-  "links": [
-    { "src": "data", "src_port": 0, "dst": "filtered", "dst_port": 0 },
-    { "src": "mask", "src_port": 0, "dst": "filtered", "dst_port": 1 }
-  ]
+    "nodes": [
+        { "id": "data", "type": "Const", "data": {"value": [10.0, 20.0, 30.0, 40.0]} },
+        { "id": "mask", "type": "Const", "data": {"value": [1.0, 0.0, 1.0, 0.0]} },
+        { "id": "filtered", "type": "Filter" }
+    ],
+    "links": [
+        { "src": "data", "src_port": "out", "dst": "filtered", "dst_port": 0 },
+        { "src": "mask", "src_port": "out", "dst": "filtered", "dst_port": 1 }
+    ]
 }
