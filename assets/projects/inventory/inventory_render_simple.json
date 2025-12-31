@@ -1,0 +1,27 @@
+{
+    "nodes": [
+        { "id": "u_ResX", "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+        { "id": "u_ResY", "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+        { "id": "Inventory", "type": "Input", "data": {"shape": [4], "dtype": "f32"} },
+        
+        { "id": "Red", "type": "Const", "data": {"value": [1.0, 0.0, 0.0, 1.0]} },
+        
+        { "id": "FragX", "type": "Index", "data": {"axis": 1} },
+        { "id": "FragY", "type": "Index", "data": {"axis": 0} },
+
+        { "id": "uv_x", "type": "Div" },
+        { "id": "uv_y", "type": "Div" },
+        { "id": "uv", "type": "Join" },
+        
+        { "id": "out_Color", "type": "Output" }
+    ],
+    "links": [
+        { "src": "FragX", "dst": "uv_x", "dst_port": "a" }, { "src": "u_ResX", "dst": "uv_x", "dst_port": "b" },
+        { "src": "FragY", "dst": "uv_y", "dst_port": "a" }, { "src": "u_ResY", "dst": "uv_y", "dst_port": "b" },
+        
+        { "src": "uv_x", "dst": "uv", "dst_port": "a" }, 
+        { "src": "uv_y", "dst": "uv", "dst_port": "b" },
+        
+        { "src": "uv", "dst": "out_Color", "dst_port": "in" }
+    ]
+}

@@ -1,0 +1,97 @@
+{
+    "nodes": [
+        { "id": "u_ResX", "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+        { "id": "u_ResY", "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+        { "id": "Inventory", "type": "Input", "data": {"shape": [4], "dtype": "f32"} }, 
+        
+        { "id": "c_2", "type": "Const", "data": {"value": 2.0} },
+        { "id": "c_0", "type": "Const", "data": {"value": 0.0} },
+        { "id": "c_1", "type": "Const", "data": {"value": 1.0} },
+        { "id": "c_3", "type": "Const", "data": {"value": 3.0} },
+        { "id": "c_0_5", "type": "Const", "data": {"value": 0.5} },
+
+        { "id": "px_x", "type": "Index", "data": {"axis": 1} },
+        { "id": "px_y", "type": "Index", "data": {"axis": 0} },
+        { "id": "ch_idx", "type": "Index", "data": {"axis": 2} },
+
+        { "id": "uv_x", "type": "Div" },
+        { "id": "uv_y", "type": "Div" },
+        
+        { "id": "cell_x", "type": "Mul" },
+        { "id": "cell_y", "type": "Mul" },
+        { "id": "idx_x", "type": "Floor" },
+        { "id": "idx_y", "type": "Floor" },
+
+        { "id": "idx_linear_term", "type": "Mul" }, 
+        { "id": "idx_final", "type": "Add" },
+        
+        { "id": "item_id", "type": "Gather" },
+
+        { "id": "is_r", "type": "Equal" },
+        { "id": "is_g", "type": "Equal" },
+        { "id": "is_b", "type": "Equal" },
+        { "id": "is_a", "type": "Equal" },
+
+        { "id": "is_item_1", "type": "Equal" },
+        { "id": "is_item_2", "type": "Equal" },
+        { "id": "is_item_3", "type": "Equal" },
+        { "id": "has_item", "type": "Greater" },
+
+        { "id": "cond_1", "type": "And" },
+        { "id": "cond_2", "type": "And" },
+        { "id": "cond_3", "type": "And" },
+
+        { "id": "color_r", "type": "Select" },
+        { "id": "color_g", "type": "Select" },
+        { "id": "color_b", "type": "Select" },
+        { "id": "final_rgb", "type": "Add" },
+        
+        { "id": "sum_rg", "type": "Add" },
+        { "id": "alpha_val", "type": "Select" },
+        { "id": "is_alpha", "type": "Select" },
+
+        { "id": "out_Color", "type": "Output" }
+    ],
+    "links": [
+        { "src": "px_x", "dst": "uv_x", "dst_port": "a" }, { "src": "u_ResX", "dst": "uv_x", "dst_port": "b" },
+        { "src": "px_y", "dst": "uv_y", "dst_port": "a" }, { "src": "u_ResY", "dst": "uv_y", "dst_port": "b" },
+
+        { "src": "uv_x", "dst": "cell_x", "dst_port": "a" }, { "src": "c_2", "dst": "cell_x", "dst_port": "b" },
+        { "src": "uv_y", "dst": "cell_y", "dst_port": "a" }, { "src": "c_2", "dst": "cell_y", "dst_port": "b" },
+
+        { "src": "cell_x", "dst": "idx_x", "dst_port": "in" },
+        { "src": "cell_y", "dst": "idx_y", "dst_port": "in" },
+
+        { "src": "idx_y", "dst": "idx_linear_term", "dst_port": "a" }, { "src": "c_2", "dst": "idx_linear_term", "dst_port": "b" }, 
+        { "src": "idx_linear_term", "dst": "idx_final", "dst_port": "a" }, { "src": "idx_x", "dst": "idx_final", "dst_port": "b" },
+
+        { "src": "Inventory", "dst": "item_id", "dst_port": "data" },
+        { "src": "idx_final", "dst": "item_id", "dst_port": "indices" },
+
+        { "src": "item_id", "dst": "is_item_1", "dst_port": "a" }, { "src": "c_1", "dst": "is_item_1", "dst_port": "b" },
+        { "src": "item_id", "dst": "is_item_2", "dst_port": "a" }, { "src": "c_2", "dst": "is_item_2", "dst_port": "b" },
+        { "src": "item_id", "dst": "is_item_3", "dst_port": "a" }, { "src": "c_3", "dst": "is_item_3", "dst_port": "b" },
+        { "src": "item_id", "dst": "has_item", "dst_port": "a" }, { "src": "c_0_5", "dst": "has_item", "dst_port": "b" },
+
+        { "src": "ch_idx", "dst": "is_r", "dst_port": "a" }, { "src": "c_0", "dst": "is_r", "dst_port": "b" },
+        { "src": "ch_idx", "dst": "is_g", "dst_port": "a" }, { "src": "c_1", "dst": "is_g", "dst_port": "b" },
+        { "src": "ch_idx", "dst": "is_b", "dst_port": "a" }, { "src": "c_2", "dst": "is_b", "dst_port": "b" },
+        { "src": "ch_idx", "dst": "is_a", "dst_port": "a" }, { "src": "c_3", "dst": "is_a", "dst_port": "b" },
+
+        { "src": "is_item_1", "dst": "cond_1", "dst_port": "a" }, { "src": "is_r", "dst": "cond_1", "dst_port": "b" },
+        { "src": "is_item_2", "dst": "cond_2", "dst_port": "a" }, { "src": "is_g", "dst": "cond_2", "dst_port": "b" },
+        { "src": "is_item_3", "dst": "cond_3", "dst_port": "a" }, { "src": "is_b", "dst": "cond_3", "dst_port": "b" },
+
+        { "src": "cond_1", "dst": "color_r", "dst_port": "cond" }, { "src": "c_1", "dst": "color_r", "dst_port": "true" }, { "src": "c_0", "dst": "color_r", "dst_port": "false" },
+        { "src": "cond_2", "dst": "color_g", "dst_port": "cond" }, { "src": "c_1", "dst": "color_g", "dst_port": "true" }, { "src": "c_0", "dst": "color_g", "dst_port": "false" },
+        { "src": "cond_3", "dst": "color_b", "dst_port": "cond" }, { "src": "c_1", "dst": "color_b", "dst_port": "true" }, { "src": "c_0", "dst": "color_b", "dst_port": "false" },
+
+        { "src": "color_r", "dst": "sum_rg", "dst_port": "a" }, { "src": "color_g", "dst": "sum_rg", "dst_port": "b" },
+        { "src": "sum_rg", "dst": "final_rgb", "dst_port": "a" }, { "src": "color_b", "dst": "final_rgb", "dst_port": "b" },
+
+        { "src": "has_item", "dst": "alpha_val", "dst_port": "cond" }, { "src": "c_1", "dst": "alpha_val", "dst_port": "true" }, { "src": "c_0", "dst": "alpha_val", "dst_port": "false" },
+        { "src": "is_a", "dst": "is_alpha", "dst_port": "cond" }, { "src": "alpha_val", "dst": "is_alpha", "dst_port": "true" }, { "src": "final_rgb", "dst": "is_alpha", "dst_port": "false" },
+
+        { "src": "is_alpha", "dst": "out_Color", "dst_port": "in" }
+    ]
+}

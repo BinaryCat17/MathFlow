@@ -91,6 +91,19 @@ int mf_host_run(const mf_host_desc* desc) {
             SDL_DestroyWindow(window); SDL_Quit();
             return 1;
         }
+        
+        // --- Init Hack: Inventory ---
+        mf_tensor* t_inv = mf_engine_map_resource(engine, "Inventory");
+        if (t_inv) {
+            MF_LOG_INFO("Initializing Inventory Resource...");
+            f32* d = (f32*)mf_tensor_data(t_inv);
+            if (d && mf_tensor_count(t_inv) >= 4) {
+                d[0] = 1.0f; // Item 1 (Red)
+                d[1] = 2.0f; // Item 2 (Green)
+                d[2] = 3.0f; // Item 3 (Blue)
+                d[3] = 0.0f; // Empty
+            }
+        }
     } else {
         if (!mf_loader_load_graph(engine, desc->graph_path)) {
             MF_LOG_ERROR("Failed to load graph: %s", desc->graph_path);
@@ -141,7 +154,7 @@ int mf_host_run(const mf_host_desc* desc) {
             last_log_time = current_time;
             MF_LOG_INFO("--- Frame Log @ %.2fs ---", current_time);
         } else {
-            mf_log_set_global_level(MF_LOG_LEVEL_INFO);
+            mf_log_set_global_level(MF_LOG_LEVEL_WARN);
         }
 
         while (SDL_PollEvent(&event)) {
@@ -218,7 +231,6 @@ int mf_host_run(const mf_host_desc* desc) {
             void* d = mf_tensor_data(t_rx);
             if (d) {
                 *((f32*)d) = (f32)win_w;
-                MF_LOG_INFO("Set u_ResX to %f", *((f32*)d));
             }
         } else {
             MF_LOG_ERROR("u_ResX not found!");

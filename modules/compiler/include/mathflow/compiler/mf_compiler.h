@@ -73,6 +73,7 @@ typedef enum {
     // Array Ops
     MF_NODE_RANGE,
     MF_NODE_INDEX,      // Current execution index
+    MF_NODE_GATHER,     // Random Access: Dest[i] = Src[Indices[i]]
     MF_NODE_CUMSUM,     // Cumulative Sum
     MF_NODE_COMPRESS,
     MF_NODE_SLICE,   // Slice(Input, Range[Start, Count]) -> View

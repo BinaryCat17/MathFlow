@@ -2,6 +2,7 @@
 #include "mf_kernel_utils.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
+#include <stdio.h>
 #include <mathflow/base/mf_log.h>
 
 // --- Op: Range (Iota) ---
@@ -134,7 +135,40 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
         u32 global_idx = start_linear + (u32)i;
         u32 coord = (global_idx / axis_stride) % axis_size;
         d[i] = (f32)coord;
-        // if (i == 0) MF_LOG_INFO("  Idx[%zu] = %f", i, d[i]);
+    }
+}
+
+// --- Op: Gather (Random Access) ---
+static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src_data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* src_indices = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    
+    if (!dst || !src_data || !src_indices) return;
+
+    // Dest shape matches Indices shape
+    if (!mf_utils_resolve_unary_shape(ctx, dst, src_indices)) return;
+    dst->info.dtype = src_data->info.dtype;
+
+    size_t data_count = mf_tensor_count(src_data);
+    size_t out_count = mf_tensor_count(dst);
+    size_t elem_size = mf_dtype_size(src_data->info.dtype);
+    
+    u8* data_ptr = (u8*)mf_tensor_data(src_data);
+    u8* out_ptr = (u8*)mf_tensor_data(dst);
+    void* idx_ptr = mf_tensor_data(src_indices);
+
+    for (size_t i = 0; i < out_count; ++i) {
+        int idx = 0;
+        if (src_indices->info.dtype == MF_DTYPE_F32) idx = (int)((f32*)idx_ptr)[i];
+        else if (src_indices->info.dtype == MF_DTYPE_I32) idx = ((int32_t*)idx_ptr)[i];
+        
+        // Bounds checking
+        if (idx >= 0 && (size_t)idx < data_count) {
+            memcpy(out_ptr + i * elem_size, data_ptr + idx * elem_size, elem_size);
+        } else {
+            memset(out_ptr + i * elem_size, 0, elem_size);
+        }
     }
 }
 
@@ -142,6 +176,7 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
 void mf_ops_array_register(mf_op_func* table) {
     table[MF_OP_RANGE] = op_range;
     table[MF_OP_INDEX] = op_index;
+    table[MF_OP_GATHER] = op_gather;
     table[MF_OP_CUMSUM] = op_cumsum;
     table[MF_OP_COMPRESS] = op_compress;
 }

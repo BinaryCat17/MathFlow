@@ -26,6 +26,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"Select", MF_NODE_SELECT},
     {"Range", MF_NODE_RANGE}, {"Index", MF_NODE_INDEX}, {"CumSum", MF_NODE_CUMSUM},
     {"Filter", MF_NODE_COMPRESS}, {"Slice", MF_NODE_SLICE}, {"Reshape", MF_NODE_RESHAPE},
+    {"Gather", MF_NODE_GATHER},
     {"Call", MF_NODE_CALL},
     {NULL, MF_NODE_UNKNOWN}
 };
@@ -94,6 +95,7 @@ static const mf_node_port_entry PORT_MAP[] = {
     {MF_NODE_CUMSUM, "in", 0},
     {MF_NODE_COMPRESS, "in", 0}, {MF_NODE_COMPRESS, "mask", 1},
     {MF_NODE_INDEX, "axis", 0}, 
+    {MF_NODE_GATHER, "data", 0}, {MF_NODE_GATHER, "indices", 1},
 
     {MF_NODE_INPUT, "out", 0},
     {MF_NODE_OUTPUT, "in", 0},

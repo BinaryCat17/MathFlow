@@ -56,6 +56,24 @@ static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tenso
     if (a->info.shape[0] == 0 && a->info.ndim == b->info.ndim + 1) {
         *out = *a; return true;
     }
+    
+    // Dynamic Wildcard Match (Treat 0 as 'Any')
+    if (a->info.ndim == b->info.ndim) {
+        bool match = true;
+        for (int i=0; i<a->info.ndim; ++i) {
+             if (a->info.shape[i] != b->info.shape[i]) {
+                 if (a->info.shape[i] != 0 && b->info.shape[i] != 0) match = false;
+             }
+        }
+        if (match) { 
+             // Resolve output shape (prefer non-zero)
+             *out = *a;
+             for (int i=0; i<a->info.ndim; ++i) {
+                 if (out->info.shape[i] == 0) out->info.shape[i] = b->info.shape[i];
+             }
+             return true; 
+        }
+    }
 
     // Format shapes for error message
     char s_a[64], s_b[64];
@@ -267,6 +285,15 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                      }
                  }
                  break;
+            
+            case MF_NODE_GATHER:
+                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs for Gather (Data, Indices)"); return false; }
+                // Output Type follows Data
+                out->info.dtype = s1->out_shape.info.dtype;
+                // Output Shape follows Indices
+                out->info.ndim = s2->out_shape.info.ndim;
+                for(int k=0; k<out->info.ndim; ++k) out->info.shape[k] = s2->out_shape.info.shape[k];
+                break;
                  
             case MF_NODE_JOIN:
                  if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }

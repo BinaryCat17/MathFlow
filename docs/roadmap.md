@@ -191,6 +191,43 @@
 - [x] **Step 3: Graph-Driven Resizing:**
     - Implement a mechanism for Kernels to request output resizing (or propagate Input shape to Output shape explicitly).
 
+## Phase 28: Interaction & Feedback Loops (The Inventory Demo)
+**Objective:** Prove the engine's capability to handle stateful, interactive applications by implementing a fully functional Inventory system. This requires closing the loop between Input, State Update, and Rendering.
+
+- [ ] **Step 1: Random Access Memory (The Gather Op):**
+    - Implement `MF_OP_GATHER`: `Dest[i] = Source[ Index[i] ]`.
+    - **Why?** A pixel shader needs to read `Inventory[SlotID]`, where `SlotID` is calculated from `UV`. Standard stream processing (SIMD) processes data linearly; UI requires random access to state.
+- [ ] **Step 2: Read-Write Feedback:**
+    - Verify the "Ping-Pong" stability for persistent state.
+    - **Scenario:** `LogicKernel` reads `Inventory_Front`, writes `Inventory_Back`. `RenderKernel` reads `Inventory_Back`, writes `Screen`.
+    - Ensure the Engine correctly manages these dependencies and swaps buffers at the end of the frame.
+- [ ] **Step 3: The Interaction Kernel:**
+    - Implement logic to map `u_Mouse` coordinates to array indices.
+    - Use `MF_OP_SELECT` to conditionally update the state (only change the slot under the mouse if clicked).
+- [ ] **Step 4: Demo Construction:**
+    - `inventory_logic.json`: Handles clicks, moves items.
+    - `inventory_render.json`: Draws the grid and items based on state.
+    - `inventory.mfapp`: Orchestrates the pipeline.
+
+## Phase 29: Text Rendering (SDF & Strings)
+**Objective:** Enable text rendering without violating the "Pure Math" philosophy. Instead of imperative "Draw" commands, we treat text as a sampling problem using **SDF (Signed Distance Field) Font Atlases**.
+
+- [ ] **Step 1: Image Loader (The Font Atlas):**
+    - Update `mf_loader` to support loading images (PNG/BMP) directly into Global Resources (`mf_buffer`).
+    - **Why?** We need to load the pre-baked SDF font texture into the engine memory.
+- [ ] **Step 2: String Literals (Data):**
+    - Update the Compiler to treat String Consts as `u8` Arrays.
+    - Example: `"value": "Score"` in JSON becomes a Tensor `[83, 99, 111, 114, 101]`.
+    - This allows passing dynamic text data to the Render Kernel.
+- [ ] **Step 3: Text Sampling Subgraph (The Logic):**
+    - Create a reusable SubGraph `lib/text/render_text.json`.
+    - **Logic:**
+        1. Map Screen UV to Character Cell Index.
+        2. `MF_OP_GATHER` the ASCII code from the String Input.
+        3. Calculate UV offset in the Font Atlas.
+        4. `MF_OP_GATHER` (Sample) the SDF value from the Atlas.
+        5. Apply `SmoothStep` for anti-aliasing.
+
 ---
 
 ## Completed Phases (Archive)

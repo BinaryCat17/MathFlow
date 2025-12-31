@@ -1,0 +1,73 @@
+{
+    "nodes": [
+        { "id": "Inventory", "type": "Input", "data": {"shape": [4], "dtype": "f32"} },
+        { "id": "u_Mouse",   "type": "Input", "data": {"shape": [4], "dtype": "f32"} },
+        { "id": "u_ResX",    "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+        { "id": "u_ResY",    "type": "Input", "data": {"shape": [1], "dtype": "f32"} },
+
+        { "id": "c_2", "type": "Const", "data": {"value": 2.0} },
+        { "id": "c_0", "type": "Const", "data": {"value": 0.0} },
+        { "id": "c_1", "type": "Const", "data": {"value": 1.0} },
+        
+        { "id": "mx", "type": "Gather" },
+        { "id": "my", "type": "Gather" },
+        { "id": "mb", "type": "Gather" },
+        
+        { "id": "idx_0", "type": "Const", "data": {"value": 0} },
+        { "id": "idx_1", "type": "Const", "data": {"value": 1} },
+        { "id": "idx_2", "type": "Const", "data": {"value": 2} },
+
+        { "id": "my_idx", "type": "Index", "data": {"axis": 0} },
+
+        { "id": "uv_x", "type": "Div" },
+        { "id": "uv_y", "type": "Div" },
+        
+        { "id": "cell_x", "type": "Mul" },
+        { "id": "cell_y", "type": "Mul" },
+        { "id": "h_x", "type": "Floor" },
+        { "id": "h_y", "type": "Floor" },
+
+        { "id": "h_linear_term", "type": "Mul" }, 
+        { "id": "hover_idx", "type": "Add" },
+
+        { "id": "is_clicked", "type": "Greater" },
+        { "id": "is_me", "type": "Equal" },
+        { "id": "do_update", "type": "And" },
+
+        { "id": "new_val", "type": "Add" },
+        { "id": "final_val", "type": "Select" },
+        
+        { "id": "out_Inventory", "type": "Output" }
+    ],
+    "links": [
+        { "src": "u_Mouse", "dst": "mx", "dst_port": "data" }, { "src": "idx_0", "dst": "mx", "dst_port": "indices" },
+        { "src": "u_Mouse", "dst": "my", "dst_port": "data" }, { "src": "idx_1", "dst": "my", "dst_port": "indices" },
+        { "src": "u_Mouse", "dst": "mb", "dst_port": "data" }, { "src": "idx_2", "dst": "mb", "dst_port": "indices" },
+
+        { "src": "mb", "dst": "is_clicked", "dst_port": "a" }, { "src": "c_0", "dst": "is_clicked", "dst_port": "b" },
+
+        { "src": "mx", "dst": "uv_x", "dst_port": "a" }, { "src": "u_ResX", "dst": "uv_x", "dst_port": "b" },
+        { "src": "my", "dst": "uv_y", "dst_port": "a" }, { "src": "u_ResY", "dst": "uv_y", "dst_port": "b" },
+
+        { "src": "uv_x", "dst": "cell_x", "dst_port": "a" }, { "src": "c_2", "dst": "cell_x", "dst_port": "b" },
+        { "src": "uv_y", "dst": "cell_y", "dst_port": "a" }, { "src": "c_2", "dst": "cell_y", "dst_port": "b" },
+
+        { "src": "cell_x", "dst": "h_x", "dst_port": "in" },
+        { "src": "cell_y", "dst": "h_y", "dst_port": "in" },
+
+        { "src": "h_y", "dst": "h_linear_term", "dst_port": "a" }, { "src": "c_2", "dst": "h_linear_term", "dst_port": "b" },
+        { "src": "h_linear_term", "dst": "hover_idx", "dst_port": "a" }, { "src": "h_x", "dst": "hover_idx", "dst_port": "b" },
+
+        { "src": "hover_idx", "dst": "is_me", "dst_port": "a" }, { "src": "my_idx", "dst": "is_me", "dst_port": "b" },
+        
+        { "src": "is_clicked", "dst": "do_update", "dst_port": "a" }, { "src": "is_me", "dst": "do_update", "dst_port": "b" },
+
+        { "src": "Inventory", "dst": "new_val", "dst_port": "a" }, { "src": "c_1", "dst": "new_val", "dst_port": "b" },
+        
+        { "src": "do_update", "dst": "final_val", "dst_port": "cond" },
+        { "src": "new_val", "dst": "final_val", "dst_port": "true" },
+        { "src": "Inventory", "dst": "final_val", "dst_port": "false" },
+
+        { "src": "final_val", "dst": "out_Inventory", "dst_port": "in" }
+    ]
+}

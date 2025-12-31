@@ -201,6 +201,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 if (!s1) inst->src1_idx = inst->dest_idx; // Read Axis from self-constant
                 instr_count++; 
                 break;
+            case MF_NODE_GATHER:
+                inst->opcode = MF_OP_GATHER;
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+                instr_count++;
+                break;
             case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
             case MF_NODE_COMPRESS: 
                 inst->opcode = MF_OP_COMPRESS; 
