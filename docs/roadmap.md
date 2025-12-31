@@ -92,6 +92,20 @@
     - Update `mf_backend_cpu` to create "Window Views" for worker threads.
     - Workers see a local tensor (0..width) that maps to the global buffer via strides/offsets.
 
+## Phase 22.6: ISA Extension & Ternary Ops (Completed)
+**Objective:** Expand the Instruction Set Architecture to support 3-operand instructions (ternary operations), bringing the engine closer to GPU standards (Mix, Clamp, FMA) and simplifying control flow.
+
+- [x] **Step 1: ISA Update:**
+    - Expanded `mf_instruction` struct to support 3 source operands (`src3_idx`).
+    - Added `MF_OP_SELECT` (ternary) and `MF_OP_CLAMP` (ternary).
+    - Removed legacy `WHERE_TRUE` / `WHERE_FALSE` hacks.
+- [x] **Step 2: Core Refactor:**
+    - Updated `mf_op_func` signature to accept `const mf_instruction*` instead of individual indices, ensuring future extensibility.
+    - Refactored all math kernels to use the new signature.
+- [x] **Step 3: Compiler Update:**
+    - Updated CodeGen to emit native single instructions for `Select` and `Clamp` instead of decomposed chains.
+    - Enforced string-based port names in JSON (removed numeric port support).
+
 ## Phase 22.5: SubGraph Interface & Named Ports (Completed)
 **Objective:** Simplify the SubGraph system by removing dedicated `ExportInput`/`ExportOutput` nodes and numerical indices in JSON. Transition to purely named ports.
 

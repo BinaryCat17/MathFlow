@@ -66,7 +66,7 @@ graph TD
 *   **Role:** The "Contract" or Interface. Defines the data structures used to communicate between modules. Pure data, no logic.
 *   **Contents:**
     *   `mf_program`: The compiled bytecode format.
-    *   `mf_instruction`: Opcode definitions (`MF_OP_ADD`, `MF_OP_SLICE`).
+    *   `mf_instruction`: Opcode definitions (`MF_OP_ADD`, `MF_OP_SELECT`). Supports up to 3 source operands (Ternary Ops).
     *   `mf_tensor`: **The View**. A lightweight struct (`info`, `buffer*`, `offset`) that points to data. Does *not* own memory.
     *   `mf_state`: Holds registers (tensors) for a running program.
 
