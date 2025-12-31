@@ -119,18 +119,24 @@
 - [x] **Step 3: Call Node Update:**
     - The `Call` node dynamically exposes ports matching the `Input`/`Output` names of the referenced graph.
 
-## Phase 23: Compiler Modularization
+## Phase 23: Compiler Modularization (Completed)
 **Objective:** Decompose the monolithic `mf_json_parser.c` into a pipeline of independent passes. This prepares the ground for advanced features like Generics and Optimizations.
 
-- [ ] **Step 1: AST Separation:**
-    - Create a distinct `mf_ast` (Abstract Syntax Tree) representing the raw JSON structure, separating it from the `mf_graph_ir` (Semantic Graph).
-- [ ] **Step 2: Pass Architecture:**
+- [x] **Step 1: AST Separation & Source Tracking:**
+    - Create a distinct `mf_ast` (Abstract Syntax Tree) representing the raw JSON structure.
+    - **Improvement:** Embed source location (line/column) in AST nodes for precise error reporting.
+    - Implement `JSON -> AST` parser.
+- [x] **Step 2: Pass Architecture:**
+    - Organize passes in `modules/compiler/src/passes/`.
     - `Pass_Desugar`: Converts legacy nodes to standard `Input`/`Const` nodes.
     - `Pass_Inline`: Recursively expands Subgraphs (`MF_NODE_CALL`).
     - `Pass_Lower`: Converts AST to IR (Index allocation, basic validation).
-- [ ] **Step 3: Clean Implementation:**
-    - Each pass resides in its own source file.
+- [x] **Step 3: Clean Implementation:**
     - Remove logic duplication between Loader and Compiler.
+    - Ensure strict separation: Parser only parses, Compiler only compiles.
+- [x] **Step 4: Remove cJSON Dependency:**
+    - Implemented custom JSON parser (`modules/base/src/mf_json.c`) with source tracking.
+    - Removed `cJSON` from all CMake lists and vcpkg.
 
 ## Phase 24: Strong Typing (Static Analysis)
 **Objective:** Prevent runtime errors and undefined behavior by enforcing type safety at compile time.

@@ -15,7 +15,6 @@ target_link_libraries(mf_host_core
     PUBLIC
         MathFlow::engine
     PRIVATE 
-        cjson
         MathFlow::loader
 )
 
@@ -39,7 +38,6 @@ if(TARGET SDL2::SDL2)
             MathFlow::loader
             SDL2::SDL2 
             SDL2::SDL2main
-            cjson
     )
     message(STATUS "Building mf_host_sdl (SDL2 found)")
 else()

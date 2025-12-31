@@ -8,7 +8,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # --- Dependencies ---
 # Global dependencies can still be found here if they are common, 
 # but modules should ideally find what they need.
-find_package(cJSON CONFIG REQUIRED)
+find_package(SDL2 CONFIG QUIET)
 
 # --- Modules ---
 add_subdirectory(modules/base)

@@ -1,5 +1,7 @@
 add_library(mf_compiler STATIC
     src/mf_compiler.c
+    src/passes/mf_pass_lower.c
+    src/passes/mf_pass_inline.c
     src/mf_json_parser.c
     src/mf_semantics.c
     src/mf_codegen.c
@@ -17,6 +19,4 @@ target_link_libraries(mf_compiler
     PUBLIC 
         MathFlow::isa
         MathFlow::base
-    PRIVATE
-        cjson
 )

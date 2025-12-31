@@ -1,72 +1,13 @@
 #include <mathflow/host/mf_manifest_loader.h>
 #include <mathflow/base/mf_log.h>
-#include <cjson/cJSON.h>
+#include <mathflow/base/mf_json.h>
+#include <mathflow/base/mf_memory.h>
+#include <mathflow/base/mf_utils.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef _WIN32
-#define PATH_SEP '\\'
-#else
-#define PATH_SEP '/'
-#endif
-
-// --- File Utils ---
-
-static char* read_file_content(const char* path) {
-    FILE* f = fopen(path, "rb");
-    if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
-    long len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    
-    char* buf = (char*)malloc(len + 1);
-    if (buf) {
-        if (fread(buf, 1, len, f) != (size_t)len) {
-            free(buf);
-            buf = NULL;
-        } else {
-            buf[len] = '\0';
-        }
-    }
-    fclose(f);
-    return buf;
-}
-
-static char* get_dir(const char* path) {
-    const char* last_slash = strrchr(path, '/');
-#ifdef _WIN32
-    const char* last_bslash = strrchr(path, '\\');
-    if (last_bslash > last_slash) last_slash = last_bslash;
-#endif
-
-    if (!last_slash) return strdup(".");
-
-    size_t len = last_slash - path;
-    char* dir = (char*)malloc(len + 1);
-    memcpy(dir, path, len);
-    dir[len] = '\0';
-    return dir;
-}
-
-static char* join_path(const char* dir, const char* file) {
-    if (file[0] == '/' || file[0] == '\\' || (strlen(file) > 2 && file[1] == ':')) {
-        return strdup(file);
-    }
-
-    size_t len1 = strlen(dir);
-    size_t len2 = strlen(file);
-    char* path = (char*)malloc(len1 + len2 + 2);
-    
-    bool slash = (len1 > 0 && (dir[len1-1] == '/' || dir[len1-1] == '\\'));
-    
-    if (slash) sprintf(path, "%s%s", dir, file);
-    else sprintf(path, "%s/%s", dir, file);
-    
-    return path;
-}
-
-static mf_dtype parse_dtype(const char* s) {
+static mf_dtype parse_dtype_str(const char* s) {
     if (!s) return MF_DTYPE_F32;
     if (strcmp(s, "F32") == 0) return MF_DTYPE_F32;
     if (strcmp(s, "I32") == 0) return MF_DTYPE_I32;
@@ -77,16 +18,23 @@ static mf_dtype parse_dtype(const char* s) {
 // --- Loader ---
 
 int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
-    char* json_str = read_file_content(mfapp_path);
+    // Temp Arena for Parsing and file reading
+    size_t arena_size = 1024 * 1024; // 1MB should be enough for manifest
+    void* arena_mem = malloc(arena_size);
+    mf_arena arena;
+    mf_arena_init(&arena, arena_mem, arena_size);
+
+    char* json_str = mf_file_read(mfapp_path, &arena);
     if (!json_str) {
         MF_LOG_ERROR("Could not read manifest %s", mfapp_path);
+        free(arena_mem);
         return -1;
     }
 
-    cJSON* root = cJSON_Parse(json_str);
-    if (!root) {
+    mf_json_value* root = mf_json_parse(json_str, &arena);
+    if (!root || root->type != MF_JSON_VAL_OBJECT) {
         MF_LOG_ERROR("Failed to parse manifest JSON");
-        free(json_str);
+        free(arena_mem);
         return -2;
     }
 
@@ -102,121 +50,122 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     out_desc->has_pipeline = false;
     memset(&out_desc->pipeline, 0, sizeof(out_desc->pipeline));
 
-    char* base_dir = get_dir(mfapp_path);
+    char* base_dir = mf_path_get_dir(mfapp_path, &arena);
 
     // 1. Runtime Section
-    cJSON* runtime = cJSON_GetObjectItem(root, "runtime");
-    if (runtime) {
-        cJSON* entry = cJSON_GetObjectItem(runtime, "entry");
-        if (entry && cJSON_IsString(entry)) {
-            out_desc->graph_path = join_path(base_dir, entry->valuestring);
+    const mf_json_value* runtime = mf_json_get_field(root, "runtime");
+    if (runtime && runtime->type == MF_JSON_VAL_OBJECT) {
+        const mf_json_value* entry = mf_json_get_field(runtime, "entry");
+        if (entry && entry->type == MF_JSON_VAL_STRING) {
+            char* path = mf_path_join(base_dir, entry->as.s, &arena);
+            out_desc->graph_path = strdup(path);
         }
         
-        cJSON* threads = cJSON_GetObjectItem(runtime, "threads");
-        if (threads && cJSON_IsNumber(threads)) out_desc->num_threads = threads->valueint;
+        const mf_json_value* threads = mf_json_get_field(runtime, "threads");
+        if (threads && threads->type == MF_JSON_VAL_NUMBER) out_desc->num_threads = (u32)threads->as.n;
     }
 
     // 2. Window Section
-    cJSON* window = cJSON_GetObjectItem(root, "window");
-    if (window) {
-        cJSON* title = cJSON_GetObjectItem(window, "title");
-        if (title && cJSON_IsString(title)) {
-            out_desc->window_title = strdup(title->valuestring);
+    const mf_json_value* window = mf_json_get_field(root, "window");
+    if (window && window->type == MF_JSON_VAL_OBJECT) {
+        const mf_json_value* title = mf_json_get_field(window, "title");
+        if (title && title->type == MF_JSON_VAL_STRING) {
+            out_desc->window_title = strdup(title->as.s);
         }
 
-        cJSON* w = cJSON_GetObjectItem(window, "width");
-        if (w && cJSON_IsNumber(w)) out_desc->width = w->valueint;
+        const mf_json_value* w = mf_json_get_field(window, "width");
+        if (w && w->type == MF_JSON_VAL_NUMBER) out_desc->width = (u32)w->as.n;
 
-        cJSON* h = cJSON_GetObjectItem(window, "height");
-        if (h && cJSON_IsNumber(h)) out_desc->height = h->valueint;
+        const mf_json_value* h = mf_json_get_field(window, "height");
+        if (h && h->type == MF_JSON_VAL_NUMBER) out_desc->height = (u32)h->as.n;
 
-        cJSON* resizable = cJSON_GetObjectItem(window, "resizable");
-        if (resizable && cJSON_IsBool(resizable)) out_desc->resizable = cJSON_IsTrue(resizable);
+        const mf_json_value* resizable = mf_json_get_field(window, "resizable");
+        if (resizable && resizable->type == MF_JSON_VAL_BOOL) out_desc->resizable = resizable->as.b;
 
-        cJSON* vsync = cJSON_GetObjectItem(window, "vsync");
-        if (vsync && cJSON_IsBool(vsync)) out_desc->vsync = cJSON_IsTrue(vsync);
+        const mf_json_value* vsync = mf_json_get_field(window, "vsync");
+        if (vsync && vsync->type == MF_JSON_VAL_BOOL) out_desc->vsync = vsync->as.b;
 
-        cJSON* fullscreen = cJSON_GetObjectItem(window, "fullscreen");
-        if (fullscreen && cJSON_IsBool(fullscreen)) out_desc->fullscreen = cJSON_IsTrue(fullscreen);
+        const mf_json_value* fullscreen = mf_json_get_field(window, "fullscreen");
+        if (fullscreen && fullscreen->type == MF_JSON_VAL_BOOL) out_desc->fullscreen = fullscreen->as.b;
     }
 
     // 3. Pipeline Section
-    cJSON* pipeline = cJSON_GetObjectItem(root, "pipeline");
-    if (pipeline) {
+    const mf_json_value* pipeline = mf_json_get_field(root, "pipeline");
+    if (pipeline && pipeline->type == MF_JSON_VAL_OBJECT) {
         out_desc->has_pipeline = true;
         
         // Resources
-        cJSON* resources = cJSON_GetObjectItem(pipeline, "resources");
-        if (cJSON_IsArray(resources)) {
-            out_desc->pipeline.resource_count = cJSON_GetArraySize(resources);
+        const mf_json_value* resources = mf_json_get_field(pipeline, "resources");
+        if (resources && resources->type == MF_JSON_VAL_ARRAY) {
+            out_desc->pipeline.resource_count = (u32)resources->as.array.count;
             out_desc->pipeline.resources = calloc(out_desc->pipeline.resource_count, sizeof(mf_pipeline_resource));
             
-            int i = 0;
-            cJSON* res = NULL;
-            cJSON_ArrayForEach(res, resources) {
-                mf_pipeline_resource* pr = &out_desc->pipeline.resources[i++];
-                cJSON* name = cJSON_GetObjectItem(res, "name");
-                if (name) pr->name = strdup(name->valuestring);
+            for (size_t i = 0; i < resources->as.array.count; ++i) {
+                mf_pipeline_resource* pr = &out_desc->pipeline.resources[i];
+                const mf_json_value* res = &resources->as.array.items[i];
                 
-                pr->dtype = parse_dtype(cJSON_GetStringValue(cJSON_GetObjectItem(res, "dtype")));
+                const mf_json_value* name = mf_json_get_field(res, "name");
+                if (name && name->type == MF_JSON_VAL_STRING) pr->name = strdup(name->as.s);
                 
-                cJSON* shape = cJSON_GetObjectItem(res, "shape");
-                if (cJSON_IsArray(shape)) {
-                    pr->ndim = (uint8_t)cJSON_GetArraySize(shape);
-                    for(int d=0; d < pr->ndim && d < MF_MAX_DIMS; ++d) {
-                        pr->shape[d] = cJSON_GetArrayItem(shape, d)->valueint;
+                const mf_json_value* dtype = mf_json_get_field(res, "dtype");
+                if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = parse_dtype_str(dtype->as.s);
+                
+                const mf_json_value* shape = mf_json_get_field(res, "shape");
+                if (shape && shape->type == MF_JSON_VAL_ARRAY) {
+                    pr->ndim = (uint8_t)shape->as.array.count;
+                    if (pr->ndim > MF_MAX_DIMS) pr->ndim = MF_MAX_DIMS;
+                    for(int d=0; d < pr->ndim; ++d) {
+                        const mf_json_value* dim = &shape->as.array.items[d];
+                        if (dim->type == MF_JSON_VAL_NUMBER) pr->shape[d] = (int)dim->as.n;
                     }
                 }
             }
         }
 
         // Kernels
-        cJSON* kernels = cJSON_GetObjectItem(pipeline, "kernels");
-        if (cJSON_IsArray(kernels)) {
-            out_desc->pipeline.kernel_count = cJSON_GetArraySize(kernels);
+        const mf_json_value* kernels = mf_json_get_field(pipeline, "kernels");
+        if (kernels && kernels->type == MF_JSON_VAL_ARRAY) {
+            out_desc->pipeline.kernel_count = (u32)kernels->as.array.count;
             out_desc->pipeline.kernels = calloc(out_desc->pipeline.kernel_count, sizeof(mf_pipeline_kernel));
 
-            int i = 0;
-            cJSON* ker = NULL;
-            cJSON_ArrayForEach(ker, kernels) {
-                mf_pipeline_kernel* pk = &out_desc->pipeline.kernels[i++];
+            for (size_t i = 0; i < kernels->as.array.count; ++i) {
+                mf_pipeline_kernel* pk = &out_desc->pipeline.kernels[i];
+                const mf_json_value* ker = &kernels->as.array.items[i];
                 
-                cJSON* id = cJSON_GetObjectItem(ker, "id");
-                if (id && cJSON_IsString(id)) pk->id = strdup(id->valuestring);
+                const mf_json_value* id = mf_json_get_field(ker, "id");
+                if (id && id->type == MF_JSON_VAL_STRING) pk->id = strdup(id->as.s);
 
-                cJSON* entry = cJSON_GetObjectItem(ker, "entry");
-                if (entry && cJSON_IsString(entry)) pk->graph_path = join_path(base_dir, entry->valuestring);
+                const mf_json_value* entry = mf_json_get_field(ker, "entry");
+                if (entry && entry->type == MF_JSON_VAL_STRING) {
+                    char* path = mf_path_join(base_dir, entry->as.s, &arena);
+                    pk->graph_path = strdup(path);
+                }
 
-                cJSON* freq = cJSON_GetObjectItem(ker, "frequency");
-                if (freq && cJSON_IsNumber(freq)) pk->frequency = (u32)freq->valueint;
+                const mf_json_value* freq = mf_json_get_field(ker, "frequency");
+                if (freq && freq->type == MF_JSON_VAL_NUMBER) pk->frequency = (u32)freq->as.n;
                 else pk->frequency = 1;
 
-                cJSON* bindings = cJSON_GetObjectItem(ker, "bindings");
-                if (bindings && cJSON_IsArray(bindings)) {
-                    pk->binding_count = cJSON_GetArraySize(bindings);
+                const mf_json_value* bindings = mf_json_get_field(ker, "bindings");
+                if (bindings && bindings->type == MF_JSON_VAL_ARRAY) {
+                    pk->binding_count = (u32)bindings->as.array.count;
                     pk->bindings = calloc(pk->binding_count, sizeof(mf_pipeline_binding));
                     
-                    int b = 0;
-                    cJSON* bind = NULL;
-                    cJSON_ArrayForEach(bind, bindings) {
-                        mf_pipeline_binding* pb = &pk->bindings[b++];
-                        // Expected format: "port_name": "resource_name" (Key-Value)
-                        // But cJSON array of objects? Or object?
-                        // "bindings": [ {"port": "A", "resource": "B"}, ... ]
-                        // Let's assume array of objects based on previous context.
-                        cJSON* port = cJSON_GetObjectItem(bind, "port");
-                        cJSON* res = cJSON_GetObjectItem(bind, "resource");
-                        if (port) pb->kernel_port = strdup(port->valuestring);
-                        if (res) pb->global_resource = strdup(res->valuestring);
+                    for (size_t b = 0; b < bindings->as.array.count; ++b) {
+                        mf_pipeline_binding* pb = &pk->bindings[b];
+                        const mf_json_value* bind = &bindings->as.array.items[b];
+                        
+                        const mf_json_value* port = mf_json_get_field(bind, "port");
+                        const mf_json_value* res = mf_json_get_field(bind, "resource");
+                        if (port && port->type == MF_JSON_VAL_STRING) pb->kernel_port = strdup(port->as.s);
+                        if (res && res->type == MF_JSON_VAL_STRING) pb->global_resource = strdup(res->as.s);
                     }
                 }
             }
         }
     }
 
-    free(base_dir);
-    cJSON_Delete(root);
-    free(json_str);
+    // Cleanup
+    free(arena_mem);
     
     if (!out_desc->graph_path && !out_desc->has_pipeline) {
         MF_LOG_ERROR("Manifest missing runtime.entry or pipeline section");

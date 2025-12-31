@@ -1,6 +1,5 @@
 {
   "dependencies": [
-    "cjson",
     "sdl2"
   ]
 }

@@ -1,12 +1,11 @@
 add_library(mf_base STATIC
-    include/mathflow/base/mf_utils.h
-    include/mathflow/base/mf_buffer.h
-    src/mf_log.c
     src/mf_memory.c
-    src/mf_platform.c
     src/mf_thread_pool.c
     src/mf_utils.c
+    src/mf_log.c
+    src/mf_platform.c
     src/mf_buffer.c
+    src/mf_json.c
 )
 add_library(MathFlow::base ALIAS mf_base)
 

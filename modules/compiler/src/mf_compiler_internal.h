@@ -3,11 +3,6 @@
 
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/base/mf_utils.h>
-#include <cjson/cJSON.h>
-
-// --- Internal: Parse ---
-// Parses a constant value from JSON into a tensor descriptor + data in arena
-void parse_constant_tensor(cJSON* val, mf_tensor* t, mf_arena* arena);
 
 // --- Internal: Semantics ---
 // Infers the output shape of a node based on its inputs
