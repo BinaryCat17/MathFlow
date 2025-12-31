@@ -1,6 +1,7 @@
 {
     "nodes": [
         { "id": "val", "type": "Const", "data": {"value": 7.0} },
+
         { "id": "call", "type": "Call", "data": {"path": "../sub_inner.json"} },
         { "id": "res", "type": "ExportOutput", "data": {"index": 0} }
     ],

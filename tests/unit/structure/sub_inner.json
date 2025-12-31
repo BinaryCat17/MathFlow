@@ -1,7 +1,8 @@
 {
     "nodes": [
-        { "id": "in", "type": "ExportInput", "data": {"index": 0} },
         { "id": "const2", "type": "Const", "data": {"value": 2.0} },
+
+        { "id": "in", "type": "ExportInput", "data": {"index": 0} },
         { "id": "mul", "type": "Mul" },
         { "id": "out", "type": "ExportOutput", "data": {"index": 0} }
     ],

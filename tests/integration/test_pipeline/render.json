@@ -1,17 +1,20 @@
 {
     "nodes": [
         { "id": "in_val", "type": "Const", "data": {"value": 0.0} },
-        { "id": "u_Resolution", "type": "Const", "data": {"value": [800, 600]} },
-        { "id": "frag_coord", "type": "Index", "data": {"axis": 0} },
         { "id": "res_x", "type": "Const", "data": {"value": 800.0} },
         { "id": "res_y", "type": "Const", "data": {"value": 600.0} },
-        { "id": "norm_x", "type": "Div" },
-        { "id": "pos_x", "type": "Sin" },
-        { "id": "circle_pos_x", "type": "Add" },
-        { "id": "dist", "type": "Sub" },
+        { "id": "u_Resolution", "type": "Const", "data": {"value": [800, 600]} },
+
+        { "id": "out_Color", "type": "Output" },
+
+        { "id": "frag_coord", "type": "Index", "data": {"axis": 0} },
+
         { "id": "abs_dist", "type": "Abs" },
+        { "id": "circle_pos_x", "type": "Add" },
         { "id": "color_val", "type": "Step", "data": {"value": 0.1} },
-        { "id": "out_Color", "type": "Output" }
+        { "id": "dist", "type": "Sub" },
+        { "id": "norm_x", "type": "Div" },
+        { "id": "pos_x", "type": "Sin" }
     ],
     "links": [
         { "src": "in_val", "src_port": "out", "dst": "pos_x", "dst_port": "x" },

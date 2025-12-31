@@ -2,8 +2,9 @@
     "nodes": [
         { "id": "c1", "type": "Const", "data": {"value": 10.0} },
         { "id": "c2", "type": "Const", "data": {"value": 20.0} },
-        { "id": "sub_call", "type": "Call", "data": {"path": "subgraph_child.json"} },
-        { "id": "final", "type": "ExportOutput", "data": {"index": 0} }
+
+        { "id": "final", "type": "ExportOutput", "data": {"index": 0} },
+        { "id": "sub_call", "type": "Call", "data": {"path": "subgraph_child.json"} }
     ],
     "links": [
         { "src": "c1", "src_port": "out", "dst": "sub_call", "dst_port": 0 },

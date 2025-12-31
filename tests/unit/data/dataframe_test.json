@@ -4,8 +4,9 @@
         { "id": "prices", "type": "Const", "data": {"value": [1.5, 0.8, 2.0, 1.2]} },
         { "id": "query", "type": "Const", "data": {"value": "Apple"} },
         { "id": "zero", "type": "Const", "data": {"value": 0.0} },
-        { "id": "mask", "type": "Equal" },
-        { "id": "filtered_prices", "type": "Select" }
+
+        { "id": "filtered_prices", "type": "Select" },
+        { "id": "mask", "type": "Equal" }
     ],
     "links": [
         { "src": "names", "src_port": "out", "dst": "mask", "dst_port": "a" },

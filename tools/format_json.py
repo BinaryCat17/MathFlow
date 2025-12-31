@@ -2,11 +2,39 @@ import json
 import os
 import glob
 
+def node_sort_key(node):
+    """
+    Sort order:
+    0. Const
+    1. Input
+    2. Output
+    3. Index (System Inputs)
+    4. Everything else (Logic, Math, etc.)
+    Secondary sort: by 'id'
+    """
+    n_type = node.get("type", "")
+    if n_type == "Const":
+        priority = 0
+    elif n_type == "Input":
+        priority = 1
+    elif n_type == "Output":
+        priority = 2
+    elif n_type == "Index":
+        priority = 3
+    else:
+        priority = 4
+        
+    return (priority, node.get("id", ""))
+
 def format_json_mathflow(filepath):
     try:
         with open(filepath, 'r') as f:
             data = json.load(f)
         
+        # Sort nodes if present
+        if "nodes" in data and isinstance(data["nodes"], list):
+            data["nodes"].sort(key=node_sort_key)
+
         output = "{\n"
         keys = list(data.keys())
         
@@ -16,7 +44,17 @@ def format_json_mathflow(filepath):
             
             if key in ["nodes", "links"] and isinstance(val, list):
                 output += "[\n"
+                
+                prev_priority = -1
+                
                 for i, item in enumerate(val):
+                    # Check for group change to insert spacing (only for nodes)
+                    if key == "nodes":
+                        priority, _ = node_sort_key(item)
+                        if prev_priority != -1 and priority != prev_priority:
+                            output += "\n"
+                        prev_priority = priority
+
                     # SECURE one-line format using separators
                     line = json.dumps(item, ensure_ascii=False, separators=(', ', ': '))
                     # Add padding inside root braces

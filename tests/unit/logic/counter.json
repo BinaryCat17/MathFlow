@@ -1,9 +1,11 @@
 {
     "nodes": [
-        { "id": "val_in", "type": "Const", "data": {"value": 0.0} },
         { "id": "step", "type": "Const", "data": {"value": 1.0} },
-        { "id": "next_val", "type": "Add" },
-        { "id": "counter_out", "type": "Output" }
+        { "id": "val_in", "type": "Const", "data": {"value": 0.0} },
+
+        { "id": "counter_out", "type": "Output" },
+
+        { "id": "next_val", "type": "Add" }
     ],
     "links": [
         { "src": "val_in", "src_port": "out", "dst": "next_val", "dst_port": "a" },

@@ -2,8 +2,10 @@
     "nodes": [
         { "id": "in_val", "type": "Const", "data": {"value": 0.0} },
         { "id": "step", "type": "Const", "data": {"value": 0.01} },
-        { "id": "add", "type": "Add" },
-        { "id": "out_val", "type": "Output" }
+
+        { "id": "out_val", "type": "Output" },
+
+        { "id": "add", "type": "Add" }
     ],
     "links": [
         { "src": "in_val", "src_port": "out", "dst": "add", "dst_port": "a" },

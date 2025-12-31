@@ -5,6 +5,7 @@
         { "id": "3", "type": "Const", "data": {"value": "Apple"} },
         { "id": "4", "type": "Const", "data": {"value": "Match"} },
         { "id": "5", "type": "Const", "data": {"value": "NoMatch"} },
+
         { "id": "10", "type": "Equal" },
         { "id": "11", "type": "Equal" },
         { "id": "12", "type": "Select" }

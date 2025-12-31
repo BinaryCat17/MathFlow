@@ -1,11 +1,11 @@
 {
     "nodes": [
+        { "id": "diff", "type": "Sub" },
         { "id": "in_a", "type": "ExportInput", "data": {"index": 0} },
         { "id": "in_b", "type": "ExportInput", "data": {"index": 1} },
-        { "id": "sum", "type": "Add" },
-        { "id": "diff", "type": "Sub" },
+        { "id": "out_diff", "type": "ExportOutput", "data": {"index": 1} },
         { "id": "out_sum", "type": "ExportOutput", "data": {"index": 0} },
-        { "id": "out_diff", "type": "ExportOutput", "data": {"index": 1} }
+        { "id": "sum", "type": "Add" }
     ],
     "links": [
         { "src": "in_a", "src_port": "out", "dst": "sum", "dst_port": "a" },

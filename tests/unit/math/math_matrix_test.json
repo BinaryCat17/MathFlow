@@ -2,9 +2,10 @@
     "nodes": [
         { "id": "1", "type": "Const", "data": {"value": [2, 0, 0, 0, 2, 0, 0, 0, 2]} },
         { "id": "2", "type": "Const", "data": {"value": [1, 0, 0, 0, 1, 0, 0, 0, 1]} },
+        { "id": "20", "type": "Const", "data": {"value": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]} },
+
         { "id": "10", "type": "MatMul" },
         { "id": "11", "type": "Inverse" },
-        { "id": "20", "type": "Const", "data": {"value": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]} },
         { "id": "21", "type": "Transpose" },
         { "id": "22", "type": "Inverse" }
     ],

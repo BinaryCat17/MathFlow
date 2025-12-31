@@ -1,8 +1,9 @@
 {
     "nodes": [
         { "id": "val", "type": "Const", "data": {"value": 5.0} },
-        { "id": "outer_call", "type": "Call", "data": {"path": "tests/graphs/sub_outer.json"} },
-        { "id": "final", "type": "ExportOutput", "data": {"index": 0} }
+
+        { "id": "final", "type": "ExportOutput", "data": {"index": 0} },
+        { "id": "outer_call", "type": "Call", "data": {"path": "tests/graphs/sub_outer.json"} }
     ],
     "links": [
         { "src": "val", "src_port": "out", "dst": "outer_call", "dst_port": 0 },

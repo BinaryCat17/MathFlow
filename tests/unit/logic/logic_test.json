@@ -2,9 +2,10 @@
     "nodes": [
         { "id": "1", "type": "Const", "data": {"value": 10.0} },
         { "id": "2", "type": "Const", "data": {"value": 20.0} },
-        { "id": "3", "type": "Less" },
         { "id": "4", "type": "Const", "data": {"value": [1.0, 0.0, 0.0, 1.0]} },
         { "id": "5", "type": "Const", "data": {"value": [0.0, 1.0, 0.0, 1.0]} },
+
+        { "id": "3", "type": "Less" },
         { "id": "6", "type": "Select" }
     ],
     "links": [

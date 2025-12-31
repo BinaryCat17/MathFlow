@@ -2,8 +2,9 @@
     "nodes": [
         { "id": "1", "type": "Const", "data": {"value": [1.0, 2.0, 3.0]} },
         { "id": "2", "type": "Const", "data": {"value": [4.0, 5.0, 6.0]} },
-        { "id": "3", "type": "Add" },
         { "id": "4", "type": "Const", "data": {"value": 2.0} },
+
+        { "id": "3", "type": "Add" },
         { "id": "5", "type": "Mul" }
     ],
     "links": [

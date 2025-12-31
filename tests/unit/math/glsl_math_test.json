@@ -2,11 +2,12 @@
     "nodes": [
         { "id": "A", "type": "Const", "data": {"value": [1.0, 2.0, 3.0]} },
         { "id": "B", "type": "Const", "data": {"value": [4.0, 5.0, 6.0]} },
-        { "id": "T", "type": "Const", "data": {"value": 0.5} },
         { "id": "Edge", "type": "Const", "data": {"value": 2.5} },
-        { "id": "MixRes", "type": "Mix" },
+        { "id": "T", "type": "Const", "data": {"value": 0.5} },
+
         { "id": "DotRes", "type": "Dot" },
         { "id": "LenRes", "type": "Length" },
+        { "id": "MixRes", "type": "Mix" },
         { "id": "StepRes", "type": "Step" }
     ],
     "links": [

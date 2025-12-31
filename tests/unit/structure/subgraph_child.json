@@ -2,8 +2,8 @@
     "nodes": [
         { "id": "in_a", "type": "ExportInput", "data": {"index": 0} },
         { "id": "in_b", "type": "ExportInput", "data": {"index": 1} },
-        { "id": "sum", "type": "Add" },
-        { "id": "out_res", "type": "ExportOutput", "data": {"index": 0} }
+        { "id": "out_res", "type": "ExportOutput", "data": {"index": 0} },
+        { "id": "sum", "type": "Add" }
     ],
     "links": [
         { "src": "in_a", "src_port": "out", "dst": "sum", "dst_port": "a" },
