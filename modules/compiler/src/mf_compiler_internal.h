@@ -4,10 +4,6 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/base/mf_utils.h>
 
-// --- Internal: Semantics ---
-// Infers the output shape of a node based on its inputs
-bool mf_infer_shape(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node* s3);
-
 // --- Internal: Graph Utils ---
 mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port);
 

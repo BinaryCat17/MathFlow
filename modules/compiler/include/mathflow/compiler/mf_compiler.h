@@ -5,6 +5,13 @@
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/base/mf_memory.h>
 
+// --- Source Tracking ---
+typedef struct {
+    const char* file;
+    u32 line;
+    u32 column;
+} mf_source_loc;
+
 // --- IR Definitions (Simplification) ---
 
 typedef enum {
@@ -86,6 +93,9 @@ typedef struct {
 
     // Sub-Graph Data
     const char* sub_graph_path; // For MF_NODE_CALL
+
+    // Debug Info
+    mf_source_loc loc;
 
     // Compiler Generated info
     u16 out_reg_idx;    // Index in the global Tensor Pool

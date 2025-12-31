@@ -97,12 +97,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
              }
         }
         else {
-            // Logic Node
-            if (!mf_infer_shape(node, s1, s2, s3)) {
-                MF_LOG_ERROR("Shape inference failed for node '%s'.", node->id ? node->id : "unknown");
-                return false; 
-            }
-
+            // Logic Node (Shape already inferred by mf_pass_analyze)
             *t_desc = node->out_shape;
             t_desc->buffer = NULL; 
             t_desc->byte_offset = 0;

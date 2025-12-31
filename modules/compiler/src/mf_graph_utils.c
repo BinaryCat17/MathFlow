@@ -1,6 +1,16 @@
 #include "mf_compiler_internal.h"
 #include <string.h>
 
+// --- Helper: Find Input Source ---
+mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
+    for (size_t i = 0; i < ir->link_count; ++i) {
+        if (ir->links[i].dst_node_idx == dst_node_idx && ir->links[i].dst_port == dst_port) {
+            return &ir->nodes[ir->links[i].src_node_idx];
+        }
+    }
+    return NULL;
+}
+
 // --- Topological Sort Helpers ---
 
 typedef struct {

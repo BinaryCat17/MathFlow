@@ -138,17 +138,22 @@
     - Implemented custom JSON parser (`modules/base/src/mf_json.c`) with source tracking.
     - Removed `cJSON` from all CMake lists and vcpkg.
 
-## Phase 24: Strong Typing (Static Analysis)
-**Objective:** Prevent runtime errors and undefined behavior by enforcing type safety at compile time.
+## Phase 24: Strong Typing (Static Analysis) (Completed)
+**Objective:** Prevent runtime errors and undefined behavior by enforcing type safety at compile time, providing rich error messages with source locations.
 
-- [ ] **Step 1: Type Inference Engine:**
-    - Implement a proper `mf_infer_type(node, inputs...)` system that propagates Shapes and DTypes forward.
-- [ ] **Step 2: Validation Pass:**
-    - Run validation *before* code generation.
-    - Check Shape Broadcasting rules (e.g., ensure `[10]` + `[5]` fails).
-    - Check DType compatibility (e.g., no implicit `f32` -> `bool` casting).
-- [ ] **Step 3: Error Reporting:**
-    - Provide human-readable errors with Node IDs and Port names when validation fails.
+- [x] **Step 1: Source Tracking:**
+    - Add `mf_source_loc` to `mf_ir_node` to retain line/column info from AST.
+    - Update `mf_pass_lower` to propagate this metadata.
+- [x] **Step 2: Analysis Pass (`mf_pass_analyze`):**
+    - Implement a dedicated pass that runs *before* CodeGen.
+    - Move shape inference logic from `mf_semantics.c` to this pass.
+    - Implement rigorous Type Checking (DType compatibility).
+    - Validate Shape Broadcasting rules.
+- [x] **Step 3: CodeGen Simplification:**
+    - Strip inference logic from `mf_codegen_emit`.
+    - CodeGen should solely rely on the pre-computed shapes/types from the Analysis pass.
+- [x] **Step 4: Error Reporting:**
+    - Use `mf_source_loc` to print GCC-style error messages (e.g., `graph.json:15:4: error: shape mismatch`).
 
 ## Phase 25: Zero-Overhead Linking (Hash-Based)
 **Objective:** Optimize the binding process and reduce memory overhead by replacing string comparisons with hash lookups.

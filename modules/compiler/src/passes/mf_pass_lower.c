@@ -218,12 +218,17 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         mf_ast_node* src = &ast->nodes[i];
         mf_ir_node* dst = &out_ir->nodes[i];
 
+        // Source Location
+        dst->loc.file = base_path ? mf_arena_strdup(arena, base_path) : "unknown";
+        dst->loc.line = src->loc.line;
+        dst->loc.column = src->loc.column;
+
         dst->id = mf_arena_strdup(arena, src->id);
         mf_map_put(&map, dst->id, i);
 
         dst->type = get_node_type(src->type);
         if (dst->type == MF_NODE_UNKNOWN) {
-            MF_LOG_ERROR("Unknown node type '%s' at %u:%u", src->type, src->loc.line, src->loc.column);
+            MF_LOG_ERROR("Unknown node type '%s' at %s:%u:%u", src->type, dst->loc.file, src->loc.line, src->loc.column);
             return false;
         }
 

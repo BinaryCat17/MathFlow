@@ -2,8 +2,8 @@ add_library(mf_compiler STATIC
     src/mf_compiler.c
     src/passes/mf_pass_lower.c
     src/passes/mf_pass_inline.c
+    src/passes/mf_pass_analyze.c
     src/mf_json_parser.c
-    src/mf_semantics.c
     src/mf_codegen.c
     src/mf_graph_utils.c
 )

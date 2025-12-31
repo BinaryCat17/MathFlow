@@ -1,6 +1,7 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include "mf_compiler_internal.h"
+#include "mf_passes.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -12,13 +13,20 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena) {
     // 1. Sort
     size_t sorted_count = 0;
     mf_ir_node** sorted = mf_topo_sort(ir, arena, &sorted_count);
+    if (!sorted) return NULL; // Cycle detected
 
-    // 2. Allocate Program Structure
+    // 2. Static Analysis (Types & Shapes)
+    // This populates node->out_shape and validates compatibility
+    if (!mf_pass_analyze(ir, sorted, sorted_count)) {
+        return NULL;
+    }
+
+    // 3. Allocate Program Structure
     mf_program* prog = MF_ARENA_PUSH(arena, mf_program, 1);
     prog->meta.magic = MF_BINARY_MAGIC;
     prog->meta.version = MF_BINARY_VERSION;
 
-    // 3. Emit Code (Tensors, Instructions, State)
+    // 4. Emit Code (Tensors, Instructions, State)
     if (!mf_codegen_emit(prog, ir, sorted, sorted_count, arena)) {
         return NULL;
     }
