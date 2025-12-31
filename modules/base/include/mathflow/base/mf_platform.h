@@ -2,6 +2,7 @@
 #define MF_PLATFORM_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #ifdef _WIN32
     #ifndef WIN32_LEAN_AND_MEAN
@@ -53,5 +54,19 @@ void mf_cond_destroy(mf_cond_t* cond);
 int32_t mf_atomic_inc(mf_atomic_i32* var);
 int32_t mf_atomic_load(mf_atomic_i32* var);
 void mf_atomic_store(mf_atomic_i32* var, int32_t val);
+
+// --- File System API ---
+
+/**
+ * Creates a directory if it doesn't exist.
+ * Returns true on success (or if exists), false on failure.
+ */
+bool mf_fs_mkdir(const char* path);
+
+/**
+ * Removes all files within a directory (non-recursive).
+ * Returns true on success.
+ */
+bool mf_fs_clear_dir(const char* path);
 
 #endif // MF_PLATFORM_H

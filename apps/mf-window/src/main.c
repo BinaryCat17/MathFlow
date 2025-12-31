@@ -1,10 +1,17 @@
 #include <mathflow/host/mf_host_sdl.h>
 #include <mathflow/host/mf_manifest_loader.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_platform.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 int main(int argc, char** argv) {
+    // Clear old logs first
+    if (mf_fs_mkdir("logs")) {
+        mf_fs_clear_dir("logs");
+    }
+
     mf_log_init();
 
     // Setup File Logging
@@ -25,6 +32,14 @@ int main(int argc, char** argv) {
 
     const char* mfapp_path = argv[1];
     mf_host_desc desc = {0};
+    desc.log_interval = 5.0f; // Default 5 seconds
+
+    // Simple Argument Parser
+    for (int i = 2; i < argc; ++i) {
+        if (strcmp(argv[i], "--log-interval") == 0 && i + 1 < argc) {
+            desc.log_interval = (float)atof(argv[++i]);
+        }
+    }
 
     if (mf_app_load_config(mfapp_path, &desc) != 0) {
         const char* ext = strrchr(mfapp_path, '.');

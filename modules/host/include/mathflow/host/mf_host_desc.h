@@ -19,6 +19,9 @@ typedef struct mf_host_desc {
     
     // Optional: Number of worker threads (0 = Auto)
     int num_threads;
+
+    // Logging Interval (in seconds) for TRACE logs and screenshots. 0 = Disable periodic logging.
+    float log_interval;
     
     // Window Options
     bool fullscreen;

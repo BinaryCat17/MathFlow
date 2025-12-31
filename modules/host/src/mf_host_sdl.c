@@ -121,13 +121,29 @@ int mf_host_run(const mf_host_desc* desc) {
     u32* frame_buffer = malloc((size_t)desc->width * (size_t)desc->height * 4);
 
     bool running = true;
-    bool first_frame = true;
-    SDL_Event event;
+    
     u32 start_time = SDL_GetTicks();
+    // Initialize so that the first frame (time ~0) triggers a log.
+    // using a negative value ensures (current - last) >= interval immediately.
+    f32 last_log_time = -desc->log_interval - 1.0f; 
+
     int win_w = desc->width;
     int win_h = desc->height;
+    SDL_Event event;
 
     while (running) {
+        // --- 1. Periodic Logging Control ---
+        f32 current_time = (SDL_GetTicks() - start_time) / 1000.0f;
+        bool do_log = (current_time - last_log_time) >= desc->log_interval;
+        
+        if (do_log) {
+            mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
+            last_log_time = current_time;
+            MF_LOG_INFO("--- Frame Log @ %.2fs ---", current_time);
+        } else {
+            mf_log_set_global_level(MF_LOG_LEVEL_INFO);
+        }
+
         while (SDL_PollEvent(&event)) {
             if (event.type == SDL_QUIT) running = false;
             else if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_RESIZED) {
@@ -160,7 +176,7 @@ int mf_host_run(const mf_host_desc* desc) {
         
         if (t_time) {
             void* time_data = mf_tensor_data(t_time);
-            if (time_data) *((f32*)time_data) = (SDL_GetTicks() - start_time) / 1000.0f;
+            if (time_data) *((f32*)time_data) = current_time;
         }
         
         if (t_mouse) {
@@ -193,10 +209,13 @@ int mf_host_run(const mf_host_desc* desc) {
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
 
-        if (first_frame && frame_buffer) {
+        // --- 2. Screenshot Logic ---
+        if (do_log && frame_buffer) {
             time_t now = time(NULL);
             struct tm* t = localtime(&now);
             char shot_path[256];
+            // Use time_buf from log? Or just raw timestamp.
+            // Using system time for filename to avoid overwrites
             strftime(shot_path, sizeof(shot_path), "logs/screenshot_%Y-%m-%d_%H-%M-%S.bmp", t);
             
             SDL_Surface* ss = SDL_CreateRGBSurfaceFrom(
@@ -212,7 +231,6 @@ int mf_host_run(const mf_host_desc* desc) {
                 }
                 SDL_FreeSurface(ss);
             }
-            first_frame = false;
         }
     }
     

@@ -1,7 +1,11 @@
 #include <mathflow/base/mf_platform.h>
 #include <stdlib.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <string.h>
 
 #ifdef _WIN32
+#include <direct.h>
 
 // --- Windows Implementation ---
 
@@ -88,7 +92,42 @@ void mf_atomic_store(mf_atomic_i32* var, int32_t val) {
     InterlockedExchange(var, val);
 }
 
+// --- FS Windows ---
+
+bool mf_fs_mkdir(const char* path) {
+    int result = _mkdir(path);
+    return (result == 0 || errno == EEXIST);
+}
+
+bool mf_fs_clear_dir(const char* path) {
+    char search_path[MAX_PATH];
+    snprintf(search_path, MAX_PATH, "%s\*", path);
+
+    WIN32_FIND_DATA fd;
+    HANDLE hFind = FindFirstFile(search_path, &fd);
+
+    if (hFind == INVALID_HANDLE_VALUE) return false;
+
+    do {
+        if (strcmp(fd.cFileName, ".") != 0 && strcmp(fd.cFileName, "..") != 0) {
+            char file_path[MAX_PATH];
+            snprintf(file_path, MAX_PATH, "%s\%s", path, fd.cFileName);
+            
+            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+                DeleteFile(file_path);
+            }
+        }
+    } while (FindNextFile(hFind, &fd));
+
+    FindClose(hFind);
+    return true;
+}
+
 #else
+#include <sys/stat.h>
+#include <sys/types.h>
+#include <dirent.h>
+#include <errno.h>
 
 // --- Linux/POSIX Implementation ---
 
@@ -151,6 +190,30 @@ int32_t mf_atomic_load(mf_atomic_i32* var) {
 
 void mf_atomic_store(mf_atomic_i32* var, int32_t val) {
     atomic_store(var, val);
+}
+
+// --- FS POSIX ---
+
+bool mf_fs_mkdir(const char* path) {
+    int result = mkdir(path, 0755);
+    return (result == 0 || errno == EEXIST);
+}
+
+bool mf_fs_clear_dir(const char* path) {
+    DIR* dir = opendir(path);
+    if (!dir) return false;
+
+    struct dirent* entry;
+    char full_path[1024];
+
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0) continue;
+        
+        snprintf(full_path, sizeof(full_path), "%s/%s", path, entry->d_name);
+        remove(full_path);
+    }
+    closedir(dir);
+    return true;
 }
 
 #endif
