@@ -1,14 +1,13 @@
 {
     "nodes": [
-        { "id": "const2", "type": "Const", "data": {"value": 2.0} },
-
-        { "id": "in", "type": "ExportInput", "data": {"index": 0} },
+        { "id": "in", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "const_2", "type": "Const", "data": {"value": 2.0} },
         { "id": "mul", "type": "Mul" },
-        { "id": "out", "type": "ExportOutput", "data": {"index": 0} }
+        { "id": "out", "type": "Output" }
     ],
     "links": [
         { "src": "in", "src_port": "out", "dst": "mul", "dst_port": "a" },
-        { "src": "const2", "src_port": "out", "dst": "mul", "dst_port": "b" },
-        { "src": "mul", "src_port": "out", "dst": "out", "dst_port": 0 }
+        { "src": "const_2", "src_port": "out", "dst": "mul", "dst_port": "b" },
+        { "src": "mul", "src_port": "out", "dst": "out", "dst_port": "in" }
     ]
 }

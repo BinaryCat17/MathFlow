@@ -477,7 +477,10 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
                 } else {
                      ir_link->src_port = mf_node_get_port_index(out_ir->nodes[ir_link->src_node_idx].type, js_port->valuestring);
                 }
-            } 
+            } else {
+                MF_LOG_ERROR("Link src_port must be a string (node '%s')", key);
+                return false;
+            }
 
             cJSON* jd_port = cJSON_GetObjectItem(link, "dst_port");
             if (cJSON_IsString(jd_port)) {
@@ -486,6 +489,9 @@ static bool parse_flat(const char* json_str, mf_graph_ir* out_ir, mf_arena* aren
                 } else {
                      ir_link->dst_port = mf_node_get_port_index(out_ir->nodes[ir_link->dst_node_idx].type, jd_port->valuestring);
                 }
+            } else {
+                MF_LOG_ERROR("Link dst_port must be a string (node '%s')", key);
+                return false;
             }
         }
     } else {

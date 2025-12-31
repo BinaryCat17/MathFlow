@@ -8,10 +8,10 @@
 
 // --- Arithmetic ---
 
-static void op_add(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_add(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     
@@ -48,12 +48,12 @@ MF_KERNEL_UNARY(ceil, ceilf)
 MF_KERNEL_UNARY(abs, fabsf)
 MF_KERNEL_UNARY(sqrt, sqrtf)
 
-// --- Min/Max ---
+// --- Min/Max/Clamp ---
 
-static void op_min(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_min(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     
@@ -75,10 +75,10 @@ static void op_min(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
-static void op_max(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_max(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
     
@@ -100,12 +100,46 @@ static void op_max(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
     }
 }
 
+static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* min_v = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    mf_tensor* max_v = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
+    
+    if (!dst || !val || !min_v || !max_v) return;
+    if (!mf_utils_resolve_ternary_shape(ctx, dst, val, min_v, max_v)) return;
+    
+    f32* d_val = (f32*)mf_tensor_data(val); 
+    f32* d_min = (f32*)mf_tensor_data(min_v); 
+    f32* d_max = (f32*)mf_tensor_data(max_v);
+    f32* d_dst = (f32*)mf_tensor_data(dst);
+    
+    size_t sz_val = mf_tensor_count(val);
+    size_t sz_min = mf_tensor_count(min_v);
+    size_t sz_max = mf_tensor_count(max_v);
+    size_t sz_dst = mf_tensor_count(dst);
+    
+    bool val_s = (sz_val == 1);
+    bool min_s = (sz_min == 1);
+    bool max_s = (sz_max == 1);
+    
+    for(size_t i=0; i<sz_dst; ++i) { 
+        f32 v = val_s ? d_val[0] : d_val[i];
+        f32 mn = min_s ? d_min[0] : d_min[i];
+        f32 mx = max_s ? d_max[0] : d_max[i];
+        
+        if (v < mn) v = mn;
+        if (v > mx) v = mx;
+        d_dst[i] = v;
+    }
+}
+
 // --- GLSL Helpers ---
 
-static void op_smoothstep(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* val = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* edges = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_smoothstep(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* edges = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !val || !edges) return;
     
     if (!mf_utils_resolve_unary_shape(ctx, dst, val)) return; 
@@ -132,10 +166,10 @@ static void op_smoothstep(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_
     }
 }
 
-static void op_step(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* edge = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* x = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_step(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* edge = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* x = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !edge || !x) return;
     
     if (!mf_utils_resolve_binary_shape(ctx, dst, edge, x)) return;
@@ -174,6 +208,7 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_POW] = op_pow; 
     table[MF_OP_MIN] = op_min; 
     table[MF_OP_MAX] = op_max; 
+    table[MF_OP_CLAMP] = op_clamp;
     table[MF_OP_SMOOTHSTEP] = op_smoothstep; 
     table[MF_OP_STEP] = op_step; 
 }

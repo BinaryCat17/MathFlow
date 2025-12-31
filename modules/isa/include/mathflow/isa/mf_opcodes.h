@@ -63,8 +63,8 @@ typedef enum {
     MF_OP_NOT = 83,
 
     // Control Flow / Selection
-    MF_OP_WHERE_TRUE = 100,
-    MF_OP_WHERE_FALSE = 101,
+    MF_OP_SELECT = 100, // Dest = Cond ? Src1 : Src2
+    // 101 Reserved
 
     MF_OP_CORE_END = 255,
 

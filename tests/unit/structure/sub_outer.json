@@ -1,11 +1,11 @@
 {
     "nodes": [
-        { "id": "in", "type": "ExportInput", "data": {"index": 0} },
-        { "id": "inner_call", "type": "Call", "data": {"path": "tests/graphs/sub_inner.json"} },
-        { "id": "out", "type": "ExportOutput", "data": {"index": 0} }
+        { "id": "in", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "inner_call", "type": "Call", "data": {"path": "sub_inner.json"} },
+        { "id": "out", "type": "Output" }
     ],
     "links": [
-        { "src": "in", "src_port": "out", "dst": "inner_call", "dst_port": 0 },
-        { "src": "inner_call", "src_port": "out", "dst": "out", "dst_port": 0 }
+        { "src": "in", "src_port": "out", "dst": "inner_call", "dst_port": "in" },
+        { "src": "inner_call", "src_port": "out", "dst": "out", "dst_port": "in" }
     ]
 }

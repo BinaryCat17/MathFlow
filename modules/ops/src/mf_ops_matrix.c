@@ -56,10 +56,10 @@ static bool ensure_contiguous(mf_exec_ctx* ctx, const mf_tensor* src, mf_tensor*
 }
 
 // Dot(a, b) -> Sum(a*b) along last axis
-static void op_dot(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     size_t sz_a = mf_tensor_count(a);
@@ -93,10 +93,9 @@ static void op_dot(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 }
 
 // Length(a) -> Sqrt(Dot(a, a))
-static void op_length(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    (void)src2_idx;
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
 
     mf_tensor a_cont;
@@ -123,10 +122,10 @@ static void op_length(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
     }
 }
 
-static void op_matmul(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     
     size_t sz_a = mf_tensor_count(a);
@@ -170,10 +169,9 @@ static void op_matmul(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
 }
 
 // Zero-Copy Transpose
-static void op_transpose(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    (void)src2_idx;
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_transpose(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return; 
     
     // Use O(1) metadata swap
@@ -185,10 +183,9 @@ static void op_transpose(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_i
     }
 }
 
-static void op_inverse(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    (void)src2_idx;
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !a) return;
     
     mf_tensor a_cont;
@@ -219,10 +216,10 @@ static void op_inverse(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx
 }
 
 // Join(a, b) -> [..., 2] where ... is the common shape
-static void op_join(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
 
     size_t sz_a = mf_tensor_count(a);

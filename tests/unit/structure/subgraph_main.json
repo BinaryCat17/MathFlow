@@ -3,12 +3,12 @@
         { "id": "c1", "type": "Const", "data": {"value": 10.0} },
         { "id": "c2", "type": "Const", "data": {"value": 20.0} },
 
-        { "id": "final", "type": "ExportOutput", "data": {"index": 0} },
-        { "id": "sub_call", "type": "Call", "data": {"path": "subgraph_child.json"} }
+        { "id": "sub_call", "type": "Call", "data": {"path": "subgraph_child.json"} },
+        { "id": "final", "type": "Output" }
     ],
     "links": [
-        { "src": "c1", "src_port": "out", "dst": "sub_call", "dst_port": 0 },
-        { "src": "c2", "src_port": "out", "dst": "sub_call", "dst_port": 1 },
-        { "src": "sub_call", "src_port": "out", "dst": "final", "dst_port": 0 }
+        { "src": "c1", "src_port": "out", "dst": "sub_call", "dst_port": "in_a" },
+        { "src": "c2", "src_port": "out", "dst": "sub_call", "dst_port": "in_b" },
+        { "src": "sub_call", "src_port": "out_res", "dst": "final", "dst_port": "in" }
     ]
 }

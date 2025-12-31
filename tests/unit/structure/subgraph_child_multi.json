@@ -1,18 +1,19 @@
 {
     "nodes": [
+        { "id": "in_a", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "in_b", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "sum", "type": "Add" },
         { "id": "diff", "type": "Sub" },
-        { "id": "in_a", "type": "ExportInput", "data": {"index": 0} },
-        { "id": "in_b", "type": "ExportInput", "data": {"index": 1} },
-        { "id": "out_diff", "type": "ExportOutput", "data": {"index": 1} },
-        { "id": "out_sum", "type": "ExportOutput", "data": {"index": 0} },
-        { "id": "sum", "type": "Add" }
+        { "id": "out_sum", "type": "Output" },
+        { "id": "out_diff", "type": "Output" }
     ],
     "links": [
         { "src": "in_a", "src_port": "out", "dst": "sum", "dst_port": "a" },
         { "src": "in_b", "src_port": "out", "dst": "sum", "dst_port": "b" },
         { "src": "in_a", "src_port": "out", "dst": "diff", "dst_port": "a" },
         { "src": "in_b", "src_port": "out", "dst": "diff", "dst_port": "b" },
-        { "src": "sum", "src_port": "out", "dst": "out_sum", "dst_port": 0 },
-        { "src": "diff", "src_port": "out", "dst": "out_diff", "dst_port": 0 }
+        
+        { "src": "sum", "src_port": "out", "dst": "out_sum", "dst_port": "in" },
+        { "src": "diff", "src_port": "out", "dst": "out_diff", "dst_port": "in" }
     ]
 }

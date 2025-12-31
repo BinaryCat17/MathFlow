@@ -1,12 +1,11 @@
 {
     "nodes": [
-        { "id": "count", "type": "Const", "data": {"value": 5.0} },
-
-        { "id": "cumsum_out", "type": "CumSum" },
-        { "id": "range_out", "type": "Range" }
+        { "id": "count", "type": "Const", "data": {"value": [5.0]} },
+        { "id": "range_out", "type": "Range" },
+        { "id": "cumsum_out", "type": "CumSum" }
     ],
     "links": [
-        { "src": "count", "src_port": "out", "dst": "range_out", "dst_port": 0 },
-        { "src": "range_out", "src_port": "out", "dst": "cumsum_out", "dst_port": 0 }
+        { "src": "count", "src_port": "out", "dst": "range_out", "dst_port": "count" },
+        { "src": "range_out", "src_port": "out", "dst": "cumsum_out", "dst_port": "in" }
     ]
 }

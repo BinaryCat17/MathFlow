@@ -1,12 +1,11 @@
 {
     "nodes": [
-        { "id": "val", "type": "Const", "data": {"value": 7.0} },
-
+        { "id": "val", "type": "Const", "data": {"value": 10.0} },
         { "id": "call", "type": "Call", "data": {"path": "../sub_inner.json"} },
-        { "id": "res", "type": "ExportOutput", "data": {"index": 0} }
+        { "id": "res", "type": "Output" }
     ],
     "links": [
-        { "src": "val", "src_port": "out", "dst": "call", "dst_port": 0 },
-        { "src": "call", "src_port": "out", "dst": "res", "dst_port": 0 }
+        { "src": "val", "src_port": "out", "dst": "call", "dst_port": "in" },
+        { "src": "call", "src_port": "out", "dst": "res", "dst_port": "in" }
     ]
 }

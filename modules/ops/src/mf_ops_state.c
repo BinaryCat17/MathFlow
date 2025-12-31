@@ -5,9 +5,9 @@
 #include "mf_ops_internal.h"
 #include <string.h>
 
-static void op_copy(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_copy(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
     dst->info.dtype = src->info.dtype;
@@ -19,10 +19,10 @@ static void op_copy(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
 
 // Slice(Input, Range) -> View
 // Range is a Vec2: [Start, Count]
-static void op_slice(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* range = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_slice(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* range = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     
     if (!dst || !src || !range) return;
     
@@ -49,10 +49,10 @@ static void op_slice(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
 }
 
 // Reshape(Input, ShapeTensor) -> View
-static void op_reshape(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* shape_t = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_reshape(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* shape_t = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     
     if (!dst || !src || !shape_t) return;
     

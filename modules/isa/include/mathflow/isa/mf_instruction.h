@@ -4,13 +4,18 @@
 #include <mathflow/base/mf_types.h>
 #include "mf_opcodes.h"
 
-// Standard 3-address code instruction (64 bits total)
-// [ Opcode (16) | Dest (16) | Src1 (16) | Src2 (16) ]
+// Standard 3-address code instruction
+// Updated to support 3 source operands (e.g. Select, Clamp, Mix)
+// Layout: [ Opcode (16) | Dest (16) | Src1 (16) | Src2 (16) | Src3 (16) | Reserved (16) ]
+// Total Size: 96 bits (12 bytes).
+// Note: We keep it packed/minimal. 
 typedef struct {
     u16 opcode;
     u16 dest_idx;
     u16 src1_idx;
     u16 src2_idx;
+    u16 src3_idx;
+    u16 reserved; // For future flags or optimization hints
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

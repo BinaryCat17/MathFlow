@@ -227,35 +227,23 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
             case MF_NODE_CLAMP:
                 if (s1 && s2 && s3) {
-                    inst->opcode = MF_OP_MAX;
+                    inst->opcode = MF_OP_CLAMP;
+                    inst->dest_idx = node->out_reg_idx;
                     inst->src1_idx = s1->out_reg_idx;
                     inst->src2_idx = s2->out_reg_idx;
-                    instr_count++;
-                    
-                    inst = &instrs[instr_count];
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->opcode = MF_OP_MIN;
-                    inst->src1_idx = node->out_reg_idx; 
-                    inst->src2_idx = s3->out_reg_idx;
+                    inst->src3_idx = s3->out_reg_idx;
                     instr_count++;
                 }
                 break;
             
             case MF_NODE_SELECT: 
-                if (s1 && s2) {
-                    inst->opcode = MF_OP_WHERE_TRUE;
-                    inst->src1_idx = s1->out_reg_idx; 
-                    inst->src2_idx = s2->out_reg_idx; 
+                if (s1 && s2 && s3) {
+                    inst->opcode = MF_OP_SELECT;
+                    inst->dest_idx = node->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx; // Cond
+                    inst->src2_idx = s2->out_reg_idx; // True
+                    inst->src3_idx = s3->out_reg_idx; // False
                     instr_count++;
-                    
-                    if (s3) {
-                        inst = &instrs[instr_count];
-                        inst->opcode = MF_OP_WHERE_FALSE;
-                        inst->dest_idx = node->out_reg_idx;
-                        inst->src1_idx = s1->out_reg_idx; 
-                        inst->src2_idx = s3->out_reg_idx; 
-                        instr_count++;
-                    }
                 }
                 break;
 

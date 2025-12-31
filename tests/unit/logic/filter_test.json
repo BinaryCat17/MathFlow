@@ -6,7 +6,7 @@
         { "id": "filtered", "type": "Filter" }
     ],
     "links": [
-        { "src": "data", "src_port": "out", "dst": "filtered", "dst_port": 0 },
-        { "src": "mask", "src_port": "out", "dst": "filtered", "dst_port": 1 }
+        { "src": "data", "src_port": "out", "dst": "filtered", "dst_port": "in" },
+        { "src": "mask", "src_port": "out", "dst": "filtered", "dst_port": "mask" }
     ]
 }

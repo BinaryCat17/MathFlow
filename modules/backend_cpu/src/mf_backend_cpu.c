@@ -67,9 +67,9 @@ static void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func*
     mf_instruction* code = program->code;
     for (size_t i = 0; i < code_count; ++i) {
         if (ctx->error != MF_ERROR_NONE) break;
-        mf_instruction inst = code[i];
-        if (op_table[inst.opcode]) {
-            op_table[inst.opcode](ctx, inst.dest_idx, inst.src1_idx, inst.src2_idx);
+        mf_instruction* inst = &code[i];
+        if (op_table[inst->opcode]) {
+            op_table[inst->opcode](ctx, inst);
         }
     }
 }

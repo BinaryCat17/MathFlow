@@ -6,9 +6,9 @@
 // --- Op: Range (Iota) ---
 // Src1: Scalar count (e.g. 5)
 // Dest: Vector [0, 1, 2, 3, 4]
-static void op_range(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !count_tensor) return;
 
     // Determine count
@@ -36,9 +36,9 @@ static void op_range(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) 
 // --- Op: CumSum (Prefix Sum) ---
 // Src1: Vector [10, 20, 30]
 // Dest: Vector [10, 30, 60]
-static void op_cumsum(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !src) return;
 
     // Shape matches source
@@ -61,10 +61,10 @@ static void op_cumsum(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx)
 // Src1: Data [10, 20, 30]
 // Src2: Mask [1, 0, 1]
 // Dest: [10, 30]
-static void op_compress(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* data = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
-    mf_tensor* mask = mf_exec_ctx_map_tensor(ctx, src2_idx, MF_ACCESS_READ);
+static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* mask = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     
     if (!dst || !data || !mask) return;
 
@@ -110,9 +110,9 @@ static void op_compress(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_id
 // --- Op: Index (Intrinsic Coordinate) ---
 // Src1: Axis (0=Slowest, e.g. Y/Batch, N=Fastest, e.g. X)
 // Dest: Vector of global coordinates
-static void op_index(mf_exec_ctx* ctx, u16 dst_idx, u16 src1_idx, u16 src2_idx) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, dst_idx, MF_ACCESS_WRITE);
-    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, src1_idx, MF_ACCESS_READ);
+static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     if (!dst || !axis_t) return;
 
     int axis = 0;
