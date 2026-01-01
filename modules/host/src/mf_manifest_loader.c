@@ -10,6 +10,29 @@
 // --- Loader ---
 
 int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
+    if (!mfapp_path || !out_desc) return -1;
+
+    // 0. Handle raw files (.json, .bin) directly
+    const char* ext = mf_path_get_ext(mfapp_path);
+    if (strcmp(ext, "json") == 0 || strcmp(ext, "bin") == 0) {
+        MF_LOG_INFO("Host: Loading raw graph directly: %s", mfapp_path);
+        
+        out_desc->window_title = strdup("MathFlow Visualizer");
+        out_desc->width = 800;
+        out_desc->height = 600;
+        out_desc->resizable = true;
+        out_desc->vsync = true;
+        out_desc->has_pipeline = true;
+        
+        out_desc->pipeline.kernel_count = 1;
+        out_desc->pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+        out_desc->pipeline.kernels[0].id = strdup("main");
+        out_desc->pipeline.kernels[0].graph_path = strdup(mfapp_path);
+        out_desc->pipeline.kernels[0].frequency = 1;
+        
+        return 0;
+    }
+
     // Temp Arena for Parsing and file reading
     size_t arena_size = 1024 * 1024; // 1MB should be enough for manifest
     void* arena_mem = malloc(arena_size);

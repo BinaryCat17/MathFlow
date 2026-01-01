@@ -30,43 +30,44 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    const char* mfapp_path = argv[1];
-    mf_host_desc desc = {0};
-    desc.log_interval = 5.0f; // Default 5 seconds
+        const char* mfapp_path = argv[1];
 
-    // Simple Argument Parser
-    for (int i = 2; i < argc; ++i) {
-        if (strcmp(argv[i], "--log-interval") == 0 && i + 1 < argc) {
-            desc.log_interval = (float)atof(argv[++i]);
+        mf_host_desc desc = {0};
+
+        desc.log_interval = 5.0f; // Default 5 seconds
+
+    
+
+        // Simple Argument Parser
+
+        for (int i = 2; i < argc; ++i) {
+
+            if (strcmp(argv[i], "--log-interval") == 0 && i + 1 < argc) {
+
+                desc.log_interval = (float)atof(argv[++i]);
+
+            }
+
         }
-    }
 
-    if (mf_app_load_config(mfapp_path, &desc) != 0) {
-        const char* ext = strrchr(mfapp_path, '.');
-        if (ext && (strcmp(ext, ".json") == 0 || strcmp(ext, ".bin") == 0)) {
-            MF_LOG_WARN("Loading raw graph directly.");
-            desc.has_pipeline = true;
-            desc.pipeline.kernel_count = 1;
-            desc.pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
-            desc.pipeline.kernels[0].id = strdup("main");
-            desc.pipeline.kernels[0].graph_path = strdup(mfapp_path);
-            desc.pipeline.kernels[0].frequency = 1;
-            desc.window_title = "MathFlow Visualizer";
-            desc.width = 800;
-            desc.height = 600;
-            desc.resizable = true;
-            desc.vsync = true;
-        } else {
-            MF_LOG_ERROR("Failed to load manifest %s", mfapp_path);
+    
+
+        if (mf_app_load_config(mfapp_path, &desc) != 0) {
+
+            MF_LOG_ERROR("Failed to load application from %s", mfapp_path);
+
             return 1;
+
         }
+
+    
+
+        int result = mf_host_run(&desc);
+
+        mf_host_desc_cleanup(&desc);
+
+        return result;
+
     }
 
-    const char* entry_info = desc.has_pipeline ? desc.pipeline.kernels[0].graph_path : "Pipeline";
-    MF_LOG_INFO("MathFlow Visualizer");
-    MF_LOG_INFO("App: %s", desc.window_title);
-    MF_LOG_INFO("Entry: %s", entry_info);
-    MF_LOG_INFO("Resolution: %dx%d", desc.width, desc.height);
-
-    return mf_host_run(&desc);
-}
+    
