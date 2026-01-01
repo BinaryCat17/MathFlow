@@ -11,8 +11,7 @@
 
 void mf_host_init_logger(void) {
     if (mf_fs_mkdir("logs")) {
-        // Option: clear directory on start?
-        // mf_fs_clear_dir("logs"); 
+        mf_fs_clear_dir("logs"); 
     }
 
     mf_log_init();
