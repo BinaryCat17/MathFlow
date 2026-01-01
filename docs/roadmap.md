@@ -7,27 +7,14 @@
 
 ---
 
-## Active Milestone
-
-### Milestone 10: The Standard Library & ISA Purity
-*Goal: Transform MathFlow into a minimal-core engine where compound logic lives in a versioned JSON library.*
-
-*   **Phase 47: Explicit Import System & Search Paths**
-    *   [ ] **Import Field:** Support `"imports": ["path/to/lib", ...]` in the root of JSON graphs.
-    *   [ ] **Type Resolution:** If a node `type` is not built-in, search for `<type>.json` in the specified import paths and treat it as a `Call` node.
-    *   [ ] **Global Prelude:** Automatically include `assets/lib/` in the import paths for all graphs unless disabled.
-*   **Phase 48: The Great Decomposition**
-    *   [ ] **Compound Op Migration:** Move `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` into the JSON library.
-    *   [ ] **Mean Removal:** Fully remove `Mean` from the compiler C-code and define it as a library alias.
-*   **Phase 49: ISA Consolidation & Heavy Kernels**
-    *   [ ] **ISA Categorization:** Group remaining instructions into strict categories (Atomic Math, Logic, Reductions, Memory Access, Accelerators).
-    *   [ ] **Accelerator Preservation:** Formally define "Heavy Kernels" (`MatMul`, `Inverse`, `Sum`, `Gather`) that remain in C/C++ for performance.
-    *   [ ] **Dead Code Removal:** Clean up `mf_backend_cpu.c` and `mf_ops_*.c` from opcodes that were successfully decomposed in Phase 48.
-    *   [ ] **Runtime Sanitization:** Ensure the engine doesn't allocate resources for decomposed nodes before inlining.
-
----
-
 ## Completed Phases (Archive)
+
+### Milestone 10: Standard Library & ISA Consolidation (Jan 2026)
+- **Explicit Import System:** Added `"imports"` field and search paths (Prelude).
+- **Default Ports:** Automated port mapping for single-input/single-output subgraphs.
+- **Decomposition:** Moved `Mean`, `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` to JSON.
+- **ISA Cleanup:** Grouped instructions into Atomic, Reduction, Accel, and Memory categories.
+- **Core Expansion:** Added `XOR` and `SIZE` primitives.
 
 ### Milestone 9: Advanced Compilation (Jan 2026)
 - **Instruction Fusion:** Implemented `FMA` detection and fusion pass.
