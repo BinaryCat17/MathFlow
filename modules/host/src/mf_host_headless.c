@@ -1,7 +1,8 @@
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/engine/mf_engine.h>
-#include "mf_loader.h"
 #include <mathflow/base/mf_log.h>
+#include "mf_host_internal.h"
+#include "mf_loader.h"
 #include <stdio.h>
 #include <string.h>
 

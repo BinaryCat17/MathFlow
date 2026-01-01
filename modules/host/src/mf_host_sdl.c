@@ -1,8 +1,9 @@
 #include <mathflow/host/mf_host_sdl.h>
-#include "mf_loader.h"
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/base/mf_platform.h>
 #include <mathflow/base/mf_log.h>
+#include "mf_host_internal.h"
+#include "mf_loader.h"
 
 #include <SDL2/SDL.h>
 #include <stdio.h>
