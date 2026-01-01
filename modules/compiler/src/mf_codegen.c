@@ -1,11 +1,24 @@
 #include "mf_compiler_internal.h"
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_shape.h>
 #include <string.h>
 #include <stdio.h>
 
 bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, size_t sorted_count, mf_arena* arena) {
-    prog->meta.tensor_count = (u32)ir->node_count; 
+    // 0. Find max register index allocated by liveness pass
+    u16 max_reg = 0;
+    for (size_t i = 0; i < sorted_count; ++i) {
+        if (sorted[i]->out_reg_idx > max_reg) max_reg = sorted[i]->out_reg_idx;
+    }
+
+    // 0b. Count extra tensors needed for lowering (e.g. MEAN decomposition)
+    u32 extra_tensor_count = 0;
+    for (size_t i = 0; i < ir->node_count; ++i) {
+        if (ir->nodes[i].type == MF_NODE_MEAN) extra_tensor_count++;
+    }
+
+    prog->meta.tensor_count = (u32)max_reg + 1 + extra_tensor_count; 
     
     // 1. Count symbols
     u32 symbol_count = 0;
@@ -25,11 +38,13 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     u32 task_count = 0;
     u32 current_symbol = 0;
     u32 current_domain_node_idx = UINT32_MAX;
+    u32 current_extra_idx = 0;
 
     for (size_t i = 0; i < sorted_count; ++i) {
         mf_ir_node* node = sorted[i];
         u32 node_idx = (u32)(node - ir->nodes); 
-        node->out_reg_idx = (u16)node_idx; 
+        // node->out_reg_idx is already set by liveness pass
+        u16 reg_idx = node->out_reg_idx;
         
         // Symbol Table
         if (node->id && strcmp(node->id, "unknown") != 0) {
@@ -37,13 +52,16 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             strncpy(sym->name, node->id, MF_MAX_SYMBOL_NAME - 1);
             sym->name[MF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->name_hash = mf_fnv1a_hash(sym->name);
-            sym->register_idx = node_idx;
+            sym->register_idx = reg_idx;
             sym->flags = (node->type == MF_NODE_INPUT) ? MF_SYMBOL_FLAG_INPUT : 
                          (node->type == MF_NODE_OUTPUT) ? MF_SYMBOL_FLAG_OUTPUT : 0;
         }
 
         // Tensor Descriptor
-        mf_tensor* t_desc = &prog->tensors[node_idx];
+        mf_tensor* t_desc = &prog->tensors[reg_idx];
+        // If multiple nodes share a register, the liveness pass ensures they don't overlap.
+        // We only update the descriptor if it was empty, OR we just let the last node win 
+        // (which is fine since they should have compatible shapes or we'll resize anyway).
         t_desc->info = node->out_shape.info;
         
         mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
@@ -60,22 +78,58 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         uint32_t start_instr_idx = (uint32_t)instr_count;
         bool emitted = false;
 
-        mf_instruction* inst = &instrs[instr_count];
-        inst->dest_idx = node->out_reg_idx;
-        inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-        inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-        inst->src3_idx = s3 ? s3->out_reg_idx : 0;
+        if (node->type == MF_NODE_MEAN && s1) {
+            // Lower MEAN to SUM + DIV
+            mf_instruction* sum_inst = &instrs[instr_count++];
+            sum_inst->opcode = MF_OP_SUM;
+            sum_inst->dest_idx = reg_idx;
+            sum_inst->src1_idx = s1->out_reg_idx;
+            sum_inst->src2_idx = 0;
+            sum_inst->src3_idx = 0;
 
-        if (meta->category == MF_OP_CAT_SPECIAL) {
-            if (node->type == MF_NODE_INPUT && s1) {
-                inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
-            } else if (node->type == MF_NODE_OUTPUT || node->type == MF_NODE_COPY) {
-                inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
-            }
+            // Create COUNT constant
+            u32 count_reg = (u32)max_reg + 1 + current_extra_idx++;
+            mf_tensor* count_t = &prog->tensors[count_reg];
+            count_t->info.dtype = MF_DTYPE_F32;
+            count_t->info.ndim = 0;
+            count_t->info.shape[0] = 1;
+            mf_shape_calc_strides(&count_t->info);
+
+            size_t count_val = mf_tensor_count(&s1->out_shape);
+            f32* count_data = MF_ARENA_PUSH(arena, f32, 1);
+            *count_data = (f32)count_val;
+
+            mf_buffer* count_buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            mf_buffer_init_view(count_buf, count_data, sizeof(f32));
+            count_t->buffer = count_buf;
+            count_t->byte_offset = 0;
+
+            mf_instruction* div_inst = &instrs[instr_count++];
+            div_inst->opcode = MF_OP_DIV;
+            div_inst->dest_idx = reg_idx;
+            div_inst->src1_idx = reg_idx;
+            div_inst->src2_idx = (u16)count_reg;
+            div_inst->src3_idx = 0;
+
+            emitted = true;
         } else {
-            inst->opcode = meta->opcode;
-            if (node->type == MF_NODE_INDEX && !s1) inst->src1_idx = inst->dest_idx;
-            instr_count++; emitted = true;
+            mf_instruction* inst = &instrs[instr_count];
+            inst->dest_idx = reg_idx;
+            inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+            inst->src2_idx = s2 ? s2->out_reg_idx : 0;
+            inst->src3_idx = s3 ? s3->out_reg_idx : 0;
+
+            if (meta->category == MF_OP_CAT_SPECIAL) {
+                if (node->type == MF_NODE_INPUT && s1) {
+                    inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
+                } else if (node->type == MF_NODE_OUTPUT || node->type == MF_NODE_COPY) {
+                    inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
+                }
+            } else {
+                inst->opcode = meta->opcode;
+                if (node->type == MF_NODE_INDEX && !s1) inst->src1_idx = inst->dest_idx;
+                instr_count++; emitted = true;
+            }
         }
 
         if (emitted) {

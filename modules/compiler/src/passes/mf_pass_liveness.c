@@ -1,0 +1,84 @@
+#include "../mf_passes.h"
+#include "../mf_compiler_internal.h"
+#include <mathflow/base/mf_log.h>
+#include <stdlib.h>
+#include <string.h>
+
+bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_compiler_diag* diag) {
+    if (!ir || !sorted) return false;
+
+    // 1. Pre-calculate sorted positions
+    u32* sorted_pos = malloc(ir->node_count * sizeof(u32));
+    if (!sorted_pos) return false;
+    for(u32 i=0; i<ir->node_count; ++i) sorted_pos[i] = UINT32_MAX;
+    for(u32 i=0; i<count; ++i) sorted_pos[sorted[i] - ir->nodes] = (u32)i;
+
+    // 2. Find last use for each node
+    u32* last_use = malloc(ir->node_count * sizeof(u32));
+    if (!last_use) { free(sorted_pos); return false; }
+    for (u32 i = 0; i < ir->node_count; ++i) last_use[i] = 0;
+
+    for (size_t l = 0; l < ir->link_count; ++l) {
+        u32 src = ir->links[l].src_node_idx;
+        u32 dst = ir->links[l].dst_node_idx;
+        if (src < ir->node_count && dst < ir->node_count) {
+            u32 pos = sorted_pos[dst];
+            if (pos != UINT32_MAX && (pos > last_use[src])) {
+                last_use[src] = pos;
+            }
+        }
+    }
+
+    // 3. Register Allocation
+    u16 next_reg = 0;
+    u32* reg_free_at = malloc(ir->node_count * sizeof(u32)); 
+    if (!reg_free_at) { free(sorted_pos); free(last_use); return false; }
+    for(int i=0; i<ir->node_count; ++i) reg_free_at[i] = 0;
+
+    for (size_t i = 0; i < count; ++i) {
+        mf_ir_node* node = sorted[i];
+        u32 node_idx = (u32)(node - ir->nodes);
+
+        if (node->type == MF_NODE_UNKNOWN) {
+            node->out_reg_idx = 0;
+            continue;
+        }
+
+        // Special handling for persistent nodes (Inputs, Constants, Outputs)
+        bool persistent = (node->type == MF_NODE_INPUT || node->type == MF_NODE_CONST || node->type == MF_NODE_OUTPUT);
+
+        if (persistent) {
+            node->out_reg_idx = next_reg++;
+            reg_free_at[node->out_reg_idx] = (u32)count + 1; // Never reuse
+        } else {
+            // Try to find a free register
+            int found_reg = -1;
+            for (u16 r = 0; r < next_reg; ++r) {
+                // Can reuse if register becomes free at or before current instruction
+                // AND it's not a persistent register.
+                if (reg_free_at[r] <= (u32)i) {
+                    found_reg = r;
+                    break;
+                }
+            }
+
+            if (found_reg >= 0) {
+                node->out_reg_idx = (u16)found_reg;
+            } else {
+                node->out_reg_idx = next_reg++;
+            }
+            
+            u32 end_of_life = last_use[node_idx];
+            if (end_of_life > reg_free_at[node->out_reg_idx]) {
+                reg_free_at[node->out_reg_idx] = end_of_life;
+            }
+        }
+    }
+
+    MF_LOG_INFO("Liveness: Allocated %u registers for %u nodes", next_reg, (u32)count);
+
+    free(last_use);
+    free(sorted_pos);
+    free(reg_free_at);
+    return true;
+}

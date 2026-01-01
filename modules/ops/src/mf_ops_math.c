@@ -23,10 +23,18 @@ MF_KERNEL_UNARY(abs, fabsf)
 MF_KERNEL_UNARY(sqrt, sqrtf)
 
 // --- Min/Max/Clamp/Mix ---
+
 MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb))
+
 MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
 
+MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, fmaf(va, vb, vc))
+
+
+
 static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
+
+
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* v = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* min_val = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
@@ -156,6 +164,7 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_SQRT] = op_sqrt;
     table[MF_OP_MIN] = op_min;
     table[MF_OP_MAX] = op_max;
+    table[MF_OP_FMA] = op_fma;
     table[MF_OP_CLAMP] = op_clamp;
     table[MF_OP_MIX] = op_mix;
     table[MF_OP_POW] = op_pow;

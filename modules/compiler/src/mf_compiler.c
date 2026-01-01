@@ -37,6 +37,11 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 // --- Compilation ---
 
 mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag) {
+    // 0. Optimizations
+    if (!mf_pass_fuse(ir, diag)) {
+        return NULL;
+    }
+
     // 1. Sort
     size_t sorted_count = 0;
     mf_ir_node** sorted = mf_topo_sort(ir, arena, &sorted_count);
@@ -48,6 +53,11 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
 
     // 2. Static Analysis (Types & Shapes)
     if (!mf_pass_analyze(ir, sorted, sorted_count, diag)) {
+        return NULL;
+    }
+
+    // 2a. Register Allocation (Liveness Analysis)
+    if (!mf_pass_liveness(ir, sorted, sorted_count, diag)) {
         return NULL;
     }
 

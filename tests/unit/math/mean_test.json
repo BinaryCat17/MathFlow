@@ -1,0 +1,11 @@
+{
+    "nodes": [
+        { "id": "Input", "type": "Const", "data": { "value": [1, 2, 3, 4], "dtype": "f32" } },
+        { "id": "Mean",  "type": "Mean" },
+        { "id": "Output", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Input", "dst": "Mean", "dst_port": "in" },
+        { "src": "Mean",  "dst": "Output", "dst_port": "in" }
+    ]
+}

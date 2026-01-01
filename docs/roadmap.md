@@ -84,8 +84,8 @@
     *   [x] **Parallel Reductions:** Updated `mf_backend_cpu.c` to support parallel accumulation via scratch memory and merging.
     *   [x] **SIMD Fast-Paths:** Enabled static shape resolution for `Range` nodes to unlock parallel execution.
 *   **Phase 45: Advanced Lowering & Precision Reductions**
-    *   [ ] **Mean Decomposition:** Update compiler to lower `MEAN(x)` into `SUM(x) / COUNT(x)` to ensure mathematical correctness in parallel execution.
-    *   [ ] **Instruction Fusion:** Implement a pass to detect `(A * B) + C` patterns and replace with a single `FMA` (Fused Multiply-Add) instruction.
+    *   [x] **Mean Decomposition:** Update compiler to lower `MEAN(x)` into `SUM(x) / COUNT(x)` to ensure mathematical correctness in parallel execution.
+    *   [x] **Instruction Fusion:** Implement a pass to detect `(A * B) + C` patterns and replace with a single `FMA` (Fused Multiply-Add) instruction.
 *   **Phase 46: Memory Alias Analysis (Liveness)**
     *   [ ] **In-place Operations:** Identify operations that can safely overwrite their inputs (e.g., `Add` where one input is no longer used).
     *   [ ] **Buffer Aliasing:** Use liveness analysis to allow multiple registers to share the same physical `mf_buffer` if their lifetimes don't overlap.

@@ -1,0 +1,17 @@
+{
+    "nodes": [
+        { "id": "A", "type": "Const", "data": { "value": 2.0 } },
+        { "id": "B", "type": "Const", "data": { "value": 3.0 } },
+        { "id": "C", "type": "Const", "data": { "value": 4.0 } },
+        { "id": "Mul", "type": "Mul" },
+        { "id": "Add", "type": "Add" },
+        { "id": "Output", "type": "Output" }
+    ],
+    "links": [
+        { "src": "A", "dst": "Mul", "dst_port": "a" },
+        { "src": "B", "dst": "Mul", "dst_port": "b" },
+        { "src": "Mul", "dst": "Add", "dst_port": "a" },
+        { "src": "C", "dst": "Add", "dst_port": "b" },
+        { "src": "Add", "dst": "Output", "dst_port": "in" }
+    ]
+}

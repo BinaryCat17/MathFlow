@@ -35,4 +35,12 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 // Groups nodes into execution tasks based on their output shapes and dependencies.
 bool mf_pass_domain_split(mf_graph_ir* ir, mf_compiler_diag* diag);
 
+// --- Pass: Optimization (Instruction Fusion) ---
+// Fuses (Mul + Add) into FMA instructions.
+bool mf_pass_fuse(mf_graph_ir* ir, mf_compiler_diag* diag);
+
+// --- Pass: Register Allocation (Liveness Analysis) ---
+// Minimizes the number of registers by reusing them for non-overlapping lifetimes.
+bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_compiler_diag* diag);
+
 #endif // MF_PASSES_H
