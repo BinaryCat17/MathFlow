@@ -40,7 +40,10 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
             if (prog->symbols) {
                 for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
                     if (prog->symbols[s].register_idx == i) {
-                        is_external = true;
+                        // Only symbols bound to global resources are "external"
+                        if (prog->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) {
+                            is_external = true;
+                        }
                         break;
                     }
                 }
@@ -190,8 +193,6 @@ void mf_engine_dispatch(mf_engine* engine) {
             }
         }
 
-        const mf_tensor* kernel_domain = NULL;
-        
         // 2. Linear Binding: Map Global Resources to Local Registers
         for (u32 b = 0; b < ker->binding_count; ++b) {
             mf_kernel_binding* bind = &ker->bindings[b];
@@ -202,27 +203,31 @@ void mf_engine_dispatch(mf_engine* engine) {
             t->buffer = (bind->flags & MF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
             t->byte_offset = 0;
             t->info = res->desc.info; // Sync metadata
-            
-            if (bind->flags & MF_SYMBOL_FLAG_OUTPUT && !kernel_domain) {
-                kernel_domain = t;
-            }
         }
         
-        if (!kernel_domain) {
-            MF_LOG_TRACE("  Skipping Kernel '%s': No output binding found to define domain.", ker->id);
-            continue;
-        }
-
         // 3. Execution (Frequency Loop)
         MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
 
         for (u32 f = 0; f < ker->frequency; ++f) {
             if (engine->backend.dispatch) {
-                engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, kernel_domain);
-                
-                if (ker->state.error_code != 0) {
-                    MF_LOG_ERROR("Kernel '%s' failed: %s", ker->id, mf_exec_error_to_str((mf_exec_error)ker->state.error_code));
-                    goto end_dispatch;
+                // Execute each task in the program
+                for (u32 t = 0; t < ker->program->meta.task_count; ++t) {
+                    mf_task* task = &ker->program->tasks[t];
+                    const mf_tensor* task_domain = &ker->state.registers[task->domain_reg];
+                    
+                    engine->backend.dispatch(
+                        engine->backend.state, 
+                        ker->program, 
+                        &ker->state, 
+                        task_domain, 
+                        task->start_inst, 
+                        task->inst_count
+                    );
+                    
+                    if (ker->state.error_code != 0) {
+                        MF_LOG_ERROR("Kernel '%s' task %u failed: %s", ker->id, t, mf_exec_error_to_str((mf_exec_error)ker->state.error_code));
+                        goto end_dispatch;
+                    }
                 }
             }
         }

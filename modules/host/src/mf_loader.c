@@ -48,6 +48,12 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     memcpy(prog->symbols, data + offset, sizeof(mf_bin_symbol) * head->symbol_count);
     offset += sizeof(mf_bin_symbol) * head->symbol_count;
 
+    prog->tasks = MF_ARENA_PUSH(arena, mf_task, head->task_count);
+    if (head->task_count > 0) {
+        memcpy(prog->tasks, data + offset, sizeof(mf_task) * head->task_count);
+        offset += sizeof(mf_task) * head->task_count;
+    }
+
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
     
     for (u32 i = 0; i < head->tensor_count; ++i) {
@@ -60,7 +66,8 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
                                sizeof(mf_instruction) * head->instruction_count +
-                               sizeof(mf_bin_symbol) * head->symbol_count;
+                               sizeof(mf_bin_symbol) * head->symbol_count +
+                               sizeof(mf_task) * head->task_count;
 
     size_t data_start_offset = desc_start_offset + sizeof(mf_bin_tensor_desc) * head->tensor_count;
     offset = data_start_offset;

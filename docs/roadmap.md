@@ -53,31 +53,44 @@
     *   [x] **Iterator API:** Implement a lightweight N-dimensional iterator.
     *   [x] **Contiguous Fast-Path:** Optimize the iterator to collapse into simple pointer increments for dense data (inline/SIMD friendly).
 *   **Phase 39: Code Quality & Refactoring (Cleanup)**
-    *   [ ] **Matrix Indexing Cleanup:** Standardize indexing in `mf_ops_matrix.c`, removing manual offset calculations where possible.
-    *   [ ] **Kernel Macro Overhaul:** Simplify `mf_kernel_utils.h` to reduce boilerplate and improve readability of generated kernels.
-    *   [ ] **Compiler Simplification:** Unify JSON parsing in `Lower` pass and move broadcast logic to `Base` module.
-*   **Phase 40: Performance & Hardening**
-    *   [ ] **SIMD Acceleration:** Create `mf_simd.h` wrapping SSE/AVX/NEON and vectorize elementwise kernels.
-    *   [ ] **Gather Optimization:** Optimize random access for contiguous data blocks and implement bounds-check elision.
-    *   [ ] **Binary Hardening:** Add CRC32 to `mf_program` and reflection API for the Host.
+    *   [x] **Matrix Indexing Cleanup:** Standardize indexing in `mf_ops_matrix.c`, removing manual offset calculations where possible.
+    *   [x] **Kernel Macro Overhaul:** Simplify `mf_kernel_utils.h` to reduce boilerplate and improve readability of generated kernels.
+    *   [x] **Compiler Simplification:** Unify JSON parsing in `Lower` pass and move broadcast logic to `Base` module.
 
 
 ---
 
-## Future Milestone
+## Future Milestones
 
-### Milestone 9: Intelligence & Developer Experience (Phases 41-43)
-*Goal: Move from "Correct execution" to "Optimal execution" and seamless developer workflow.*
+### Milestone 9: The Task-Based Evolution (The Multi-Domain Engine)
+*Goal: Transform MathFlow into a multi-domain execution engine where a single kernel can handle multiple outputs with different shapes via automated task-splitting.*
 
-*   **Phase 41: Compiler Optimizations**
-    *   [ ] **Constant Folding:** Pre-calculate operations on constants during compilation.
-    *   [ ] **Dead Code Elimination (DCE):** Remove nodes that don't contribute to any `Output`.
-*   **Phase 42: Resource Management & Aliasing**
-    *   [ ] **Memory Aliasing:** Analyze resource life-cycles to reuse memory buffers for temporary data.
-    *   [ ] **Dependency Graph:** Build an explicit graph of kernel dependencies to optimize execution order.
-*   **Phase 43: Live Systems**
-    *   [ ] **Hot Reloading:** Implement file-watchers in the Host to recompile and swap `mf_program` without restarting the engine.
-    *   [ ] **Telemetry:** Real-time performance counters (ns per kernel, memory bandwidth).
+*   **Phase 40: Semantic Metadata & Access Patterns**
+    *   [x] **Access Requirements:** Update `mf_op_defs.h` so every operation declares its minimal access pattern:
+        *   `LINEAR` (1:1), `WINDOW` (Stencil/Relative), `RANDOM` (Gather), `GLOBAL` (Full buffer).
+    *   [x] **Metadata API:** Add helpers to query these patterns during compilation.
+*   **Phase 41: Task-Based Bytecode (ISA Extension)**
+    *   [x] **mf_task Structure:** Introduce `mf_task` to `mf_program` containing `start_inst`, `inst_count`, and `domain_reg`.
+    *   [x] **Serialization:** Update bytecode format to store and load tasks.
+*   **Phase 42: Multi-Domain Compiler Pass**
+    *   [x] **Domain Splitting:** Implement `mf_pass_domain_split.c` to analyze `Output` nodes and their dependency chains.
+    *   [x] **Automated Grouping:** Group instructions into tasks based on output shapes and shared dependencies.
+    *   [x] **Task-Aware CodeGen:** Update `mf_codegen.c` to emit tasks into the program.
+*   **Phase 43: Task-Driven Dispatch**
+    *   [x] **Engine Update:** Refactor `mf_engine_dispatch` to iterate over program tasks instead of assuming a single domain.
+    *   [x] **Backend Evolution:** Update `mf_backend_cpu` to execute specific instruction ranges within a task's context.
+*   **Phase 44: Automatic Access Pattern Inference & Parallel Reduction**
+    *   [ ] **Pattern Propagation:** Implement a compiler pass that propagates access patterns from Consumers back to Producers.
+    *   [ ] **Parallel Reductions:** Update `mf_backend_cpu` to handle `REDUCE` opcodes (Sum, Mean) in parallel using tiled accumulation or atomic operations.
+    *   [ ] **SIMD Fast-Paths:** Enable SIMD vectorized kernels for `LINEAR` tasks.
+
+---
+
+## Parking Lot (On Hold)
+*Ideas to be revisited after core compute engine is stable:*
+- **SIMD Acceleration:** Vectorized kernels for ELEMENTWISE ops.
+- **Compiler Optimizations:** Constant Folding, DCE, and Memory Aliasing.
+- **Developer Tools:** Hot Reloading, CRC32 Checksums, and Reflection API.
 
 ---
 

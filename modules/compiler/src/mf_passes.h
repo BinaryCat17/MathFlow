@@ -31,4 +31,8 @@ bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag);
 // - Checks broadcasting rules
 bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag);
 
+// --- Pass: Domain Splitting ---
+// Groups nodes into execution tasks based on their output shapes and dependencies.
+bool mf_pass_domain_split(mf_graph_ir* ir, mf_compiler_diag* diag);
+
 #endif // MF_PASSES_H

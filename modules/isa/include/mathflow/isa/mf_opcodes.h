@@ -38,6 +38,8 @@ typedef enum {
     MF_OP_ATAN2 = 24,
     MF_OP_SQRT = 25,
     MF_OP_POW = 26,
+    MF_OP_SUM = 27,   // Sum(Input) -> Scalar
+    MF_OP_MEAN = 28,  // Mean(Input) -> Scalar
 
     // Linear Algebra
     MF_OP_MATMUL = 40,

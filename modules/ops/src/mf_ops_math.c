@@ -97,6 +97,52 @@ static void op_mix(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
+// --- Reduction ---
+
+static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, src);
+    MF_CHECK_DST_DATA(ctx, dst);
+    
+    size_t count = mf_tensor_count(src);
+    f32 sum = 0;
+    
+    mf_tensor_iter it = mf_tensor_iter_begin(src);
+    for (size_t i = 0; i < count; ++i) {
+        sum += *((f32*)it.ptr);
+        mf_tensor_iter_next(&it);
+    }
+    
+    *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum;
+}
+
+static void op_mean(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, src);
+    MF_CHECK_DST_DATA(ctx, dst);
+    
+    size_t count = mf_tensor_count(src);
+    if (count == 0) {
+        *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = 0;
+        return;
+    }
+    
+    f32 sum = 0;
+    mf_tensor_iter it = mf_tensor_iter_begin(src);
+    for (size_t i = 0; i < count; ++i) {
+        sum += *((f32*)it.ptr);
+        mf_tensor_iter_next(&it);
+    }
+    
+    *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum / (f32)count;
+}
+
 void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_ADD] = op_add;
     table[MF_OP_SUB] = op_sub;
@@ -114,4 +160,6 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_MIX] = op_mix;
     table[MF_OP_POW] = op_pow;
     table[MF_OP_ATAN2] = op_atan2;
+    table[MF_OP_SUM] = op_sum;
+    table[MF_OP_MEAN] = op_mean;
 }

@@ -4,6 +4,7 @@ add_library(mf_compiler STATIC
     src/passes/mf_pass_lower.c
     src/passes/mf_pass_inline.c
     src/passes/mf_pass_analyze.c
+    src/passes/mf_pass_domain_split.c
     src/mf_json_parser.c
     src/mf_codegen.c
     src/mf_graph_utils.c

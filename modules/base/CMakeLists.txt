@@ -6,6 +6,7 @@ add_library(mf_base STATIC
     src/mf_platform.c
     src/mf_buffer.c
     src/mf_json.c
+    src/mf_shape.c
 )
 add_library(MathFlow::base ALIAS mf_base)
 

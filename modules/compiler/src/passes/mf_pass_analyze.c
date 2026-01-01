@@ -1,6 +1,7 @@
 #include "../mf_passes.h"
 #include "../mf_compiler_internal.h"
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_shape.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/isa/mf_op_defs.h>
 #include <stdio.h>
@@ -11,67 +12,14 @@
 
 // --- Helpers ---
 
-static void format_shape(const mf_tensor* t, char* buf, size_t size) {
-    if (t->info.ndim == 0) {
-        snprintf(buf, size, "[]");
-        return;
-    }
-    int offset = snprintf(buf, size, "[");
-    for (int i = 0; i < t->info.ndim; ++i) {
-        if (offset >= (int)size) break;
-        offset += snprintf(buf + offset, size - offset, "%d%s", t->info.shape[i], i < t->info.ndim - 1 ? "," : "");
-    }
-    if (offset < (int)size) snprintf(buf + offset, size - offset, "]");
-}
-
 static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tensor* b, mf_tensor* out, mf_compiler_diag* diag) {
-    size_t sz_a = mf_tensor_count(a);
-    size_t sz_b = mf_tensor_count(b);
-    
-    // Scalar Broadcast
-    if (sz_a == 1) { out->info = b->info; return true; }
-    if (sz_b == 1) { out->info = a->info; return true; }
-    
-    // Strict Match
-    if (mf_tensor_same_shape(a, b)) { out->info = a->info; return true; }
-    
-    // Simple Suffix Broadcasting: [Batch, N] vs [N]
-    if (a->info.ndim == b->info.ndim + 1) {
-        bool match = true;
-        for (int i=0; i<b->info.ndim; ++i) if (a->info.shape[i+1] != b->info.shape[i]) match = false;
-        if (match) { out->info = a->info; return true; }
-    }
-    if (b->info.ndim == a->info.ndim + 1) {
-        bool match = true;
-        for (int i=0; i<a->info.ndim; ++i) if (b->info.shape[i+1] != a->info.shape[i]) match = false;
-        if (match) { out->info = b->info; return true; }
-    }
-
-    // Dynamic Batch Broadcasting ([0, N] vs [N])
-    if (a->info.shape[0] == 0 && a->info.ndim == b->info.ndim + 1) {
-        out->info = a->info; return true;
-    }
-    
-    // Dynamic Wildcard Match (Treat 0 as 'Any')
-    if (a->info.ndim == b->info.ndim) {
-        bool match = true;
-        for (int i=0; i<a->info.ndim; ++i) {
-             if (a->info.shape[i] != b->info.shape[i]) {
-                 if (a->info.shape[i] != 0 && b->info.shape[i] != 0) match = false;
-             }
-        }
-        if (match) { 
-             out->info = a->info;
-             for (int i=0; i<a->info.ndim; ++i) {
-                 if (out->info.shape[i] == 0) out->info.shape[i] = b->info.shape[i];
-             }
-             return true; 
-        }
+    if (mf_shape_broadcast(&a->info, &b->info, &out->info)) {
+        return true;
     }
 
     char s_a[64], s_b[64];
-    format_shape(a, s_a, sizeof(s_a));
-    format_shape(b, s_b, sizeof(s_b));
+    mf_shape_format(&a->info, s_a, sizeof(s_a));
+    mf_shape_format(&b->info, s_b, sizeof(s_b));
     MF_REPORT(node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
     return false;
 }
@@ -88,7 +36,12 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
         mf_ir_node* s3 = find_input_source(ir, (u32)(node - ir->nodes), 2);
 
         mf_tensor* out = &node->out_shape;
-        memset(out, 0, sizeof(mf_tensor));
+        // Keep existing shape info if available (e.g. from JSON)
+        mf_dtype existing_dtype = out->info.dtype;
+        if (out->info.ndim == 0 && out->info.shape[0] == 0) {
+            memset(out, 0, sizeof(mf_tensor));
+        }
+        if (existing_dtype != MF_DTYPE_UNKNOWN) out->info.dtype = existing_dtype;
 
         // 1. Validate Types
         if (s1 && !((1 << s1->out_shape.info.dtype) & meta->type_mask)) {
@@ -112,7 +65,18 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
             case MF_SHAPE_SAME_AS_S1:
                 if (s1) {
-                    out->info = s1->out_shape.info;
+                    // If Output has a pre-defined shape (from JSON), and s1 is dynamic, 
+                    // we keep the Output shape.
+                    bool out_has_shape = (node->out_shape.info.ndim > 0 || node->out_shape.info.shape[0] > 0);
+                    if (node->type == MF_NODE_OUTPUT && out_has_shape) {
+                        // Keep pre-defined shape, but check compatibility if s1 also has shape
+                        if (s1->out_shape.info.shape[0] > 0 && s1->out_shape.info.shape[0] != node->out_shape.info.shape[0]) {
+                             // Potential warning/error if not broadcastable
+                        }
+                        out->info = node->out_shape.info;
+                    } else {
+                        out->info = s1->out_shape.info;
+                    }
                 } else if (node->type == MF_NODE_OUTPUT) {
                      MF_REPORT(node, "Output not connected"); return false;
                 }
@@ -194,6 +158,11 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             case MF_SHAPE_DYNAMIC_1D:
                 out->info.ndim = 1;
                 out->info.shape[0] = 0; // Dynamic
+                break;
+
+            case MF_SHAPE_SCALAR:
+                out->info.ndim = 0;
+                out->info.shape[0] = 1;
                 break;
         }
 

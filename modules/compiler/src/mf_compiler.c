@@ -51,6 +51,11 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
         return NULL;
     }
 
+    // 2b. Domain Splitting (Multi-Domain Support)
+    if (!mf_pass_domain_split(ir, diag)) {
+        return NULL;
+    }
+
     // 3. Allocate Program Structure
     mf_program* prog = MF_ARENA_PUSH(arena, mf_program, 1);
     prog->meta.magic = MF_BINARY_MAGIC;
@@ -81,7 +86,12 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
         fwrite(prog->symbols, sizeof(mf_bin_symbol), prog->meta.symbol_count, f);
     }
 
-    // 4. Tensor Metadata
+    // 4. Tasks
+    if (prog->meta.task_count > 0) {
+        fwrite(prog->tasks, sizeof(mf_task), prog->meta.task_count, f);
+    }
+
+    // 5. Tensor Metadata
     for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
         mf_tensor* t = &prog->tensors[i];
         mf_bin_tensor_desc desc = {0};

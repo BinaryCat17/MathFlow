@@ -2,6 +2,7 @@
 #include "../mf_compiler_internal.h"
 #include <mathflow/base/mf_utils.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_shape.h>
 #include <string.h>
 #include <stdio.h>
 
@@ -59,7 +60,6 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
     }
     else if (val->type == MF_JSON_VAL_STRING) {
         if (target_dtype == MF_DTYPE_I32) {
-            // Treat as single string hash (scalar)
             t->info.dtype = MF_DTYPE_I32;
             t->info.ndim = 0;
             size_t bytes = sizeof(int32_t);
@@ -70,12 +70,11 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
             t->byte_offset = 0;
             *((int32_t*)mem) = (int32_t)mf_fnv1a_hash(val->as.s);
         } else {
-            // Default: Treat as SDF text (array of F32 code points)
             size_t cp_count = mf_utf8_to_utf32(val->as.s, NULL, 0);
             t->info.dtype = MF_DTYPE_F32;
             t->info.ndim = 1;
             t->info.shape[0] = (int32_t)cp_count;
-            t->info.strides[0] = 1;
+            mf_shape_calc_strides(&t->info);
 
             size_t bytes = cp_count * sizeof(f32);
             mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
@@ -84,7 +83,6 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
             t->buffer = buf;
             t->byte_offset = 0;
             
-            // Temporarily load as U32 then convert to F32
             u32* tmp = malloc(cp_count * sizeof(u32));
             mf_utf8_to_utf32(val->as.s, tmp, cp_count);
             f32* dst = (f32*)mem;
@@ -96,26 +94,20 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
         int count = (int)val->as.array.count;
         if (count == 0) return;
         const mf_json_value* first = &val->as.array.items[0];
-        
         const mf_json_value* v_shape = node_data ? mf_json_get_field(node_data, "shape") : NULL;
 
         if (first->type == MF_JSON_VAL_NUMBER) {
             t->info.dtype = MF_DTYPE_F32;
-            
-                            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
-                                t->info.ndim = (uint8_t)v_shape->as.array.count;
-                                for(int k=0; k<t->info.ndim && k<MF_MAX_DIMS; ++k) {
-                                    t->info.shape[k] = (int32_t)v_shape->as.array.items[k].as.n;
-                                }
-                            } else {
-                                t->info.ndim = 1;
-                                t->info.shape[0] = count;
-                            }            // Recalc strides
-            int32_t stride = 1;
-            for(int k=t->info.ndim-1; k>=0; --k) {
-                t->info.strides[k] = stride;
-                stride *= t->info.shape[k];
+            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
+                t->info.ndim = (uint8_t)v_shape->as.array.count;
+                for(int k=0; k<t->info.ndim && k<MF_MAX_DIMS; ++k) {
+                    t->info.shape[k] = (int32_t)v_shape->as.array.items[k].as.n;
+                }
+            } else {
+                t->info.ndim = 1;
+                t->info.shape[0] = count;
             }
+            mf_shape_calc_strides(&t->info);
             
             size_t bytes = count * sizeof(f32);
             mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
@@ -132,14 +124,10 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
             }
         }
         else if (first->type == MF_JSON_VAL_STRING) {
-            // Arrays of strings are still problematic for layout, 
-            // but let's at least store them as hashes for now if needed, 
-            // OR we don't support them yet. 
-            // For Phase 29 we only need single strings as constants.
             t->info.dtype = MF_DTYPE_I32;
             t->info.ndim = 1;
             t->info.shape[0] = count;
-            t->info.strides[0] = 1;
+            mf_shape_calc_strides(&t->info);
 
             size_t bytes = count * sizeof(int32_t);
             mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
@@ -156,6 +144,77 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
             }
         }
     }
+}
+
+static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, const char* base_path, mf_arena* arena, mf_compiler_diag* diag) {
+    if (!data) return true;
+
+    switch (dst->type) {
+        case MF_NODE_INPUT:
+        case MF_NODE_OUTPUT: {
+            const mf_json_value* v_shape = mf_json_get_field(data, "shape");
+            const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
+            
+            if (dst->type == MF_NODE_INPUT && (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY)) {
+                mf_compiler_diag_report(diag, dst->loc, "Input node '%s': missing or invalid 'shape'", dst->id);
+                return false;
+            }
+            
+            dst->constant.info.dtype = v_dtype ? mf_dtype_from_str(v_dtype->as.s) : MF_DTYPE_F32;
+            
+            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
+                dst->constant.info.ndim = (uint8_t)v_shape->as.array.count;
+                if (dst->constant.info.ndim > MF_MAX_DIMS) dst->constant.info.ndim = MF_MAX_DIMS;
+                for(int k=0; k<dst->constant.info.ndim; ++k) {
+                     const mf_json_value* dim = &v_shape->as.array.items[k];
+                     if (dim->type == MF_JSON_VAL_NUMBER) {
+                         int d = (int)dim->as.n;
+                         dst->constant.info.shape[k] = (d < 0) ? -1 : d;
+                     }
+                }
+                mf_shape_calc_strides(&dst->constant.info);
+                // For Output nodes, we also copy this to out_shape initially
+                if (dst->type == MF_NODE_OUTPUT) {
+                    dst->out_shape = dst->constant;
+                }
+            }
+            break;
+        }
+        case MF_NODE_CONST:
+        case MF_NODE_STEP: {
+            const mf_json_value* v_val = mf_json_get_field(data, "value");
+            if (v_val) parse_const_tensor(v_val, data, &dst->constant, arena);
+            break;
+        }
+        case MF_NODE_INDEX: {
+            const mf_json_value* v_axis = mf_json_get_field(data, "axis");
+            if (v_axis && v_axis->type == MF_JSON_VAL_NUMBER) {
+                dst->constant.info.dtype = MF_DTYPE_I32;
+                dst->constant.info.ndim = 0;
+                size_t bytes = sizeof(int32_t);
+                mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+                void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+                mf_buffer_init_view(buf, mem, bytes);
+                dst->constant.buffer = buf;
+                *((int32_t*)mem) = (int32_t)v_axis->as.n;
+            }
+            break;
+        }
+        case MF_NODE_CALL: {
+            const mf_json_value* v_path = mf_json_get_field(data, "path");
+            if (v_path && v_path->type == MF_JSON_VAL_STRING) {
+                if (base_path) {
+                    char* dir = mf_path_get_dir(base_path, arena);
+                    dst->sub_graph_path = mf_path_join(dir, v_path->as.s, arena);
+                } else {
+                    dst->sub_graph_path = mf_arena_strdup(arena, v_path->as.s);
+                }
+            }
+            break;
+        }
+        default: break;
+    }
+    return true;
 }
 
 // --- Main Pass ---
@@ -175,7 +234,6 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         mf_ast_node* src = &ast->nodes[i];
         mf_ir_node* dst = &out_ir->nodes[i];
 
-        // Source Location
         dst->loc.file = base_path ? mf_arena_strdup(arena, base_path) : "unknown";
         dst->loc.line = src->loc.line;
         dst->loc.column = src->loc.column;
@@ -189,71 +247,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
             return false;
         }
 
-        if (src->data) {
-            if (dst->type == MF_NODE_INPUT) {
-                const mf_json_value* v_shape = mf_json_get_field(src->data, "shape");
-                const mf_json_value* v_dtype = mf_json_get_field(src->data, "dtype");
-                
-                if (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY) {
-                    mf_compiler_diag_report(diag, dst->loc, "Input node '%s': missing or invalid 'shape'", dst->id);
-                    return false;
-                }
-                
-                dst->constant.info.dtype = v_dtype ? mf_dtype_from_str(v_dtype->as.s) : MF_DTYPE_F32;
-                dst->constant.info.ndim = (uint8_t)v_shape->as.array.count;
-                if (dst->constant.info.ndim > MF_MAX_DIMS) dst->constant.info.ndim = MF_MAX_DIMS;
-                
-                for(int k=0; k<dst->constant.info.ndim; ++k) {
-                     const mf_json_value* dim = &v_shape->as.array.items[k];
-                     if (dim->type == MF_JSON_VAL_NUMBER) {
-                         int d = (int)dim->as.n;
-                         if (d < 0) dst->constant.info.shape[k] = -1; // Dynamic
-                         else dst->constant.info.shape[k] = d;
-                     }
-                }
-                
-                // Recalc strides
-                int32_t stride = 1;
-                for(int k=dst->constant.info.ndim-1; k>=0; --k) {
-                    dst->constant.info.strides[k] = stride;
-                    int32_t dim_size = dst->constant.info.shape[k];
-                    if (dim_size < 0) dim_size = 0; 
-                    stride *= dim_size;
-                }
-                dst->constant.buffer = NULL;
-            }
-            else if (dst->type == MF_NODE_CONST || dst->type == MF_NODE_STEP) {
-                const mf_json_value* v_val = mf_json_get_field(src->data, "value");
-                if (v_val) {
-                    parse_const_tensor(v_val, src->data, &dst->constant, arena);
-                }
-            }
-            else if (dst->type == MF_NODE_INDEX) {
-                const mf_json_value* v_axis = mf_json_get_field(src->data, "axis");
-                if (v_axis && v_axis->type == MF_JSON_VAL_NUMBER) {
-                    // Create a scalar tensor for axis
-                    dst->constant.info.dtype = MF_DTYPE_I32;
-                    dst->constant.info.ndim = 0;
-                    size_t bytes = sizeof(int32_t);
-                    mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
-                    void* mem = MF_ARENA_PUSH(arena, u8, bytes);
-                    mf_buffer_init_view(buf, mem, bytes);
-                    dst->constant.buffer = buf;
-                    *((int32_t*)mem) = (int32_t)v_axis->as.n;
-                }
-            }
-            else if (dst->type == MF_NODE_CALL) {
-                const mf_json_value* v_path = mf_json_get_field(src->data, "path");
-                if (v_path && v_path->type == MF_JSON_VAL_STRING) {
-                    if (base_path) {
-                        char* dir = mf_path_get_dir(base_path, arena);
-                        dst->sub_graph_path = mf_path_join(dir, v_path->as.s, arena);
-                    } else {
-                        dst->sub_graph_path = mf_arena_strdup(arena, v_path->as.s);
-                    }
-                }
-            }
-        }
+        if (!parse_node_attributes(dst, src->data, base_path, arena, diag)) return false;
     }
 
     // 2. Process Links

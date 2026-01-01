@@ -24,6 +24,14 @@ typedef struct {
     uint8_t reserved[3]; // Padding/Alignment
 } mf_bin_symbol;
 
+// A single execution unit within a program (e.g. for a specific Output shape)
+typedef struct {
+    uint32_t start_inst;
+    uint32_t inst_count;
+    uint32_t domain_reg; // Index of the register that defines the execution domain (usually an Output)
+    uint32_t reserved;
+} mf_task;
+
 // Metadata for a single tensor in the binary file
 // Followed immediately by shape data? No, fixed max dims.
 typedef struct {
@@ -49,7 +57,7 @@ typedef struct {
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
     u32 symbol_count;      // Number of named I/O entries
-    u32 reserved_state;    // Was state_count
+    u32 task_count;        // Number of execution tasks
     
     u32 reserved[6];       
 } mf_bin_header;
@@ -66,6 +74,7 @@ typedef struct mf_program {
     mf_tensor* tensors; 
     
     mf_bin_symbol* symbols;
+    mf_task* tasks;
 } mf_program;
 
 #endif // MF_PROGRAM_H

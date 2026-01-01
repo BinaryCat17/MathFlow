@@ -44,6 +44,9 @@ typedef struct {
     mf_state* main_state;
     mf_op_func* op_table;
     
+    uint32_t start_inst;
+    uint32_t inst_count;
+    
     size_t total_elements;
     u8 ndim;
     u32 domain_shape[MF_MAX_DIMS];
@@ -94,10 +97,10 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 // --- Execution Logic ---
 
 static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table, const mf_cpu_parallel_batch* batch) {
-    const size_t code_count = program->meta.instruction_count;
     const mf_instruction* code = program->code;
+    const uint32_t end_inst = batch->start_inst + batch->inst_count;
     
-    for (size_t i = 0; i < code_count; ++i) {
+    for (uint32_t i = batch->start_inst; i < end_inst; ++i) {
         // Stop if local error OR global error detected by another thread
         if (ctx->error != MF_ERROR_NONE) break;
         if (batch->main_state && mf_atomic_load((mf_atomic_i32*)&batch->main_state->error_code) != 0) break;
@@ -188,7 +191,9 @@ static void mf_backend_cpu_dispatch(
     void* backend_state,
     const struct mf_program* program,
     struct mf_state* main_state,
-    const mf_tensor* domain
+    const mf_tensor* domain,
+    uint32_t start_inst,
+    uint32_t inst_count
 ) {
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
     if (!domain) return;
@@ -206,6 +211,8 @@ static void mf_backend_cpu_dispatch(
         .program = program,
         .main_state = main_state,
         .op_table = state->op_table,
+        .start_inst = start_inst,
+        .inst_count = inst_count,
         .total_elements = total_elements,
         .ndim = domain->info.ndim,
     };

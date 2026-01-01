@@ -29,7 +29,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) MF_NODE_##suffix,
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, access_rule, p1, p2, p3) MF_NODE_##suffix,
     MF_OP_LIST
 #undef MF_OP
 
@@ -43,6 +43,7 @@ typedef struct {
     u32 type_mask;
     mf_out_rule out_rule;
     mf_shape_rule shape_rule;
+    mf_access_pattern access_pattern;
     const char* ports[3];
 } mf_op_metadata;
 
@@ -63,6 +64,7 @@ typedef struct {
 
     // Compiler Generated info
     u16 out_reg_idx;    // Index in the global Tensor Pool
+    u32 domain_node_idx; // Index of the node that defines the domain for this node
     mf_tensor out_shape; // Predicted output shape and dtype
 } mf_ir_node;
 

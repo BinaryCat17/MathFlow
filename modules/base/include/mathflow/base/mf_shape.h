@@ -1,0 +1,22 @@
+#ifndef MF_SHAPE_H
+#define MF_SHAPE_H
+
+#include <mathflow/base/mf_types.h>
+
+/**
+ * Checks if two shapes can be broadcasted and returns the result in 'out'.
+ * Returns true if successful, false if shapes are incompatible.
+ */
+bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_info* out);
+
+/**
+ * Calculates contiguous strides for a given shape.
+ */
+void mf_shape_calc_strides(mf_type_info* info);
+
+/**
+ * Formats shape as a string "[dim0, dim1, ...]"
+ */
+void mf_shape_format(const mf_type_info* info, char* buf, size_t size);
+
+#endif // MF_SHAPE_H
