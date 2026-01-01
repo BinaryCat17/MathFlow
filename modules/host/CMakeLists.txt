@@ -1,22 +1,28 @@
 find_package(SDL2 CONFIG QUIET)
+find_package(Stb REQUIRED)
 
 # --- Host Core (Manifest, Config, Loader, Headless) ---
 add_library(mf_host_core STATIC
     src/mf_manifest_loader.c
     src/mf_host_headless.c
     src/mf_host_common.c
+    src/mf_loader.c
 )
 add_library(MathFlow::host_core ALIAS mf_host_core)
 
 target_include_directories(mf_host_core 
     PUBLIC include
-    PRIVATE src
+    PRIVATE 
+        src
+        ${Stb_INCLUDE_DIR}
 )
 target_link_libraries(mf_host_core 
     PUBLIC
         MathFlow::engine
     PRIVATE 
-        MathFlow::loader
+        MathFlow::compiler
+        MathFlow::backend_cpu
+        MathFlow::base
 )
 
 # --- Host SDL (Window & Input) ---
@@ -36,7 +42,6 @@ if(TARGET SDL2::SDL2)
             MathFlow::host_core
         PRIVATE
             MathFlow::engine
-            MathFlow::loader
             SDL2::SDL2 
             SDL2::SDL2main
     )
