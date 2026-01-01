@@ -92,6 +92,23 @@ static void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* ar
     }
 }
 
+// --- Internal Helpers ---
+
+static int32_t find_resource_idx(mf_engine* engine, u32 name_hash) {
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        if (engine->resources[i].name_hash == name_hash) return (int32_t)i;
+    }
+    return -1;
+}
+
+static int32_t find_symbol_idx(const mf_program* prog, u32 name_hash) {
+    if (!prog->symbols) return -1;
+    for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
+        if (prog->symbols[i].name_hash == name_hash) return (int32_t)i;
+    }
+    return -1;
+}
+
 // --- Engine API ---
 
 mf_engine* mf_engine_create(const mf_engine_desc* desc) {
@@ -176,199 +193,123 @@ mf_arena* mf_engine_get_arena(mf_engine* engine) {
 
 void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs) {
     if (!engine || !pipe) return;
-    
+    mf_allocator* allocator = (mf_allocator*)&engine->heap;
     MF_LOG_INFO("Binding Pipeline: %u resources, %u kernels", pipe->resource_count, pipe->kernel_count);
 
     // 1. Allocate Global Resources
     engine->resource_count = pipe->resource_count;
     engine->resources = MF_ARENA_PUSH(&engine->arena, mf_resource_inst, engine->resource_count);
     
-    mf_allocator* allocator = (mf_allocator*)&engine->heap;
-
     for (u32 i = 0; i < pipe->resource_count; ++i) {
-        mf_pipeline_resource* res_desc = &pipe->resources[i];
+        mf_pipeline_resource* desc = &pipe->resources[i];
         mf_resource_inst* res = &engine->resources[i];
         
-        MF_LOG_TRACE("  Resource[%u]: %s (%s)", i, res_desc->name, res_desc->dtype == MF_DTYPE_F32 ? "F32" : "Other");
-
-        res->name = strdup(res_desc->name);
+        res->name = strdup(desc->name);
         res->name_hash = mf_fnv1a_hash(res->name);
         
-        // Descriptor Prototype
+        // Setup metadata
         memset(&res->desc, 0, sizeof(mf_tensor));
-        res->desc.info.dtype = res_desc->dtype;
-        res->desc.info.ndim = res_desc->ndim;
-        memcpy(res->desc.info.shape, res_desc->shape, sizeof(int32_t) * res_desc->ndim);
+        res->desc.info.dtype = desc->dtype;
+        res->desc.info.ndim = desc->ndim;
+        memcpy(res->desc.info.shape, desc->shape, sizeof(int32_t) * desc->ndim);
         
-        // Handle Dynamic Shapes
         bool is_dynamic = false;
-        for (int k = 0; k < res->desc.info.ndim; ++k) {
-            if (res->desc.info.shape[k] < 0) {
-                is_dynamic = true;
-                break;
-            }
-        }
-
-        // Init strides
         int32_t stride = 1;
-        for (int k = res->desc.info.ndim - 1; k >= 0; --k) {
+        for (int k = desc->ndim - 1; k >= 0; --k) {
             res->desc.info.strides[k] = stride;
-            if (res->desc.info.shape[k] > 0) stride *= res->desc.info.shape[k];
+            if (desc->shape[k] > 0) stride *= desc->shape[k];
+            else is_dynamic = true;
         }
         
-        size_t bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
-        res->size_bytes = bytes;
-        
-        // Allocate Buffers
+        res->size_bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
         res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
         res->buffers[1] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
         
-        if (bytes > 0) {
-            mf_buffer_alloc(res->buffers[0], allocator, bytes);
-            mf_buffer_alloc(res->buffers[1], allocator, bytes);
+        if (res->size_bytes > 0) {
+            mf_buffer_alloc(res->buffers[0], allocator, res->size_bytes);
+            mf_buffer_alloc(res->buffers[1], allocator, res->size_bytes);
         } else {
             memset(res->buffers[0], 0, sizeof(mf_buffer));
             memset(res->buffers[1], 0, sizeof(mf_buffer));
-            MF_LOG_TRACE("Resource '%s' has dynamic shape. Staying unallocated.", res->name);
         }
     }
 
-    // 2. Load Kernels
+    // 2. Setup Kernels
     engine->kernel_count = pipe->kernel_count;
     engine->kernels = MF_ARENA_PUSH(&engine->arena, mf_kernel_inst, engine->kernel_count);
     
     for (u32 i = 0; i < pipe->kernel_count; ++i) {
-        mf_pipeline_kernel* ker_desc = &pipe->kernels[i];
+        mf_pipeline_kernel* desc = &pipe->kernels[i];
         mf_kernel_inst* ker = &engine->kernels[i];
         
-        MF_LOG_INFO("  Kernel[%u]: %s (freq=%u)", i, ker_desc->id, ker_desc->frequency);
-
-        ker->id = strdup(ker_desc->id);
+        ker->id = strdup(desc->id);
         ker->program = programs[i];
-        ker->frequency = ker_desc->frequency;
-        
-        // Initialize Local State (Registers)
+        ker->frequency = desc->frequency;
         ker->state.allocator = allocator;
         mf_state_reset(&ker->state, ker->program, &engine->arena);
+
+        // 3. Resolve Bindings & Resize Tasks
+        ker->binding_count = desc->binding_count;
+        ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, ker->binding_count);
         
-        // --- NEW: Initialize Global Resources from Program Constants ---
+        // Count and pre-alloc resize tasks
+        u32 max_resize = 0;
+        for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+            if (ker->program->symbols[s].related_name_hash != 0) max_resize++;
+        }
+        ker->resize_tasks = MF_ARENA_PUSH(&engine->arena, mf_auto_resize_task, max_resize);
+        ker->resize_task_count = 0;
+
+        for (u32 b = 0; b < desc->binding_count; ++b) {
+            mf_pipeline_binding* pb = &desc->bindings[b];
+            u32 port_hash = mf_fnv1a_hash(pb->kernel_port);
+            u32 res_hash = mf_fnv1a_hash(pb->global_resource);
+            
+            int32_t sym_idx = find_symbol_idx(ker->program, port_hash);
+            int32_t res_idx = find_resource_idx(engine, res_hash);
+            
+            if (sym_idx != -1 && res_idx != -1) {
+                mf_bin_symbol* sym = &ker->program->symbols[sym_idx];
+                ker->bindings[b].local_reg = (u16)sym->register_idx;
+                ker->bindings[b].global_res = (u16)res_idx;
+                ker->bindings[b].flags = sym->flags;
+
+                // Cache Auto-Resize relationship
+                if (sym->related_name_hash != 0) {
+                    for (u32 b2 = 0; b2 < desc->binding_count; ++b2) {
+                        if (mf_fnv1a_hash(desc->bindings[b2].kernel_port) == sym->related_name_hash) {
+                            int32_t rel_res_idx = find_resource_idx(engine, mf_fnv1a_hash(desc->bindings[b2].global_resource));
+                            if (rel_res_idx != -1) {
+                                ker->resize_tasks[ker->resize_task_count++] = (mf_auto_resize_task){(u16)rel_res_idx, (u16)res_idx};
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Copy Initial Data from Program Constants
         for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
             mf_bin_symbol* sym = &ker->program->symbols[s];
-            mf_tensor* t_prog = &ker->program->tensors[sym->register_idx];
-            
-            if (mf_tensor_is_valid(t_prog)) {
-                // Find matching resource
-                for (u32 r = 0; r < engine->resource_count; ++r) {
-                    // Optimized: Compare hashes first
-                    if (engine->resources[r].name_hash == sym->name_hash) {
-                        mf_resource_inst* res = &engine->resources[r];
-                        void* prog_data = mf_tensor_data(t_prog);
-                        size_t bytes = mf_tensor_size_bytes(t_prog);
-                        
-                        if (res->size_bytes == bytes) {
-                            memcpy(res->buffers[0]->data, prog_data, bytes);
-                            memcpy(res->buffers[1]->data, prog_data, bytes);
-                            MF_LOG_TRACE("    Initialized resource '%s' from kernel constant.", res->name);
-                        }
+            mf_tensor* t_const = &ker->program->tensors[sym->register_idx];
+            if (mf_tensor_is_valid(t_const)) {
+                int32_t res_idx = -1;
+                for(u32 b=0; b < ker->binding_count; ++b) {
+                    if (ker->bindings[b].local_reg == sym->register_idx) {
+                        res_idx = ker->bindings[b].global_res;
                         break;
                     }
                 }
-            }
-        }
-        
-        // 3. Setup Bindings & Auto-Resize Tasks
-        ker->binding_count = ker_desc->binding_count;
-        ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, ker->binding_count);
-        
-        // Count potential resize tasks first
-        u32 max_resize_tasks = 0;
-        if (ker->program->symbols) {
-            for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
-                if ((ker->program->symbols[s].flags & MF_SYMBOL_FLAG_OUTPUT) && 
-                     ker->program->symbols[s].related_name_hash != 0) {
-                    max_resize_tasks++;
-                }
-            }
-        }
-        ker->resize_tasks = MF_ARENA_PUSH(&engine->arena, mf_auto_resize_task, max_resize_tasks);
-        ker->resize_task_count = 0;
-
-        mf_resource_inst* reference_output = NULL;
-
-        for (u32 b = 0; b < ker_desc->binding_count; ++b) {
-            mf_pipeline_binding* bind = &ker_desc->bindings[b];
-            u32 port_hash = mf_fnv1a_hash(bind->kernel_port);
-            u32 res_hash = mf_fnv1a_hash(bind->global_resource);
-            
-            // Find Local Reg Index
-            int32_t local_idx = -1;
-            mf_bin_symbol* sym = NULL;
-            
-            for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
-                if (ker->program->symbols[s].name_hash == port_hash) {
-                    local_idx = ker->program->symbols[s].register_idx;
-                    sym = &ker->program->symbols[s];
-                    break;
-                }
-            }
-            
-            // Find Global Resource Index
-            int32_t global_idx = -1;
-            for (u32 r = 0; r < engine->resource_count; ++r) {
-                if (engine->resources[r].name_hash == res_hash) {
-                    global_idx = r;
-                    break;
-                }
-            }
-            
-            if (local_idx != -1 && global_idx != -1) {
-                ker->bindings[b].local_reg = (u16)local_idx;
-                ker->bindings[b].global_res = (u16)global_idx;
-                ker->bindings[b].flags = sym->flags; 
-
-                // If this is an output with a related input, cache the resize task
-                if ((sym->flags & MF_SYMBOL_FLAG_OUTPUT) && sym->related_name_hash != 0) {
-                    // Find the resource index for the related input
-                    for (u32 kb2 = 0; kb2 < ker_desc->binding_count; ++kb2) {
-                         u32 rel_port_hash = mf_fnv1a_hash(ker_desc->bindings[kb2].kernel_port);
-                         if (rel_port_hash == sym->related_name_hash) {
-                             u32 rel_res_hash = mf_fnv1a_hash(ker_desc->bindings[kb2].global_resource);
-                             for (u32 r2 = 0; r2 < engine->resource_count; ++r2) {
-                                 if (engine->resources[r2].name_hash == rel_res_hash) {
-                                     ker->resize_tasks[ker->resize_task_count].src_res_idx = (u16)r2;
-                                     ker->resize_tasks[ker->resize_task_count].dst_res_idx = (u16)global_idx;
-                                     ker->resize_task_count++;
-                                     break;
-                                 }
-                             }
-                             break;
-                         }
+                if (res_idx != -1) {
+                    mf_resource_inst* res = &engine->resources[res_idx];
+                    size_t bytes = mf_tensor_size_bytes(t_const);
+                    if (res->size_bytes == bytes) {
+                        memcpy(res->buffers[0]->data, mf_tensor_data(t_const), bytes);
+                        memcpy(res->buffers[1]->data, mf_tensor_data(t_const), bytes);
                     }
                 }
-
-                if (sym->flags & MF_SYMBOL_FLAG_OUTPUT) {
-                    mf_resource_inst* curr_res = &engine->resources[global_idx];
-                    
-                    if (!reference_output) {
-                        reference_output = curr_res;
-                        MF_LOG_TRACE("  Kernel %s domain set by output '%s' (%zu bytes)", 
-                            ker->id, bind->kernel_port, curr_res->size_bytes);
-                    } else {
-                        // Validate Uniform Grid Rule: All outputs must have same shape (size in bytes is a good proxy for now)
-                        if (reference_output->size_bytes != curr_res->size_bytes) {
-                            MF_LOG_ERROR("Kernel %s: Output shape mismatch! '%s' (%zu bytes) vs reference '%s' (%zu bytes). All outputs must match.",
-                                ker->id, bind->kernel_port, curr_res->size_bytes, 
-                                reference_output->name, reference_output->size_bytes);
-                        }
-                    }
-                }
-            } else {
-                MF_LOG_ERROR("Failed to bind %s -> %s in kernel %s", bind->kernel_port, bind->global_resource, ker->id);
             }
-        }
-        
-        if (!reference_output) {
-            MF_LOG_WARN("Kernel %s has no bound OUTPUT symbols. It will not execute!", ker->id);
         }
     }
 }
