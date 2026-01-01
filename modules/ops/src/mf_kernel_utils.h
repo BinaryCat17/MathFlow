@@ -7,6 +7,7 @@
 #include <mathflow/base/mf_math.h>
 #include "mf_ops_internal.h"
 #include <math.h>
+#include <mathflow/isa/mf_tensor_iter.h>
 #include <string.h>
 
 // --- Helper: Shape Resolution (Inline) ---
@@ -75,20 +76,41 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
-    TYPE_IN* da = (TYPE_IN*)mf_tensor_data(a); TYPE_IN* db = (TYPE_IN*)mf_tensor_data(b); \
-    TYPE_OUT* dd = (TYPE_OUT*)mf_tensor_data(dst); \
     size_t sz_dst = mf_tensor_count(dst); \
+    TYPE_OUT* dd = (TYPE_OUT*)mf_tensor_data(dst); \
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
     if (sz_a == 1 && sz_b == 1) { \
-        TYPE_IN va = da[0]; TYPE_IN vb = db[0]; \
-        for(size_t i=0; i<sz_dst; ++i) dd[i] = (TYPE_OUT)(EXPR); \
+        TYPE_IN va = *((TYPE_IN*)mf_tensor_data(a)); \
+        TYPE_IN vb = *((TYPE_IN*)mf_tensor_data(b)); \
+        for(size_t i=0; i<sz_dst; ++i) { \
+            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+            mf_tensor_iter_next(&it_dst); \
+        } \
     } else if (sz_a == 1) { \
-        TYPE_IN va = da[0]; \
-        for(size_t i=0; i<sz_dst; ++i) { TYPE_IN vb = db[i]; dd[i] = (TYPE_OUT)(EXPR); } \
+        TYPE_IN va = *((TYPE_IN*)mf_tensor_data(a)); \
+        mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
+        for(size_t i=0; i<sz_dst; ++i) { \
+            TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
+            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+            mf_tensor_iter_next(&it_b); mf_tensor_iter_next(&it_dst); \
+        } \
     } else if (sz_b == 1) { \
-        TYPE_IN vb = db[0]; \
-        for(size_t i=0; i<sz_dst; ++i) { TYPE_IN va = da[i]; dd[i] = (TYPE_OUT)(EXPR); } \
+        TYPE_IN vb = *((TYPE_IN*)mf_tensor_data(b)); \
+        mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
+        for(size_t i=0; i<sz_dst; ++i) { \
+            TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
+            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+            mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_dst); \
+        } \
     } else { \
-        for(size_t i=0; i<sz_dst; ++i) { TYPE_IN va = da[i]; TYPE_IN vb = db[i]; dd[i] = (TYPE_OUT)(EXPR); } \
+        mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
+        mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
+        for(size_t i=0; i<sz_dst; ++i) { \
+            TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
+            TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
+            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+            mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_b); mf_tensor_iter_next(&it_dst); \
+        } \
     } \
 }
 
@@ -101,12 +123,13 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \
     if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
-    TYPE_IN* da = (TYPE_IN*)mf_tensor_data(a); \
-    TYPE_OUT* dd = (TYPE_OUT*)mf_tensor_data(dst); \
     size_t sz_dst = mf_tensor_count(dst); \
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
     for(size_t i=0; i<sz_dst; ++i) { \
-        TYPE_IN v = da[i]; \
-        dd[i] = (TYPE_OUT)(EXPR); \
+        TYPE_IN v = *((TYPE_IN*)it_a.ptr); \
+        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+        mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_dst); \
     } \
 }
 

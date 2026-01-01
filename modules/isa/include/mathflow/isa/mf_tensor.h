@@ -49,6 +49,26 @@ static inline bool mf_tensor_same_shape(const mf_tensor* a, const mf_tensor* b) 
     return true;
 }
 
+// Check if the tensor data is contiguous in memory
+static inline bool mf_tensor_is_contiguous(const mf_tensor* t) {
+    if (t->info.ndim <= 1) return true;
+    int32_t stride = 1;
+    for (int i = t->info.ndim - 1; i >= 0; --i) {
+        if (t->info.strides[i] != stride) return false;
+        stride *= t->info.shape[i];
+    }
+    return true;
+}
+
+// Calculate linear element offset from indices [i, j, k, ...]
+static inline size_t mf_tensor_get_offset(const mf_tensor* t, const int32_t* indices) {
+    size_t offset = 0;
+    for (int i = 0; i < t->info.ndim; ++i) {
+        offset += indices[i] * t->info.strides[i];
+    }
+    return offset;
+}
+
 // --- Tensor Operations ---
 
 // Init tensor view pointing to an existing buffer

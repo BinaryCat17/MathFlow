@@ -39,21 +39,23 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     if (src->info.dtype != MF_DTYPE_F32) return;
 
-    f32* s = (f32*)mf_tensor_data(src);
-    f32* d = (f32*)mf_tensor_data(dst);
-    f32 sum = 0.0f;
     size_t count = mf_tensor_count(dst);
+    mf_tensor_iter it_src = mf_tensor_iter_begin(src);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+
+    f32 sum = 0.0f;
     for (size_t i = 0; i < count; ++i) {
-        sum += s[i];
-        d[i] = sum;
+        sum += *((f32*)it_src.ptr);
+        *((f32*)it_dst.ptr) = sum;
+        mf_tensor_iter_next(&it_src);
+        mf_tensor_iter_next(&it_dst);
     }
 }
 
-static inline bool _check_mask(const mf_tensor* mask, size_t i) {
-    void* d = mf_tensor_data(mask);
-    if (mask->info.dtype == MF_DTYPE_U8) return ((u8*)d)[i] != 0;
-    if (mask->info.dtype == MF_DTYPE_F32) return ((f32*)d)[i] > 0.5f;
-    if (mask->info.dtype == MF_DTYPE_I32) return ((int32_t*)d)[i] != 0;
+static inline bool _check_mask_ptr(const mf_tensor* mask, void* ptr) {
+    if (mask->info.dtype == MF_DTYPE_U8) return *((u8*)ptr) != 0;
+    if (mask->info.dtype == MF_DTYPE_F32) return *((f32*)ptr) > 0.5f;
+    if (mask->info.dtype == MF_DTYPE_I32) return *((int32_t*)ptr) != 0;
     return false;
 }
 
@@ -72,7 +74,11 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t count = (count_data < count_mask) ? count_data : count_mask;
     
     size_t true_count = 0;
-    for(size_t i=0; i<count; ++i) if (_check_mask(mask, i)) true_count++;
+    mf_tensor_iter it_count = mf_tensor_iter_begin(mask);
+    for(size_t i=0; i<count; ++i) {
+        if (_check_mask_ptr(mask, it_count.ptr)) true_count++;
+        mf_tensor_iter_next(&it_count);
+    }
 
     dst->info.dtype = data->info.dtype;
     int32_t new_shape[] = { (int32_t)true_count };
@@ -82,14 +88,17 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     size_t write_idx = 0;
     size_t elem_size = mf_dtype_size(data->info.dtype);
-    u8* src_ptr = (u8*)mf_tensor_data(data);
-    u8* dst_ptr = (u8*)mf_tensor_data(dst);
+    mf_tensor_iter it_data = mf_tensor_iter_begin(data);
+    mf_tensor_iter it_mask = mf_tensor_iter_begin(mask);
+    u8* dst_ptr = (u8*)mf_tensor_data(dst); // Dst is always contiguous after resize
 
     for(size_t i=0; i<count; ++i) {
-        if (_check_mask(mask, i)) {
-            memcpy(dst_ptr + write_idx * elem_size, src_ptr + i * elem_size, elem_size);
+        if (_check_mask_ptr(mask, it_mask.ptr)) {
+            memcpy(dst_ptr + write_idx * elem_size, it_data.ptr, elem_size);
             write_idx++;
         }
+        mf_tensor_iter_next(&it_data);
+        mf_tensor_iter_next(&it_mask);
     }
 }
 
@@ -144,19 +153,21 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t out_count = mf_tensor_count(dst);
     size_t elem_size = mf_dtype_size(src_data->info.dtype);
     
-    u8* data_ptr = (u8*)mf_tensor_data(src_data);
-    u8* out_ptr = (u8*)mf_tensor_data(dst);
-    void* idx_ptr = mf_tensor_data(src_indices);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+    mf_tensor_iter it_idx = mf_tensor_iter_begin(src_indices);
     bool idx_is_f32 = (src_indices->info.dtype == MF_DTYPE_F32);
 
     for (size_t i = 0; i < out_count; ++i) {
-        int idx = idx_is_f32 ? (int)((f32*)idx_ptr)[i] : ((int32_t*)idx_ptr)[i];
+        int idx = idx_is_f32 ? (int)(*((f32*)it_idx.ptr)) : (*((int32_t*)it_idx.ptr));
         if (idx >= 0 && (size_t)idx < data_count) {
-            memcpy(out_ptr + i * elem_size, data_ptr + idx * elem_size, elem_size);
+            void* src_ptr = mf_tensor_iter_get_at_linear(src_data, (size_t)idx);
+            memcpy(it_dst.ptr, src_ptr, elem_size);
         } else {
-            memset(out_ptr + i * elem_size, 0, elem_size);
+            memset(it_dst.ptr, 0, elem_size);
             ctx->error = MF_ERROR_OUT_OF_BOUNDS;
         }
+        mf_tensor_iter_next(&it_idx);
+        mf_tensor_iter_next(&it_dst);
     }
 }
 

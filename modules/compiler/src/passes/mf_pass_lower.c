@@ -97,11 +97,27 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
         if (count == 0) return;
         const mf_json_value* first = &val->as.array.items[0];
         
+        const mf_json_value* v_shape = node_data ? mf_json_get_field(node_data, "shape") : NULL;
+
         if (first->type == MF_JSON_VAL_NUMBER) {
             t->info.dtype = MF_DTYPE_F32;
-            t->info.ndim = 1;
-            t->info.shape[0] = count;
-            t->info.strides[0] = 1;
+            
+            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
+                t->info.ndim = (uint8_t)v_shape->as.array.count;
+                for(int k=0; k<t->info.ndim && k<MF_MAX_DIMS; ++k) {
+                    t->info.shape[k] = (int32_t)v_shape->as.array.items[k].as.n;
+                }
+            } else {
+                t->info.ndim = 1;
+                t->info.shape[0] = count;
+            }
+            
+            // Recalc strides
+            int32_t stride = 1;
+            for(int k=t->info.ndim-1; k>=0; --k) {
+                t->info.strides[k] = stride;
+                stride *= t->info.shape[k];
+            }
             
             size_t bytes = count * sizeof(f32);
             mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);

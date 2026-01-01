@@ -1,4 +1,5 @@
 #include <mathflow/isa/mf_tensor.h>
+#include <mathflow/isa/mf_tensor_iter.h>
 #include <mathflow/base/mf_log.h>
 #include <string.h>
 
@@ -79,13 +80,24 @@ bool mf_tensor_copy_data(mf_tensor* dst, const mf_tensor* src) {
     
     if (!dst_ptr || !src_ptr) return false;
     
-    size_t bytes = mf_tensor_size_bytes(dst);
-    size_t src_bytes = mf_tensor_size_bytes(src);
+    size_t count = mf_tensor_count(dst);
+    size_t src_count = mf_tensor_count(src);
+    if (count != src_count) return false; 
+
+    size_t elem_size = mf_dtype_size(dst->info.dtype);
+
+    if (mf_tensor_is_contiguous(dst) && mf_tensor_is_contiguous(src)) {
+        memcpy(dst_ptr, src_ptr, count * elem_size);
+    } else {
+        mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+        mf_tensor_iter it_src = mf_tensor_iter_begin(src);
+        for (size_t i = 0; i < count; ++i) {
+            memcpy(it_dst.ptr, it_src.ptr, elem_size);
+            mf_tensor_iter_next(&it_dst);
+            mf_tensor_iter_next(&it_src);
+        }
+    }
     
-    // For now strict size match
-    if (bytes != src_bytes) return false; 
-    
-    memcpy(dst_ptr, src_ptr, bytes);
     return true;
 }
 
@@ -159,20 +171,11 @@ bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src) {
     
     mf_tensor_view(dst, src);
     
-    // Swap Shape
+    // Swap Shape and Strides
     dst->info.shape[0] = src->info.shape[1];
     dst->info.shape[1] = src->info.shape[0];
-    
-    // Swap Strides?
-    // NOTE: MathFlow assumes row-major contiguity in many ops. 
-    // Just swapping metadata strides works for valid "Views", but
-    // if an Op assumes contiguous memory (like memcpy), it will fail.
-    // For Phase 22, we are introducing this. Ops must be updated to respect strides.
-    // Current Ops (mf_ops_matrix.c) do NOT respect strides yet.
-    // So this is dangerous without Op updates.
-    // BUT: The goal of Phase 22 is to Enable it.
-    
-    // Let's implement it correctly for the Tensor struct.
+    dst->info.strides[0] = src->info.strides[1];
+    dst->info.strides[1] = src->info.strides[0];
     
     return true;
 }

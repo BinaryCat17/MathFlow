@@ -6,58 +6,6 @@
 #include <string.h>
 #include <math.h>
 
-// Helper to densify tensor if needed (Fallback for Ops that don't support strides yet)
-static bool ensure_contiguous(mf_exec_ctx* ctx, const mf_tensor* src, mf_tensor* temp_out) {
-    // Check if contiguous
-    size_t count = mf_tensor_count(src);
-    // Simple check: Last stride is 1 and others match shape? 
-    // Or just check if we can iterate linearly.
-    // For now, ALWAYS copy to temp buffer if strides != standard row-major
-    
-    // Check standard strides
-    int32_t stride = 1;
-    bool standard = true;
-    for (int k = src->info.ndim - 1; k >= 0; --k) {
-        if (src->info.strides[k] != stride) { standard = false; break; }
-        stride *= src->info.shape[k];
-    }
-    
-    if (standard) {
-        *temp_out = *src; // View
-        return true;
-    }
-    
-    // Alloc temp contiguous
-    if (!mf_tensor_alloc(temp_out, ctx->allocator, &src->info)) return false;
-    
-    // Copy data (slow path)
-    // We need an iterator that respects src strides... 
-    // But since we don't have one readily available for N-dims, 
-    // we limit Transpose/Strides to 2D for now in the Ops support.
-    
-    // 2D Copy
-    if (src->info.ndim == 2) {
-        f32* dst_ptr = (f32*)mf_tensor_data(temp_out);
-        f32* src_base = (f32*)mf_tensor_data(src);
-        int rows = src->info.shape[0];
-        int cols = src->info.shape[1];
-        int s0 = src->info.strides[0];
-        int s1 = src->info.strides[1];
-        
-        // Safety: Check base pointer
-        if(!src_base || !dst_ptr) return false;
-
-        for(int r=0; r<rows; ++r) {
-            for(int c=0; c<cols; ++c) {
-                dst_ptr[r*cols + c] = src_base[r*s0 + c*s1];
-            }
-        }
-        return true;
-    }
-    
-    return false; // Unsupported rank for strided access
-}
-
 // Dot(a, b) -> Sum(a*b) along last axis
 static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
@@ -72,29 +20,24 @@ static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t sz_b = mf_tensor_count(b);
     if (sz_a != sz_b) return; 
 
-    // Handle Strides (Densify inputs)
-    mf_tensor a_cont, b_cont;
-    if (!ensure_contiguous(ctx, a, &a_cont)) return;
-    if (!ensure_contiguous(ctx, b, &b_cont)) return;
-
     int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
-    
     dst->info.dtype = MF_DTYPE_F32;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
-    
     MF_CHECK_DST_DATA(ctx, dst);
 
-    f32* A = (f32*)mf_tensor_data(&a_cont); 
-    f32* B = (f32*)mf_tensor_data(&b_cont); 
     f32* D = (f32*)mf_tensor_data(dst);
-    
     size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
     size_t batch = sz_a / dim;
     
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
+    mf_tensor_iter it_b = mf_tensor_iter_begin(b);
+
     for (size_t i = 0; i < batch; ++i) {
         float sum = 0.0f;
         for (size_t k = 0; k < dim; ++k) {
-            sum += A[i*dim + k] * B[i*dim + k];
+            sum += (*((f32*)it_a.ptr)) * (*((f32*)it_b.ptr));
+            mf_tensor_iter_next(&it_a);
+            mf_tensor_iter_next(&it_b);
         }
         D[i] = sum;
     }
@@ -108,27 +51,24 @@ static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
 
-    mf_tensor a_cont;
-    if (!ensure_contiguous(ctx, a, &a_cont)) return;
-
     int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
     dst->info.dtype = MF_DTYPE_F32;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
-    
     MF_CHECK_DST_DATA(ctx, dst);
 
-    f32* A = (f32*)mf_tensor_data(&a_cont); 
     f32* D = (f32*)mf_tensor_data(dst);
-    
     size_t sz_a = mf_tensor_count(a);
     size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
     size_t batch = sz_a / dim;
     
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
+
     for (size_t i = 0; i < batch; ++i) {
         float sum = 0.0f;
         for (size_t k = 0; k < dim; ++k) {
-            float val = A[i*dim + k];
+            float val = *((f32*)it_a.ptr);
             sum += val * val;
+            mf_tensor_iter_next(&it_a);
         }
         D[i] = sqrtf(sum);
     }
@@ -143,45 +83,33 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, a);
     MF_CHECK_INPUT(ctx, b);
     
-    size_t sz_a = mf_tensor_count(a);
-    int dim = (int)sqrtf((float)sz_a); 
-    if (dim * dim != (int)sz_a) return; 
-    
-    mf_tensor a_cont, b_cont;
-    if (!ensure_contiguous(ctx, a, &a_cont)) return;
-    if (!ensure_contiguous(ctx, b, &b_cont)) return;
+    if (a->info.ndim != 2 || b->info.ndim != 2) return;
 
+    int32_t M = a->info.shape[0];
+    int32_t K = a->info.shape[1];
+    int32_t N = b->info.shape[1];
+
+    if (K != b->info.shape[0]) return;
+
+    int32_t out_shape[] = { M, N };
     dst->info.dtype = a->info.dtype;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
-    
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, 2)) return;
     MF_CHECK_DST_DATA(ctx, dst);
 
-    // Fast Path
-    if (dim == 4 && sz_a == 16) {
-        mf_mat4 A, B; 
-        memcpy(A.m, mf_tensor_data(&a_cont), sizeof(mf_mat4));
-        memcpy(B.m, mf_tensor_data(&b_cont), sizeof(mf_mat4));
-        mf_mat4 R = mf_mat4_mul(A, B);
-        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat4));
-        return;
-    }
-    if (dim == 3 && sz_a == 9) {
-        mf_mat3 A, B; 
-        memcpy(A.m, mf_tensor_data(&a_cont), sizeof(mf_mat3));
-        memcpy(B.m, mf_tensor_data(&b_cont), sizeof(mf_mat3));
-        mf_mat3 R = mf_mat3_mul(A, B);
-        memcpy(mf_tensor_data(dst), R.m, sizeof(mf_mat3));
-        return;
-    }
-
-    // Generic Path
-    f32* A = (f32*)mf_tensor_data(&a_cont); 
-    f32* B = (f32*)mf_tensor_data(&b_cont); 
     f32* C = (f32*)mf_tensor_data(dst);
-    for (int r = 0; r < dim; r++) for (int c = 0; c < dim; c++) { 
-        float sum = 0.0f; 
-        for (int k = 0; k < dim; k++) sum += A[r * dim + k] * B[k * dim + c]; 
-        C[r * dim + c] = sum; 
+    f32* da = (f32*)mf_tensor_data(a);
+    f32* db = (f32*)mf_tensor_data(b);
+
+    for (int32_t r = 0; r < M; r++) {
+        for (int32_t c = 0; c < N; c++) { 
+            float sum = 0.0f; 
+            for (int32_t k = 0; k < K; k++) {
+                int32_t idx_a[2] = {r, k};
+                int32_t idx_b[2] = {k, c};
+                sum += da[mf_tensor_get_offset(a, idx_a)] * db[mf_tensor_get_offset(b, idx_b)];
+            }
+            C[r * N + c] = sum; 
+        }
     }
 }
 
@@ -206,32 +134,42 @@ static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
     
-    mf_tensor a_cont;
-    if (!ensure_contiguous(ctx, a, &a_cont)) return;
-
     dst->info.dtype = a->info.dtype;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
-    
     MF_CHECK_DST_DATA(ctx, dst);
 
     size_t sz_a = mf_tensor_count(a);
     int dim = (int)sqrtf((float)sz_a);
-    
-    if (dim == 3 && sz_a == 9) {
-        mf_mat3 m;
-        memcpy(m.m, mf_tensor_data(&a_cont), sizeof(mf_mat3));
-        mf_mat3 res = mf_mat3_inverse(m);
-        memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat3));
-    } 
-    else if (dim == 4 && sz_a == 16) {
-        mf_mat4 m;
-        memcpy(m.m, mf_tensor_data(&a_cont), sizeof(mf_mat4));
-        mf_mat4 res = mf_mat4_inverse(m);
-        memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat4));
+    f32* da = (f32*)mf_tensor_data(a);
+
+    if ((dim == 3 && sz_a == 9) || (dim == 4 && sz_a == 16)) {
+        // Densify to local mat for inverse call
+        if (dim == 3) {
+            mf_mat3 m;
+            for(int r=0; r<3; ++r) for(int c=0; c<3; ++c) {
+                int32_t idx[2] = {r, c};
+                m.m[r * 3 + c] = da[mf_tensor_get_offset(a, idx)];
+            }
+            mf_mat3 res = mf_mat3_inverse(m);
+            memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat3));
+        } else {
+            mf_mat4 m;
+            for(int r=0; r<4; ++r) for(int c=0; c<4; ++c) {
+                int32_t idx[2] = {r, c};
+                m.m[r * 4 + c] = da[mf_tensor_get_offset(a, idx)];
+            }
+            mf_mat4 res = mf_mat4_inverse(m);
+            memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat4));
+        }
     }
     else {
-        // Fallback: Identity / Copy
-        memcpy(mf_tensor_data(dst), mf_tensor_data(&a_cont), sz_a * sizeof(f32));
+        // Fallback: Copy with strides
+        f32* dd = (f32*)mf_tensor_data(dst);
+        mf_tensor_iter it_a = mf_tensor_iter_begin(a);
+        for(size_t i=0; i<sz_a; ++i) {
+            dd[i] = *((f32*)it_a.ptr);
+            mf_tensor_iter_next(&it_a);
+        }
     }
 }
 
@@ -249,10 +187,6 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t sz_b = mf_tensor_count(b);
     if (sz_a != sz_b) return; 
     
-    mf_tensor a_cont, b_cont;
-    if (!ensure_contiguous(ctx, a, &a_cont)) return;
-    if (!ensure_contiguous(ctx, b, &b_cont)) return;
-    
     // Setup Output Shape
     int32_t out_shape[MF_MAX_DIMS];
     for (int i=0; i<a->info.ndim; ++i) out_shape[i] = a->info.shape[i];
@@ -261,16 +195,17 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     dst->info.dtype = a->info.dtype; 
     if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, out_ndim)) return;
-    
     MF_CHECK_DST_DATA(ctx, dst);
     
-    f32* A = (f32*)mf_tensor_data(&a_cont); 
-    f32* B = (f32*)mf_tensor_data(&b_cont); 
     f32* D = (f32*)mf_tensor_data(dst);
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
+    mf_tensor_iter it_b = mf_tensor_iter_begin(b);
     
     for (size_t i = 0; i < sz_a; ++i) {
-        D[i*2 + 0] = A[i];
-        D[i*2 + 1] = B[i];
+        D[i*2 + 0] = *((f32*)it_a.ptr);
+        D[i*2 + 1] = *((f32*)it_b.ptr);
+        mf_tensor_iter_next(&it_a);
+        mf_tensor_iter_next(&it_b);
     }
 }
 

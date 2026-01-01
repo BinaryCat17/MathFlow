@@ -38,8 +38,17 @@ static void op_copy(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_DATA(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
 
-    size_t size = mf_tensor_size_bytes(src);
-    memcpy(mf_tensor_data(dst), mf_tensor_data(src), size);
+    size_t count = mf_tensor_count(src);
+    size_t elem_size = mf_dtype_size(src->info.dtype);
+    
+    mf_tensor_iter it_src = mf_tensor_iter_begin(src);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+
+    for(size_t i=0; i<count; ++i) {
+        memcpy(it_dst.ptr, it_src.ptr, elem_size);
+        mf_tensor_iter_next(&it_src);
+        mf_tensor_iter_next(&it_dst);
+    }
 }
 
 // Slice(Input, Range) -> View. Range is [Start, Count]

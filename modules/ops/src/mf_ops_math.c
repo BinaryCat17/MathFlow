@@ -45,16 +45,21 @@ static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t sz_max = mf_tensor_count(max_val);
     size_t sz_dst = mf_tensor_count(dst);
     
-    f32* dv = (f32*)mf_tensor_data(v);
-    f32* dmin = (f32*)mf_tensor_data(min_val);
-    f32* dmax = (f32*)mf_tensor_data(max_val);
-    f32* dd = (f32*)mf_tensor_data(dst);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+    mf_tensor_iter it_v = mf_tensor_iter_begin(v);
+    mf_tensor_iter it_min = mf_tensor_iter_begin(min_val);
+    mf_tensor_iter it_max = mf_tensor_iter_begin(max_val);
     
     for(size_t i=0; i<sz_dst; ++i) {
-        f32 val = dv[i % sz_v];
-        f32 lo = dmin[i % sz_min];
-        f32 hi = dmax[i % sz_max];
-        dd[i] = (val < lo) ? lo : (val > hi ? hi : val);
+        f32 val = *((f32*)it_v.ptr);
+        f32 lo = *((f32*)it_min.ptr);
+        f32 hi = *((f32*)it_max.ptr);
+        *((f32*)it_dst.ptr) = (val < lo) ? lo : (val > hi ? hi : val);
+        
+        mf_tensor_iter_next(&it_v); 
+        mf_tensor_iter_next(&it_min); 
+        mf_tensor_iter_next(&it_max); 
+        mf_tensor_iter_next(&it_dst);
     }
 }
 
@@ -72,21 +77,23 @@ static void op_mix(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, t)) return;
     MF_CHECK_DST_DATA(ctx, dst);
     
-    size_t sz_a = mf_tensor_count(a);
-    size_t sz_b = mf_tensor_count(b);
-    size_t sz_t = mf_tensor_count(t);
     size_t sz_dst = mf_tensor_count(dst);
     
-    f32* da = (f32*)mf_tensor_data(a);
-    f32* db = (f32*)mf_tensor_data(b);
-    f32* dt = (f32*)mf_tensor_data(t);
-    f32* dd = (f32*)mf_tensor_data(dst);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
+    mf_tensor_iter it_b = mf_tensor_iter_begin(b);
+    mf_tensor_iter it_t = mf_tensor_iter_begin(t);
     
     for(size_t i=0; i<sz_dst; ++i) {
-        f32 va = da[i % sz_a];
-        f32 vb = db[i % sz_b];
-        f32 vt = dt[i % sz_t];
-        dd[i] = va + vt * (vb - va);
+        f32 va = *((f32*)it_a.ptr);
+        f32 vb = *((f32*)it_b.ptr);
+        f32 vt = *((f32*)it_t.ptr);
+        *((f32*)it_dst.ptr) = va + vt * (vb - va);
+        
+        mf_tensor_iter_next(&it_a); 
+        mf_tensor_iter_next(&it_b); 
+        mf_tensor_iter_next(&it_t); 
+        mf_tensor_iter_next(&it_dst);
     }
 }
 
