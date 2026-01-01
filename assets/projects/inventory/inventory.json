@@ -3,7 +3,7 @@
         { "id": "categories", "type": "Const", "data": {"value": ["Food", "Electronics", "Electronics", "Food", "Electronics"]} },
         { "id": "prices", "type": "Const", "data": {"value": [100.0, 500.0, 1200.0, 50.0, 2000.0]} },
         { "id": "quantities", "type": "Const", "data": {"value": [10.0, 2.0, 1.0, 100.0, 5.0]} },
-        { "id": "target_cat", "type": "Const", "data": {"value": "Electronics"} },
+        { "id": "target_cat", "type": "Const", "data": {"value": "Electronics", "dtype": "i32"} },
         { "id": "tax_rate", "type": "Const", "data": {"value": 1.2} },
         { "id": "threshold", "type": "Const", "data": {"value": 1000.0} },
 

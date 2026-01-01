@@ -7,7 +7,7 @@
 
 // Forward declaration of the parsing entry point needed for recursive loading
 // Note: We use the high-level loading function that returns IR
-bool mf_compile_load_json_ir(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena);
+bool mf_compile_load_json_ir(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena, mf_compiler_diag* diag);
 
 // --- Expansion Logic (Copied and cleaned from old parser) ---
 
@@ -36,7 +36,7 @@ static bool needs_expansion(mf_graph_ir* ir) {
     return false;
 }
 
-static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena) {
+static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* arena, mf_compiler_diag* diag) {
     typedef struct LNode { mf_ir_node n; struct LNode* next; } LNode;
     typedef struct LLink { mf_ir_link l; struct LLink* next; } LLink;
     
@@ -108,8 +108,8 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
             
             mf_graph_ir child_ir;
             // Recursive load!
-            if (!mf_compile_load_json_ir(node->sub_graph_path, &child_ir, arena)) {
-                 MF_LOG_ERROR("Failed to load subgraph: %s", node->sub_graph_path);
+            if (!mf_compile_load_json_ir(node->sub_graph_path, &child_ir, arena, diag)) {
+                  // Error already reported by child loader
                  continue;
             }
 
@@ -242,7 +242,7 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
     return true;
 }
 
-bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena) {
+bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag) {
     mf_graph_ir current_ir = *ir;
     
     // Iteratively expand until no Calls remain
@@ -253,12 +253,12 @@ bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena) {
         }
         
         mf_graph_ir next_ir;
-        if (!expand_graph_step(&current_ir, &next_ir, arena)) {
+        if (!expand_graph_step(&current_ir, &next_ir, arena, diag)) {
             return false;
         }
         current_ir = next_ir;
     }
     
-    MF_LOG_ERROR("Inline pass failed: Max recursion depth reached.");
+    { mf_source_loc loc = {0}; mf_compiler_diag_report(diag, loc, "Inline pass failed: Max recursion depth reached."); }
     return false;
 }

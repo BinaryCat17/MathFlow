@@ -5,14 +5,23 @@
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/base/mf_memory.h>
 
-// --- Source Tracking ---
+// --- Diagnostics ---
 typedef struct {
-    const char* file;
-    u32 line;
-    u32 column;
-} mf_source_loc;
+    mf_source_loc loc;
+    char message[256];
+} mf_compiler_error;
 
-// --- IR Definitions (Simplification) ---
+typedef struct {
+    mf_compiler_error* errors;
+    uint32_t error_count;
+    uint32_t error_capacity;
+    bool has_error;
+} mf_compiler_diag;
+
+void mf_compiler_diag_init(mf_compiler_diag* diag, mf_arena* arena);
+void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const char* fmt, ...);
+
+// --- IR Definitions ---
 
 typedef enum {
     MF_NODE_UNKNOWN = 0,
@@ -126,10 +135,10 @@ typedef struct {
 // --- Compiler Interface ---
 
 // 1. Parse JSON -> IR
-bool mf_compile_load_json(const char* json_str, mf_graph_ir* out_ir, mf_arena* arena);
+bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena, mf_compiler_diag* diag);
 
 // 2. IR -> Program
-mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena);
+mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag);
 
 // 3. Save Program
 bool mf_compile_save_program(const mf_program* prog, const char* path);

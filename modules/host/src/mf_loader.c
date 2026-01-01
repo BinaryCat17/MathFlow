@@ -102,12 +102,26 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
 static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
     const char* ext = mf_path_get_ext(path);
     if (strcmp(ext, "json") == 0) {
+        mf_compiler_diag diag;
+        mf_compiler_diag_init(&diag, arena);
+        
         mf_graph_ir ir = {0};
-        if (!mf_compile_load_json(path, &ir, arena)) {
+        if (!mf_compile_load_json(path, &ir, arena, &diag)) {
             MF_LOG_ERROR("Failed to load/parse JSON: %s", path);
+            for (uint32_t i = 0; i < diag.error_count; ++i) {
+                MF_LOG_ERROR("  %s:%u:%u: %s", diag.errors[i].loc.file, diag.errors[i].loc.line, diag.errors[i].loc.column, diag.errors[i].message);
+            }
             return NULL;
         }
-        return mf_compile(&ir, arena);
+        
+        mf_program* prog = mf_compile(&ir, arena, &diag);
+        if (!prog) {
+            MF_LOG_ERROR("Failed to compile graph: %s", path);
+            for (uint32_t i = 0; i < diag.error_count; ++i) {
+                MF_LOG_ERROR("  %s:%u:%u: %s", diag.errors[i].loc.file, diag.errors[i].loc.line, diag.errors[i].loc.column, diag.errors[i].message);
+            }
+        }
+        return prog;
     } else if (strcmp(ext, "bin") == 0) {
         return _load_binary(path, arena);
     }

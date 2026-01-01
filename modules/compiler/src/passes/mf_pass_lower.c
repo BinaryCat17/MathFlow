@@ -146,25 +146,39 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
         *((u8*)mem) = (u8)(val->as.b ? 1 : 0);
     }
     else if (val->type == MF_JSON_VAL_STRING) {
-        size_t cp_count = mf_utf8_to_utf32(val->as.s, NULL, 0);
-        t->info.dtype = MF_DTYPE_F32;
-        t->info.ndim = 1;
-        t->info.shape[0] = (int32_t)cp_count;
-        t->info.strides[0] = 1;
+        if (target_dtype == MF_DTYPE_I32) {
+            // Treat as single string hash (scalar)
+            t->info.dtype = MF_DTYPE_I32;
+            t->info.ndim = 0;
+            size_t bytes = sizeof(int32_t);
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+            mf_buffer_init_view(buf, mem, bytes);
+            t->buffer = buf;
+            t->byte_offset = 0;
+            *((int32_t*)mem) = (int32_t)mf_fnv1a_hash(val->as.s);
+        } else {
+            // Default: Treat as SDF text (array of F32 code points)
+            size_t cp_count = mf_utf8_to_utf32(val->as.s, NULL, 0);
+            t->info.dtype = MF_DTYPE_F32;
+            t->info.ndim = 1;
+            t->info.shape[0] = (int32_t)cp_count;
+            t->info.strides[0] = 1;
 
-        size_t bytes = cp_count * sizeof(f32);
-        mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
-        void* mem = MF_ARENA_PUSH(arena, u8, bytes);
-        mf_buffer_init_view(buf, mem, bytes);
-        t->buffer = buf;
-        t->byte_offset = 0;
-        
-        // Temporarily load as U32 then convert to F32
-        u32* tmp = malloc(cp_count * sizeof(u32));
-        mf_utf8_to_utf32(val->as.s, tmp, cp_count);
-        f32* dst = (f32*)mem;
-        for(size_t i=0; i<cp_count; ++i) dst[i] = (f32)tmp[i];
-        free(tmp);
+            size_t bytes = cp_count * sizeof(f32);
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+            mf_buffer_init_view(buf, mem, bytes);
+            t->buffer = buf;
+            t->byte_offset = 0;
+            
+            // Temporarily load as U32 then convert to F32
+            u32* tmp = malloc(cp_count * sizeof(u32));
+            mf_utf8_to_utf32(val->as.s, tmp, cp_count);
+            f32* dst = (f32*)mem;
+            for(size_t i=0; i<cp_count; ++i) dst[i] = (f32)tmp[i];
+            free(tmp);
+        }
     }
     else if (val->type == MF_JSON_VAL_ARRAY) {
         int count = (int)val->as.array.count;
@@ -220,7 +234,7 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
 
 // --- Main Pass ---
 
-bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, const char* base_path) {
+bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, const char* base_path, mf_compiler_diag* diag) {
     if (!ast) return false;
 
     out_ir->node_count = ast->node_count;
@@ -245,7 +259,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
 
         dst->type = get_node_type(src->type);
         if (dst->type == MF_NODE_UNKNOWN) {
-            MF_LOG_ERROR("Unknown node type '%s' at %s:%u:%u", src->type, dst->loc.file, src->loc.line, src->loc.column);
+            mf_compiler_diag_report(diag, dst->loc, "Unknown node type '%s'", src->type);
             return false;
         }
 
@@ -255,7 +269,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
                 const mf_json_value* v_dtype = mf_json_get_field(src->data, "dtype");
                 
                 if (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY) {
-                    MF_LOG_ERROR("Input node '%s': missing or invalid 'shape' at %u:%u", dst->id, src->loc.line, src->loc.column);
+                    mf_compiler_diag_report(diag, dst->loc, "Input node '%s': missing or invalid 'shape'", dst->id);
                     return false;
                 }
                 
@@ -327,7 +341,8 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         
         // Source
         if (!mf_map_get(&map, l_src->src, &l_dst->src_node_idx)) {
-            MF_LOG_ERROR("Link source '%s' not found at %u:%u", l_src->src, l_src->loc.line, l_src->loc.column);
+            mf_source_loc loc = {base_path, l_src->loc.line, l_src->loc.column};
+            mf_compiler_diag_report(diag, loc, "Link source '%s' not found", l_src->src);
             return false;
         }
         mf_ir_node* src_node = &out_ir->nodes[l_dst->src_node_idx];
@@ -339,7 +354,8 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
 
         // Dest
         if (!mf_map_get(&map, l_src->dst, &l_dst->dst_node_idx)) {
-            MF_LOG_ERROR("Link dst '%s' not found at %u:%u", l_src->dst, l_src->loc.line, l_src->loc.column);
+            mf_source_loc loc = {base_path, l_src->loc.line, l_src->loc.column};
+            mf_compiler_diag_report(diag, loc, "Link dst '%s' not found", l_src->dst);
             return false;
         }
         mf_ir_node* dst_node = &out_ir->nodes[l_dst->dst_node_idx];

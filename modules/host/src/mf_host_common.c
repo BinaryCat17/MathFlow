@@ -149,6 +149,7 @@ void mf_host_app_cleanup(mf_host_app* app) {
     if (app->engine) {
         mf_engine_destroy(app->engine);
     }
-    mf_host_desc_cleanup(&app->desc);
+    // We don't cleanup the descriptor here because mf_host_app_init
+    // only did a shallow copy, and the caller is responsible for the original descriptor.
     memset(app, 0, sizeof(mf_host_app));
 }

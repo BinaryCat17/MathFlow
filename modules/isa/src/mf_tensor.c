@@ -34,7 +34,7 @@ bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const mf_type_
     if (!tensor || !allocator || !new_info) return false;
     
     size_t new_size_bytes = 1;
-    for(int i=0; i<new_info->ndim; ++i) new_size_bytes *= new_info->shape[i];
+    for(int i=0; i<new_info->ndim; ++i) new_size_bytes *= (new_info->shape[i] > 0 ? new_info->shape[i] : 1);
     new_size_bytes *= mf_dtype_size(new_info->dtype);
     
     // Update metadata
@@ -46,28 +46,25 @@ bool mf_tensor_resize(mf_tensor* tensor, mf_allocator* allocator, const mf_type_
     }
     
     if (tensor->buffer->size_bytes < new_size_bytes) {
-        mf_buffer* old_buf = tensor->buffer;
+        void* new_data = allocator->alloc(allocator, new_size_bytes);
+        if (!new_data) return false;
         
-        // Alloc new buffer struct
-        mf_buffer* new_buf = (mf_buffer*)allocator->alloc(allocator, sizeof(mf_buffer));
-        if (!new_buf) return false;
+        memset(new_data, 0, new_size_bytes);
         
-        if (!mf_buffer_alloc(new_buf, allocator, new_size_bytes)) {
-            allocator->free(allocator, new_buf);
-            return false;
+        if (tensor->buffer->data) {
+            size_t copy_size = tensor->buffer->size_bytes;
+            if (copy_size > new_size_bytes) copy_size = new_size_bytes;
+            memcpy(new_data, tensor->buffer->data, copy_size);
+            
+            if ((tensor->buffer->flags & MF_BUFFER_OWNS_DATA) && tensor->buffer->alloc) {
+                tensor->buffer->alloc->free(tensor->buffer->alloc, tensor->buffer->data);
+            }
         }
         
-        // Copy old data
-        size_t copy_size = (old_buf->size_bytes < new_size_bytes) ? old_buf->size_bytes : new_size_bytes;
-        if (old_buf->data && new_buf->data) {
-             memcpy(new_buf->data, old_buf->data, copy_size);
-        }
-        
-        // Free old buffer
-        mf_buffer_free(old_buf);
-        if (old_buf->alloc) old_buf->alloc->free(old_buf->alloc, old_buf);
-        
-        tensor->buffer = new_buf;
+        tensor->buffer->data = new_data;
+        tensor->buffer->size_bytes = new_size_bytes;
+        tensor->buffer->alloc = allocator;
+        tensor->buffer->flags |= MF_BUFFER_OWNS_DATA;
     }
     
     return true;

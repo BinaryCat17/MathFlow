@@ -117,10 +117,19 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
 
 void mf_engine_destroy(mf_engine* engine) {
     if (!engine) return;
+    MF_LOG_DEBUG("Destroying Engine...");
     mf_engine_reset(engine);
     if (engine->backend.shutdown) engine->backend.shutdown(engine->backend.state);
-    if (engine->heap_buffer) free(engine->heap_buffer);
-    if (engine->arena_buffer) free(engine->arena_buffer);
+    
+    if (engine->heap_buffer) {
+        MF_LOG_DEBUG("Freeing Heap Buffer...");
+        free(engine->heap_buffer);
+    }
+    if (engine->arena_buffer) {
+        MF_LOG_DEBUG("Freeing Arena Buffer...");
+        free(engine->arena_buffer);
+    }
+    MF_LOG_DEBUG("Freeing Engine Structure...");
     free(engine);
 }
 

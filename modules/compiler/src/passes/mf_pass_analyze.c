@@ -5,12 +5,12 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MF_ERROR(node, msg, ...) \
-    MF_LOG_ERROR("%s:%u:%u: error: " msg, (node)->loc.file, (node)->loc.line, (node)->loc.column, ##__VA_ARGS__)
+#define MF_REPORT(node, msg, ...) \
+    mf_compiler_diag_report(diag, (node)->loc, msg, ##__VA_ARGS__)
 
-static bool check_dtype_match(mf_ir_node* node, mf_tensor* a, mf_tensor* b) {
+static bool check_dtype_match(mf_ir_node* node, mf_tensor* a, mf_tensor* b, mf_compiler_diag* diag) {
     if (a->info.dtype != b->info.dtype) {
-        MF_ERROR(node, "Type mismatch: %d vs %d", a->info.dtype, b->info.dtype);
+        MF_REPORT(node, "Type mismatch: %d vs %d", a->info.dtype, b->info.dtype);
         return false;
     }
     return true;
@@ -29,7 +29,7 @@ static void format_shape(const mf_tensor* t, char* buf, size_t size) {
     if (offset < (int)size) snprintf(buf + offset, size - offset, "]");
 }
 
-static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tensor* b, mf_tensor* out) {
+static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tensor* b, mf_tensor* out, mf_compiler_diag* diag) {
     size_t sz_a = mf_tensor_count(a);
     size_t sz_b = mf_tensor_count(b);
     
@@ -80,11 +80,11 @@ static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tenso
     format_shape(a, s_a, sizeof(s_a));
     format_shape(b, s_b, sizeof(s_b));
 
-    MF_ERROR(node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
+    MF_REPORT(node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
     return false;
 }
 
-bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
+bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag) {
     for (size_t i = 0; i < count; ++i) {
         mf_ir_node* node = sorted_nodes[i];
         
@@ -114,7 +114,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                 // Already set by Lower pass or handled in CodeGen. 
                 // For Output, we just inherit input.
                  if (node->type == MF_NODE_OUTPUT) {
-                     if (!s1) { MF_ERROR(node, "Output not connected"); return false; }
+                     if (!s1) { MF_REPORT(node, "Output not connected"); return false; }
                      node->out_shape = s1->out_shape;
                  }
                  break;
@@ -123,38 +123,38 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
             case MF_NODE_MIN: case MF_NODE_MAX: case MF_NODE_POW:
             case MF_NODE_ATAN2: case MF_NODE_STEP:
             {
-                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
-                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape)) return false;
-                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out)) return false;
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
+                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape, diag)) return false;
+                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out, diag)) return false;
             } break;
 
             case MF_NODE_MIX: 
             {
-                if (!s1 || !s2 || !s3) { MF_ERROR(node, "Missing inputs for Mix"); return false; }
+                if (!s1 || !s2 || !s3) { MF_REPORT(node, "Missing inputs for Mix"); return false; }
                 // Check all match s1's type (or s3 is float?)
                 // Usually Mix(a, b, t) -> t can be float even if a,b are vec.
                 // For now strict check.
-                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape)) return false;
+                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape, diag)) return false;
                 
                 // Broadcast s1/s2
                 mf_tensor tmp;
-                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp)) return false;
+                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp, diag)) return false;
                 // Broadcast result/s3
-                if (!check_broadcast(node, &tmp, &s3->out_shape, out)) return false;
+                if (!check_broadcast(node, &tmp, &s3->out_shape, out, diag)) return false;
             } break;
             
             case MF_NODE_CLAMP: 
             {
-                if (!s1 || !s2 || !s3) { MF_ERROR(node, "Missing inputs for Clamp"); return false; }
-                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape)) return false;
+                if (!s1 || !s2 || !s3) { MF_REPORT(node, "Missing inputs for Clamp"); return false; }
+                if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape, diag)) return false;
                 mf_tensor tmp;
-                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp)) return false;
-                if (!check_broadcast(node, &tmp, &s3->out_shape, out)) return false;
+                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp, diag)) return false;
+                if (!check_broadcast(node, &tmp, &s3->out_shape, out, diag)) return false;
             } break;
 
             case MF_NODE_SMOOTHSTEP:
             {
-                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                 // s1: x, s2: edges
                 *out = s1->out_shape;
             } break;
@@ -163,13 +163,13 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
             case MF_NODE_FLOOR: case MF_NODE_CEIL: case MF_NODE_NOT: 
             case MF_NODE_INVERSE: case MF_NODE_CUMSUM:
             {
-                if (!s1) { MF_ERROR(node, "Missing input"); return false; }
+                if (!s1) { MF_REPORT(node, "Missing input"); return false; }
                 *out = s1->out_shape;
             } break;
             
             case MF_NODE_LENGTH:
             {
-                if (!s1) { MF_ERROR(node, "Missing input"); return false; }
+                if (!s1) { MF_REPORT(node, "Missing input"); return false; }
                 mf_tensor* a = &s1->out_shape;
                 out->info.dtype = MF_DTYPE_F32;
                 if (a->info.ndim <= 1) {
@@ -183,47 +183,47 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
             case MF_NODE_LESS: case MF_NODE_GREATER: case MF_NODE_EQUAL:
             case MF_NODE_AND: case MF_NODE_OR:
             {
-                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                 // Compare can happen between different types? Usually not.
                 if (node->type != MF_NODE_AND && node->type != MF_NODE_OR) {
-                     if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape)) return false;
+                     if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape, diag)) return false;
                 }
                 
-                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out)) return false;
+                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out, diag)) return false;
                 out->info.dtype = MF_DTYPE_U8;
             } break;
             
             case MF_NODE_SELECT:
             {
-                if (!s2) { MF_ERROR(node, "Missing inputs"); return false; } // s1 (cond) is optional? No, mandated.
-                if (!s1) { MF_ERROR(node, "Missing condition"); return false; }
+                if (!s2) { MF_REPORT(node, "Missing inputs"); return false; } // s1 (cond) is optional? No, mandated.
+                if (!s1) { MF_REPORT(node, "Missing condition"); return false; }
                 
                 mf_tensor* t = &s2->out_shape;
                 mf_tensor* f = s3 ? &s3->out_shape : NULL;
                 
                 if (f) {
-                    if (!check_dtype_match(node, t, f)) return false;
+                    if (!check_dtype_match(node, t, f, diag)) return false;
                     // Broadcast T/F
                     mf_tensor tmp;
-                    if (!check_broadcast(node, t, f, &tmp)) return false;
+                    if (!check_broadcast(node, t, f, &tmp, diag)) return false;
                     // Broadcast Result/Cond
-                    if (!check_broadcast(node, &tmp, &s1->out_shape, out)) return false;
+                    if (!check_broadcast(node, &tmp, &s1->out_shape, out, diag)) return false;
                 } else {
                     // Filter mode? Or just Where(True)? Assuming standard select.
-                     if (!check_broadcast(node, t, &s1->out_shape, out)) return false;
+                     if (!check_broadcast(node, t, &s1->out_shape, out, diag)) return false;
                 }
                 out->info.dtype = t->info.dtype;
             } break;
 
             case MF_NODE_MATMUL:
             {
-                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
                 
                 if (a->info.ndim == 2 && b->info.ndim == 2) {
                     if (a->info.shape[1] != b->info.shape[0]) {
-                        MF_ERROR(node, "MatMul mismatch: [%d,%d] x [%d,%d]", 
+                        MF_REPORT(node, "MatMul mismatch: [%d,%d] x [%d,%d]", 
                             a->info.shape[0], a->info.shape[1], 
                             b->info.shape[0], b->info.shape[1]);
                         return false;
@@ -240,7 +240,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
 
             case MF_NODE_TRANSPOSE:
             {
-                if (!s1) { MF_ERROR(node, "Missing input"); return false; }
+                if (!s1) { MF_REPORT(node, "Missing input"); return false; }
                 *out = s1->out_shape;
                 if (out->info.ndim == 2) {
                     int32_t t = out->info.shape[0];
@@ -257,7 +257,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                 break;
                 
             case MF_NODE_SLICE:
-                 if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                 if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                  out->info.dtype = s1->out_shape.info.dtype;
                  out->info.ndim = 1; 
                  // Infer if constant range
@@ -272,7 +272,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                  break;
 
             case MF_NODE_RESHAPE:
-                 if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                 if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                  out->info.dtype = s1->out_shape.info.dtype;
                  // Infer if constant shape
                  if (mf_tensor_is_valid(&s2->constant)) {
@@ -287,7 +287,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                  break;
             
             case MF_NODE_GATHER:
-                if (!s1 || !s2) { MF_ERROR(node, "Missing inputs for Gather (Data, Indices)"); return false; }
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for Gather (Data, Indices)"); return false; }
                 // Output Type follows Data
                 out->info.dtype = s1->out_shape.info.dtype;
                 // Output Shape follows Indices
@@ -296,8 +296,8 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                 break;
                  
             case MF_NODE_JOIN:
-                 if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
-                 if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape)) return false;
+                 if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
+                 if (!check_dtype_match(node, &s1->out_shape, &s2->out_shape, diag)) return false;
                  // Check shapes equal or scalar
                  // ... simplified for now
                  *out = s1->out_shape;
@@ -305,7 +305,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count) {
                  break;
                  
             case MF_NODE_DOT:
-                 if (!s1 || !s2) { MF_ERROR(node, "Missing inputs"); return false; }
+                 if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
                  out->info.dtype = MF_DTYPE_F32;
                  out->info.ndim = s1->out_shape.info.ndim > 0 ? s1->out_shape.info.ndim - 1 : 0;
                  // Copy dims...

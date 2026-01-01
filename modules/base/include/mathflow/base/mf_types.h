@@ -37,6 +37,13 @@ typedef struct { f32 m[9]; } mf_mat3;
 
 #define MF_MAX_DIMS 8
 
+// --- Source Tracking ---
+typedef struct {
+    const char* file;
+    uint32_t line;
+    uint32_t column;
+} mf_source_loc;
+
 // --- Data Types ---
 typedef enum {
     MF_DTYPE_UNKNOWN = 0,
