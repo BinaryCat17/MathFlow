@@ -127,7 +127,7 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u32 axis_size = ctx->domain_shape[axis];
     if (axis_size == 0) axis_size = 1;
 
-    u32 start_linear = ctx->tile_offset[0];
+    u32 start_linear = ctx->linear_offset;
     for (size_t i = 0; i < count; ++i) {
         u32 global_idx = start_linear + (u32)i;
         d[i] = (f32)((global_idx / axis_stride) % axis_size);

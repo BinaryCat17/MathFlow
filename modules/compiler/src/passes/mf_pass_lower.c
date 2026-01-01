@@ -180,8 +180,7 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
             }
             break;
         }
-        case MF_NODE_CONST:
-        case MF_NODE_STEP: {
+        case MF_NODE_CONST: {
             const mf_json_value* v_val = mf_json_get_field(data, "value");
             if (v_val) parse_const_tensor(v_val, data, &dst->constant, arena);
             break;

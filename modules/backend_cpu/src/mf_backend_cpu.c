@@ -186,14 +186,14 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
         state->ctx.global_error_ptr = (mf_atomic_i32*)&batch->main_state->error_code;
     }
 
+    state->ctx.linear_offset = (u32)start_idx;
+
     // Unflatten start index for N-dimensional operations (e.g. op_index)
     size_t temp_idx = start_idx;
     for (int i = batch->ndim - 1; i >= 0; --i) {
         state->ctx.tile_offset[i] = (u32)(temp_idx % batch->domain_shape[i]);
         temp_idx /= batch->domain_shape[i];
     }
-    // Restore linear offset to tile_offset[0] as expected by existing op_index implementation
-    state->ctx.tile_offset[0] = (u32)start_idx;
 
     for(int d=0; d<batch->ndim; ++d) state->ctx.domain_shape[d] = batch->domain_shape[d];
 
