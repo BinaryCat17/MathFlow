@@ -33,6 +33,17 @@ typedef enum {
     MF_ENGINE_ERR_RUNTIME
 } mf_engine_error;
 
+static inline const char* mf_engine_error_to_str(mf_engine_error err) {
+    switch (err) {
+        case MF_ENGINE_ERR_NONE:       return "NONE";
+        case MF_ENGINE_ERR_OOM:        return "OUT_OF_MEMORY";
+        case MF_ENGINE_ERR_SHAPE:      return "SHAPE_MISMATCH";
+        case MF_ENGINE_ERR_INVALID_OP: return "INVALID_OPCODE";
+        case MF_ENGINE_ERR_RUNTIME:    return "RUNTIME_KERNEL_FAILURE";
+        default:                       return "UNKNOWN_ENGINE_ERROR";
+    }
+}
+
 // --- Lifecycle ---
 
 mf_engine*      mf_engine_create(const mf_engine_desc* desc);

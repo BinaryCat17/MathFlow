@@ -65,7 +65,7 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
         
         mf_engine_error err = mf_engine_get_error(app.engine);
         if (err != MF_ENGINE_ERR_NONE) {
-            MF_LOG_ERROR("Engine error: %d\n", err);
+            MF_LOG_ERROR("Engine failure: %s", mf_engine_error_to_str(err));
             break;
         }
         

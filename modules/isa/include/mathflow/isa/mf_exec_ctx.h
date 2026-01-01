@@ -19,6 +19,18 @@ typedef enum {
     MF_ERROR_OUT_OF_BOUNDS = 5
 } mf_exec_error;
 
+static inline const char* mf_exec_error_to_str(mf_exec_error err) {
+    switch (err) {
+        case MF_ERROR_NONE:           return "NONE";
+        case MF_ERROR_OOM:            return "OUT_OF_MEMORY";
+        case MF_ERROR_SHAPE_MISMATCH: return "SHAPE_MISMATCH";
+        case MF_ERROR_INVALID_OP:     return "INVALID_OPCODE";
+        case MF_ERROR_RUNTIME:        return "RUNTIME_GENERIC_ERROR";
+        case MF_ERROR_OUT_OF_BOUNDS:  return "OUT_OF_BOUNDS";
+        default:                      return "UNKNOWN_ERROR";
+    }
+}
+
 /**
  * @brief Light-weight execution context (Ephemeral).
  * Created on the stack or per-thread. Points to data in mf_state or tiled buffers.

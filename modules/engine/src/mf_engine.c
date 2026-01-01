@@ -221,7 +221,7 @@ void mf_engine_dispatch(mf_engine* engine) {
                 engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, kernel_domain);
                 
                 if (ker->state.error_code != 0) {
-                    MF_LOG_ERROR("Kernel '%s' failed with error code %d.", ker->id, ker->state.error_code);
+                    MF_LOG_ERROR("Kernel '%s' failed: %s", ker->id, mf_exec_error_to_str((mf_exec_error)ker->state.error_code));
                     goto end_dispatch;
                 }
             }
