@@ -185,7 +185,6 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     
     state->ctx.batch_size = (u32)count;
     state->ctx.ndim = batch->ndim; 
-    state->ctx.tile_offset[0] = (u32)start_idx; 
     
     if (batch->main_state) {
         state->ctx.global_error_ptr = (mf_atomic_i32*)&batch->main_state->error_code;
