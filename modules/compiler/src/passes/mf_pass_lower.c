@@ -102,17 +102,15 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
         if (first->type == MF_JSON_VAL_NUMBER) {
             t->info.dtype = MF_DTYPE_F32;
             
-            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
-                t->info.ndim = (uint8_t)v_shape->as.array.count;
-                for(int k=0; k<t->info.ndim && k<MF_MAX_DIMS; ++k) {
-                    t->info.shape[k] = (int32_t)v_shape->as.array.items[k].as.n;
-                }
-            } else {
-                t->info.ndim = 1;
-                t->info.shape[0] = count;
-            }
-            
-            // Recalc strides
+                            if (v_shape && v_shape->type == MF_JSON_VAL_ARRAY) {
+                                t->info.ndim = (uint8_t)v_shape->as.array.count;
+                                for(int k=0; k<t->info.ndim && k<MF_MAX_DIMS; ++k) {
+                                    t->info.shape[k] = (int32_t)v_shape->as.array.items[k].as.n;
+                                }
+                            } else {
+                                t->info.ndim = 1;
+                                t->info.shape[0] = count;
+                            }            // Recalc strides
             int32_t stride = 1;
             for(int k=t->info.ndim-1; k>=0; --k) {
                 t->info.strides[k] = stride;

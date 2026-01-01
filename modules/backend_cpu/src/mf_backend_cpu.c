@@ -220,10 +220,12 @@ static void mf_backend_cpu_dispatch(
         if (!mf_tensor_is_valid(main_t)) continue;
 
         size_t t_count = mf_tensor_count(main_t);
-        if (t_count == total_elements) {
+        bool is_constant = main_state->ownership_flags && (main_state->ownership_flags[i] == 0);
+
+        if (t_count == total_elements && !is_constant) {
             batch.roles[i] = MF_TENSOR_ROLE_SPATIAL;
             batch.channels[i] = 1;
-        } else if (total_elements > 0 && t_count > total_elements && t_count % total_elements == 0) {
+        } else if (total_elements > 0 && t_count > total_elements && t_count % total_elements == 0 && !is_constant) {
             batch.roles[i] = MF_TENSOR_ROLE_SPATIAL;
             batch.channels[i] = (int)(t_count / total_elements);
         }

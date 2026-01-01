@@ -46,18 +46,21 @@
     *   [x] **Signature-Based Inference:** Add shape/type propagation rules directly into the macro to automate `mf_pass_analyze.c`.
     *   [x] **Auto-Mapping:** Replace manual `NODE_MAP` and `PORT_MAP` in `mf_pass_lower.c` with macro-generated tables.
 *   **Phase 37: Compiler Consolidation**
-    *   [ ] **Generic Analyze Pass:** Use operation categories to handle shape inference logic.
-    *   [ ] **Macro-Driven CodeGen:** Eliminate giant switch-cases in `mf_codegen.c` by expanding opcodes directly from definitions.
+    *   [x] **Generic Analyze Pass:** Use operation categories to handle shape inference logic.
+    *   [x] **Macro-Driven CodeGen:** Eliminate giant switch-cases in `mf_codegen.c` by expanding opcodes directly from definitions.
 *   **Phase 38: Advanced Memory Access (Strides)**
-    *   [ ] **Stride-Aware Kernels:** Refactor `modules/ops` to respect tensor strides.
-    *   [ ] **Iterator API:** Implement a lightweight N-dimensional iterator.
-    *   [ ] **Contiguous Fast-Path:** Optimize the iterator to collapse into simple pointer increments for dense data (inline/SIMD friendly).
-*   **Phase 39: SIMD Acceleration**
-    *   [ ] **SIMD Abstraction Layer:** Create `mf_simd.h` wrapping SSE/AVX/NEON intrinsics.
-    *   [ ] **Vectorized Kernels:** Use X-Macros to automatically generate vectorized paths for `ELEMENTWISE` operations.
-*   **Phase 40: Binary Hardening & Tooling**
-    *   [ ] **Program Checksums:** Add CRC32 to `mf_program` to detect corruption.
-    *   [ ] **Reflection API:** Expose kernel metadata to the Host for automated UI generation.
+    *   [x] **Stride-Aware Kernels:** Refactor `modules/ops` to respect tensor strides.
+    *   [x] **Iterator API:** Implement a lightweight N-dimensional iterator.
+    *   [x] **Contiguous Fast-Path:** Optimize the iterator to collapse into simple pointer increments for dense data (inline/SIMD friendly).
+*   **Phase 39: Code Quality & Refactoring (Cleanup)**
+    *   [ ] **Matrix Indexing Cleanup:** Standardize indexing in `mf_ops_matrix.c`, removing manual offset calculations where possible.
+    *   [ ] **Kernel Macro Overhaul:** Simplify `mf_kernel_utils.h` to reduce boilerplate and improve readability of generated kernels.
+    *   [ ] **Compiler Simplification:** Unify JSON parsing in `Lower` pass and move broadcast logic to `Base` module.
+*   **Phase 40: Performance & Hardening**
+    *   [ ] **SIMD Acceleration:** Create `mf_simd.h` wrapping SSE/AVX/NEON and vectorize elementwise kernels.
+    *   [ ] **Gather Optimization:** Optimize random access for contiguous data blocks and implement bounds-check elision.
+    *   [ ] **Binary Hardening:** Add CRC32 to `mf_program` and reflection API for the Host.
+
 
 ---
 

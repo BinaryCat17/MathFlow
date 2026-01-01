@@ -30,27 +30,32 @@ static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, true_val);
     MF_CHECK_INPUT(ctx, false_val);
     
-    // Enforce type from True Branch
     dst->info.dtype = true_val->info.dtype; 
     if (!mf_utils_resolve_ternary_shape(ctx, dst, cond, true_val, false_val)) return;
     MF_CHECK_DST_DATA(ctx, dst);
     
-    u8* c = (u8*)mf_tensor_data(cond);
-    f32* c_f32 = (f32*)c;
-    bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
-
-    f32* dt = (f32*)mf_tensor_data(true_val);
-    f32* df = (f32*)mf_tensor_data(false_val);
-    f32* dd = (f32*)mf_tensor_data(dst);
-
     size_t sz_c = mf_tensor_count(cond);
     size_t sz_t = mf_tensor_count(true_val);
     size_t sz_f = mf_tensor_count(false_val);
     size_t sz_dst = mf_tensor_count(dst);
 
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+    mf_tensor_iter it_c = mf_tensor_iter_begin(cond);
+    mf_tensor_iter it_t = mf_tensor_iter_begin(true_val);
+    mf_tensor_iter it_f = mf_tensor_iter_begin(false_val);
+
+    bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
+    size_t esize = mf_dtype_size(dst->info.dtype);
+
     for(size_t i=0; i<sz_dst; ++i) {
-        bool condition = cond_is_f32 ? (c_f32[i % sz_c] != 0.0f) : (c[i % sz_c] != 0);
-        dd[i] = condition ? dt[i % sz_t] : df[i % sz_f];
+        bool condition = cond_is_f32 ? (*((f32*)it_c.ptr) != 0.0f) : (*((u8*)it_c.ptr) != 0);
+        
+        memcpy(it_dst.ptr, condition ? it_t.ptr : it_f.ptr, esize);
+
+        if (sz_c > 1) mf_tensor_iter_next(&it_c);
+        if (sz_t > 1) mf_tensor_iter_next(&it_t);
+        if (sz_f > 1) mf_tensor_iter_next(&it_f);
+        mf_tensor_iter_next(&it_dst);
     }
 }
 

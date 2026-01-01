@@ -56,12 +56,16 @@ static void console_sink(void* user_data, mf_log_level level, const char* file, 
     const char* reset = "\x1b[0m";
     const char* name = (level <= MF_LOG_LEVEL_TRACE) ? level_names[level] : "UNK";
 
-    // Format: [TIME] [LEVEL] Message
-    // File path removed from console as per request
+    // Format: [TIME] [LEVEL] [FILE:LINE] Message
     FILE* stream = (level <= MF_LOG_LEVEL_ERROR) ? stderr : stdout;
     
-    fprintf(stream, "%s %s[%s]%s %s%s\n", 
-            time_buf, color, name, reset, message, reset);
+    // Extract only filename from path to keep it concise
+    const char* filename = strrchr(file, '/');
+    if (!filename) filename = strrchr(file, '\\');
+    filename = filename ? filename + 1 : file;
+
+    fprintf(stream, "%s %s[%s]%s [%s:%d] %s%s\n", 
+            time_buf, color, name, reset, filename, line, message, reset);
             
     // Flush to ensure we see logs immediately if crash happens
     fflush(stream);

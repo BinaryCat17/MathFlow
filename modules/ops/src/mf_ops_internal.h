@@ -29,7 +29,11 @@ static inline bool _mf_should_log_error(mf_exec_ctx* ctx) {
     do { \
         if (!(T) || !(T)->buffer || !(T)->buffer->data) { \
             if (_mf_should_log_error(CTX)) { \
-                MF_LOG_ERROR("Runtime Error: Invalid INPUT tensor access (Unallocated or Null). Op execution aborted."); \
+                int reg_idx = -1; \
+                if ((T) >= (CTX)->registers && (T) < (CTX)->registers + (CTX)->register_count) { \
+                    reg_idx = (int)((T) - (CTX)->registers); \
+                } \
+                MF_LOG_ERROR("Runtime Error: Invalid INPUT tensor access (Reg: %d, Unallocated or Null). Op execution aborted.", reg_idx); \
             } \
             (CTX)->error = MF_ERROR_RUNTIME; \
             return; \

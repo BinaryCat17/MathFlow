@@ -107,8 +107,6 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
                     node->out_shape = node->constant;
                 } else if (node->type == MF_NODE_INPUT) {
                     node->out_shape = s1 ? s1->out_shape : node->constant;
-                } else if (node->type == MF_NODE_CALL) {
-                    // Call shape is determined by the entry graph output ports (Handled by Inline Pass)
                 }
                 break;
 

@@ -83,32 +83,49 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, a);
     MF_CHECK_INPUT(ctx, b);
     
-    if (a->info.ndim != 2 || b->info.ndim != 2) return;
+    if (a->info.ndim != 2 || b->info.ndim != 2) {
+        MF_LOG_ERROR("MatMul Error: Inputs must be 2D. Got %dD and %dD", a->info.ndim, b->info.ndim);
+        ctx->error = MF_ERROR_SHAPE_MISMATCH;
+        return;
+    }
 
     int32_t M = a->info.shape[0];
     int32_t K = a->info.shape[1];
     int32_t N = b->info.shape[1];
 
-    if (K != b->info.shape[0]) return;
+    if (K != b->info.shape[0]) {
+        MF_LOG_ERROR("MatMul Error: Shape mismatch. [%d,%d] x [%d,%d]", M, K, b->info.shape[0], N);
+        ctx->error = MF_ERROR_SHAPE_MISMATCH;
+        return;
+    }
 
     int32_t out_shape[] = { M, N };
     dst->info.dtype = a->info.dtype;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, 2)) return;
     MF_CHECK_DST_DATA(ctx, dst);
 
-    f32* C = (f32*)mf_tensor_data(dst);
-    f32* da = (f32*)mf_tensor_data(a);
-    f32* db = (f32*)mf_tensor_data(b);
+    f32* base_a = (f32*)mf_tensor_data(a);
+    f32* base_b = (f32*)mf_tensor_data(b);
+    f32* base_c = (f32*)mf_tensor_data(dst);
+
+    int32_t stride_ra = a->info.strides[0];
+    int32_t stride_ka = a->info.strides[1];
+    int32_t stride_kb = b->info.strides[0];
+    int32_t stride_cb = b->info.strides[1];
+    int32_t stride_rc = dst->info.strides[0];
+    int32_t stride_cc = dst->info.strides[1];
 
     for (int32_t r = 0; r < M; r++) {
         for (int32_t c = 0; c < N; c++) { 
             float sum = 0.0f; 
+            f32* pa = base_a + r * stride_ra;
+            f32* pb = base_b + c * stride_cb;
             for (int32_t k = 0; k < K; k++) {
-                int32_t idx_a[2] = {r, k};
-                int32_t idx_b[2] = {k, c};
-                sum += da[mf_tensor_get_offset(a, idx_a)] * db[mf_tensor_get_offset(b, idx_b)];
+                sum += (*pa) * (*pb);
+                pa += stride_ka;
+                pb += stride_kb;
             }
-            C[r * N + c] = sum; 
+            base_c[r * stride_rc + c * stride_cc] = sum; 
         }
     }
 }
@@ -144,19 +161,20 @@ static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     if ((dim == 3 && sz_a == 9) || (dim == 4 && sz_a == 16)) {
         // Densify to local mat for inverse call
+        int32_t s0 = a->info.strides[0];
+        int32_t s1 = a->info.strides[1];
+
         if (dim == 3) {
             mf_mat3 m;
             for(int r=0; r<3; ++r) for(int c=0; c<3; ++c) {
-                int32_t idx[2] = {r, c};
-                m.m[r * 3 + c] = da[mf_tensor_get_offset(a, idx)];
+                m.m[r * 3 + c] = da[r * s0 + c * s1];
             }
             mf_mat3 res = mf_mat3_inverse(m);
             memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat3));
         } else {
             mf_mat4 m;
             for(int r=0; r<4; ++r) for(int c=0; c<4; ++c) {
-                int32_t idx[2] = {r, c};
-                m.m[r * 4 + c] = da[mf_tensor_get_offset(a, idx)];
+                m.m[r * 4 + c] = da[r * s0 + c * s1];
             }
             mf_mat4 res = mf_mat4_inverse(m);
             memcpy(mf_tensor_data(dst), res.m, sizeof(mf_mat4));
@@ -197,13 +215,16 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, out_ndim)) return;
     MF_CHECK_DST_DATA(ctx, dst);
     
-    f32* D = (f32*)mf_tensor_data(dst);
     mf_tensor_iter it_a = mf_tensor_iter_begin(a);
     mf_tensor_iter it_b = mf_tensor_iter_begin(b);
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
     
     for (size_t i = 0; i < sz_a; ++i) {
-        D[i*2 + 0] = *((f32*)it_a.ptr);
-        D[i*2 + 1] = *((f32*)it_b.ptr);
+        *((f32*)it_dst.ptr) = *((f32*)it_a.ptr);
+        mf_tensor_iter_next(&it_dst);
+        *((f32*)it_dst.ptr) = *((f32*)it_b.ptr);
+        mf_tensor_iter_next(&it_dst);
+
         mf_tensor_iter_next(&it_a);
         mf_tensor_iter_next(&it_b);
     }

@@ -77,40 +77,47 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
     size_t sz_dst = mf_tensor_count(dst); \
-    TYPE_OUT* dd = (TYPE_OUT*)mf_tensor_data(dst); \
     mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
-    if (sz_a == 1 && sz_b == 1) { \
-        TYPE_IN va = *((TYPE_IN*)mf_tensor_data(a)); \
-        TYPE_IN vb = *((TYPE_IN*)mf_tensor_data(b)); \
-        for(size_t i=0; i<sz_dst; ++i) { \
-            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-            mf_tensor_iter_next(&it_dst); \
-        } \
-    } else if (sz_a == 1) { \
-        TYPE_IN va = *((TYPE_IN*)mf_tensor_data(a)); \
-        mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
-        for(size_t i=0; i<sz_dst; ++i) { \
-            TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
-            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-            mf_tensor_iter_next(&it_b); mf_tensor_iter_next(&it_dst); \
-        } \
-    } else if (sz_b == 1) { \
-        TYPE_IN vb = *((TYPE_IN*)mf_tensor_data(b)); \
-        mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
-        for(size_t i=0; i<sz_dst; ++i) { \
-            TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
-            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-            mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_dst); \
-        } \
-    } else { \
-        mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
-        mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
-        for(size_t i=0; i<sz_dst; ++i) { \
-            TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
-            TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
-            *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-            mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_b); mf_tensor_iter_next(&it_dst); \
-        } \
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
+    mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
+    for(size_t i=0; i<sz_dst; ++i) { \
+        TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
+        TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
+        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+        if (sz_a > 1) mf_tensor_iter_next(&it_a); \
+        if (sz_b > 1) mf_tensor_iter_next(&it_b); \
+        mf_tensor_iter_next(&it_dst); \
+    } \
+}
+
+#define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR) \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ); \
+    mf_tensor* c = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ); \
+    MF_CHECK_DST_VIEW(ctx, dst); \
+    MF_CHECK_INPUT(ctx, a); \
+    MF_CHECK_INPUT(ctx, b); \
+    MF_CHECK_INPUT(ctx, c); \
+    dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \
+    if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, c)) return; \
+    MF_CHECK_DST_DATA(ctx, dst); \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    size_t sz_c = mf_tensor_count(c); size_t sz_dst = mf_tensor_count(dst); \
+    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
+    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
+    mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
+    mf_tensor_iter it_c = mf_tensor_iter_begin(c); \
+    for(size_t i=0; i<sz_dst; ++i) { \
+        TYPE_A va = *((TYPE_A*)it_a.ptr); \
+        TYPE_B vb = *((TYPE_B*)it_b.ptr); \
+        TYPE_C vc = *((TYPE_C*)it_c.ptr); \
+        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
+        if (sz_a > 1) mf_tensor_iter_next(&it_a); \
+        if (sz_b > 1) mf_tensor_iter_next(&it_b); \
+        if (sz_c > 1) mf_tensor_iter_next(&it_c); \
+        mf_tensor_iter_next(&it_dst); \
     } \
 }
 

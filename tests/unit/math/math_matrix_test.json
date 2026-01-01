@@ -1,25 +1,25 @@
 {
     "nodes": [
-        { "id": "1", "type": "Const", "data": {"shape": [3, 3], "value": [2, 0, 0, 0, 2, 0, 0, 0, 2]} },
-        { "id": "2", "type": "Const", "data": {"shape": [3, 3], "value": [1, 0, 0, 0, 1, 0, 0, 0, 1]} },
-        { "id": "20", "type": "Const", "data": {"shape": [4, 4], "value": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]} },
+        { "id": "const_a", "type": "Const", "data": {"shape": [3, 3], "value": [2, 0, 0, 0, 2, 0, 0, 0, 2]} },
+        { "id": "const_b", "type": "Const", "data": {"shape": [3, 3], "value": [1, 0, 0, 0, 1, 0, 0, 0, 1]} },
+        { "id": "const_aff", "type": "Const", "data": {"shape": [4, 4], "value": [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 2, 3, 1]} },
 
-        { "id": "10", "type": "MatMul" },
-        { "id": "11", "type": "Inverse" },
-        { "id": "21", "type": "Transpose" },
-        { "id": "22", "type": "Inverse" },
+        { "id": "mm", "type": "MatMul" },
+        { "id": "inv_a", "type": "Inverse" },
+        { "id": "trans_aff", "type": "Transpose" },
+        { "id": "inv_aff", "type": "Inverse" },
 
         { "id": "out_matmul", "type": "Output" },
         { "id": "out_transpose", "type": "Output" }
     ],
     "links": [
-        { "src": "1", "src_port": "out", "dst": "10", "dst_port": "a" },
-        { "src": "2", "src_port": "out", "dst": "10", "dst_port": "b" },
-        { "src": "1", "src_port": "out", "dst": "11", "dst_port": "in" },
-        { "src": "20", "src_port": "out", "dst": "21", "dst_port": "in" },
-        { "src": "20", "src_port": "out", "dst": "22", "dst_port": "in" },
+        { "src": "const_a", "src_port": "out", "dst": "mm", "dst_port": "a" },
+        { "src": "const_b", "src_port": "out", "dst": "mm", "dst_port": "b" },
+        { "src": "const_a", "src_port": "out", "dst": "inv_a", "dst_port": "in" },
+        { "src": "const_aff", "src_port": "out", "dst": "trans_aff", "dst_port": "in" },
+        { "src": "const_aff", "src_port": "out", "dst": "inv_aff", "dst_port": "in" },
 
-        { "src": "10", "src_port": "out", "dst": "out_matmul", "dst_port": "in" },
-        { "src": "21", "src_port": "out", "dst": "out_transpose", "dst_port": "in" }
+        { "src": "mm", "src_port": "out", "dst": "out_matmul", "dst_port": "in" },
+        { "src": "trans_aff", "src_port": "out", "dst": "out_transpose", "dst_port": "in" }
     ]
 }
