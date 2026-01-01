@@ -5,109 +5,69 @@
         { "id": "fontatlas", "type": "Input", "data": {"shape": [262144], "dtype": "f32"} },
         { "id": "fontinfo", "type": "Input", "data": {"shape": [9600], "dtype": "f32"} },
         { "id": "fontsize", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
-        
         { "id": "pixelx", "type": "Index", "data": {"axis": 1} },
         { "id": "pixely", "type": "Index", "data": {"axis": 0} },
-
         { "id": "idx0", "type": "Const", "data": {"value": 0} },
         { "id": "idx1", "type": "Const", "data": {"value": 1} },
         { "id": "idx2", "type": "Const", "data": {"value": 2} },
         { "id": "idx3", "type": "Const", "data": {"value": 3} },
         { "id": "idx4", "type": "Const", "data": {"value": 4} },
-        { "id": "idx5", "type": "Const", "data": {"value": 5} },
+        { "id": "idx7", "type": "Const", "data": {"value": 7} },
         { "id": "eight", "type": "Const", "data": {"value": 8} },
-
         { "id": "posx", "type": "Gather" },
         { "id": "posy", "type": "Gather" },
-
         { "id": "dx", "type": "Sub" },
         { "id": "dy", "type": "Sub" },
-
         { "id": "adv_factor", "type": "Const", "data": {"value": 0.55} },
         { "id": "charw", "type": "Mul" },
-        
         { "id": "charidx_f", "type": "Div" },
         { "id": "charidx", "type": "Floor" },
-        
         { "id": "charcode", "type": "Gather" },
-        
         { "id": "base_idx", "type": "Mul" },
-        
         { "id": "u0_idx", "type": "Add" },
         { "id": "v0_idx", "type": "Add" },
         { "id": "u1_idx", "type": "Add" },
         { "id": "v1_idx", "type": "Add" },
-
+        { "id": "yoff_idx", "type": "Add" },
         { "id": "u0", "type": "Gather" },
         { "id": "v0", "type": "Gather" },
         { "id": "u1", "type": "Gather" },
         { "id": "v1", "type": "Gather" },
-        
-        { "id": "localx", "type": "Sub" },
+        { "id": "yoff_b", "type": "Gather" },
+        { "id": "baked_size", "type": "Const", "data": {"value": 32.0} },
+        { "id": "baseline_ratio", "type": "Const", "data": {"value": 0.75} },
+        { "id": "render_scale", "type": "Div" },
+        { "id": "yoff_base", "type": "Mul" },
+        { "id": "baseline_offset", "type": "Mul" },
+        { "id": "yoff_screen", "type": "Add" },
+        { "id": "gh_b", "type": "Sub" },
+        { "id": "atlas_dim", "type": "Const", "data": {"value": 512.0} },
+        { "id": "gh_px", "type": "Mul" },
+        { "id": "gh_screen", "type": "Mul" },
+        { "id": "rel_y", "type": "Sub" },
         { "id": "localy", "type": "Div" },
-
-        { "id": "inset", "type": "Const", "data": {"value": 0.0005} },
-        { "id": "inset_inv", "type": "Const", "data": {"value": 0.999} },
-
-        { "id": "localx_s", "type": "Mul" },
-        { "id": "localy_s", "type": "Mul" },
-        { "id": "localx_fit", "type": "Add" },
-        { "id": "localy_fit", "type": "Add" },
-
+        { "id": "localx", "type": "Sub" },
         { "id": "atlasu", "type": "Mix" },
         { "id": "atlasv", "type": "Mix" },
-        
-        { "id": "atlasw", "type": "Const", "data": {"value": 512.0} },
-        { "id": "half", "type": "Const", "data": {"value": 0.5} },
-        { "id": "one_f", "type": "Const", "data": {"value": 1.0} },
-
-        { "id": "u_px_raw", "type": "Mul" },
-        { "id": "v_px_raw", "type": "Mul" },
-        
-        { "id": "u_px", "type": "Sub" },
-        { "id": "v_px", "type": "Sub" },
-
-        { "id": "u_low_f", "type": "Floor" },
-        { "id": "v_low_f", "type": "Floor" },
-        
-        { "id": "u_high_f", "type": "Add" },
-        { "id": "v_high_f", "type": "Add" },
-        
-        { "id": "tx", "type": "Sub" },
-        { "id": "ty", "type": "Sub" },
-
-        { "id": "row0", "type": "Mul" },
-        { "id": "row1", "type": "Mul" },
-        
-        { "id": "idx00", "type": "Add" },
-        { "id": "idx10", "type": "Add" },
-        { "id": "idx01", "type": "Add" },
-        { "id": "idx11", "type": "Add" },
-
-        { "id": "s00", "type": "Gather" },
-        { "id": "s10", "type": "Gather" },
-        { "id": "s01", "type": "Gather" },
-        { "id": "s11", "type": "Gather" },
-
-        { "id": "v_top", "type": "Mix" },
-        { "id": "v_bot", "type": "Mix" },
-        { "id": "sdf", "type": "Mix" },
-        
+        { "id": "au_px", "type": "Mul" },
+        { "id": "av_px", "type": "Mul" },
+        { "id": "au_idx", "type": "Floor" },
+        { "id": "av_idx", "type": "Floor" },
+        { "id": "rowoff", "type": "Mul" },
+        { "id": "flatidx", "type": "Add" },
+        { "id": "sdf", "type": "Gather" },
         { "id": "edges", "type": "Const", "data": {"value": [0.45, 0.55]} },
         { "id": "mask", "type": "SmoothStep" },
-
         { "id": "zero", "type": "Const", "data": {"value": 0.0} },
+        { "id": "one", "type": "Const", "data": {"value": 1.0} },
         { "id": "text_len", "type": "Const", "data": {"value": 24.0} },
-        
         { "id": "is_pos_x", "type": "GreaterEqual" },
         { "id": "is_within_len", "type": "Less" },
         { "id": "is_pos_y", "type": "GreaterEqual" },
-        { "id": "is_within_height", "type": "Less" },
-
+        { "id": "is_within_h", "type": "Less" },
         { "id": "valid_x", "type": "And" },
         { "id": "valid_y", "type": "And" },
         { "id": "is_valid", "type": "And" },
-        
         { "id": "final_alpha", "type": "Select" },
         { "id": "alpha", "type": "Output" }
     ],
@@ -116,25 +76,19 @@
         { "src": "pos", "dst": "posx", "dst_port": "data" },
         { "src": "idx0", "dst": "posx", "dst_port": "indices" },
         { "src": "posx", "dst": "dx", "dst_port": "b" },
-        
         { "src": "pixely", "dst": "dy", "dst_port": "a" },
         { "src": "pos", "dst": "posy", "dst_port": "data" },
         { "src": "idx1", "dst": "posy", "dst_port": "indices" },
         { "src": "posy", "dst": "dy", "dst_port": "b" },
-
         { "src": "fontsize", "dst": "charw", "dst_port": "a" },
         { "src": "adv_factor", "dst": "charw", "dst_port": "b" },
-
         { "src": "dx", "dst": "charidx_f", "dst_port": "a" },
         { "src": "charw", "dst": "charidx_f", "dst_port": "b" },
         { "src": "charidx_f", "dst": "charidx", "dst_port": "in" },
-        
         { "src": "text", "dst": "charcode", "dst_port": "data" },
         { "src": "charidx", "dst": "charcode", "dst_port": "indices" },
-
         { "src": "charcode", "dst": "base_idx", "dst_port": "a" },
         { "src": "eight", "dst": "base_idx", "dst_port": "b" },
-
         { "src": "base_idx", "dst": "u0_idx", "dst_port": "a" },
         { "src": "idx1", "dst": "u0_idx", "dst_port": "b" },
         { "src": "base_idx", "dst": "v0_idx", "dst_port": "a" },
@@ -143,7 +97,8 @@
         { "src": "idx3", "dst": "u1_idx", "dst_port": "b" },
         { "src": "base_idx", "dst": "v1_idx", "dst_port": "a" },
         { "src": "idx4", "dst": "v1_idx", "dst_port": "b" },
-
+        { "src": "base_idx", "dst": "yoff_idx", "dst_port": "a" },
+        { "src": "idx7", "dst": "yoff_idx", "dst_port": "b" },
         { "src": "fontinfo", "dst": "u0", "dst_port": "data" },
         { "src": "u0_idx", "dst": "u0", "dst_port": "indices" },
         { "src": "fontinfo", "dst": "v0", "dst_port": "data" },
@@ -152,129 +107,65 @@
         { "src": "u1_idx", "dst": "u1", "dst_port": "indices" },
         { "src": "fontinfo", "dst": "v1", "dst_port": "data" },
         { "src": "v1_idx", "dst": "v1", "dst_port": "indices" },
-
+        { "src": "fontinfo", "dst": "yoff_b", "dst_port": "data" },
+        { "src": "yoff_idx", "dst": "yoff_b", "dst_port": "indices" },
+        { "src": "fontsize", "dst": "render_scale", "dst_port": "a" },
+        { "src": "baked_size", "dst": "render_scale", "dst_port": "b" },
+        { "src": "yoff_b", "dst": "yoff_base", "dst_port": "a" },
+        { "src": "render_scale", "dst": "yoff_base", "dst_port": "b" },
+        { "src": "baseline_ratio", "dst": "baseline_offset", "dst_port": "a" },
+        { "src": "fontsize", "dst": "baseline_offset", "dst_port": "b" },
+        { "src": "yoff_base", "dst": "yoff_screen", "dst_port": "a" },
+        { "src": "baseline_offset", "dst": "yoff_screen", "dst_port": "b" },
+        { "src": "v1", "dst": "gh_b", "dst_port": "a" },
+        { "src": "v0", "dst": "gh_b", "dst_port": "b" },
+        { "src": "gh_b", "dst": "gh_px", "dst_port": "a" },
+        { "src": "atlas_dim", "dst": "gh_px", "dst_port": "b" },
+        { "src": "gh_px", "dst": "gh_screen", "dst_port": "a" },
+        { "src": "render_scale", "dst": "gh_screen", "dst_port": "b" },
+        { "src": "dy", "dst": "rel_y", "dst_port": "a" },
+        { "src": "yoff_screen", "dst": "rel_y", "dst_port": "b" },
+        { "src": "rel_y", "dst": "localy", "dst_port": "a" },
+        { "src": "gh_screen", "dst": "localy", "dst_port": "b" },
         { "src": "charidx_f", "dst": "localx", "dst_port": "a" },
         { "src": "charidx", "dst": "localx", "dst_port": "b" },
-        { "src": "dy", "dst": "localy", "dst_port": "a" },
-        { "src": "fontsize", "dst": "localy", "dst_port": "b" },
-
-                { "src": "localx", "dst": "localx_s", "dst_port": "a" },
-
-                { "src": "inset_inv", "dst": "localx_s", "dst_port": "b" },
-
-                { "src": "localx_s", "dst": "localx_fit", "dst_port": "a" },
-
-                { "src": "inset", "dst": "localx_fit", "dst_port": "b" },
-
-        
-
-                { "src": "localy", "dst": "localy_s", "dst_port": "a" },
-
-                { "src": "inset_inv", "dst": "localy_s", "dst_port": "b" },
-
-                { "src": "localy_s", "dst": "localy_fit", "dst_port": "a" },
-
-                { "src": "inset", "dst": "localy_fit", "dst_port": "b" },
-
-        
-
-                { "src": "u0", "dst": "atlasu", "dst_port": "a" },
-
-                { "src": "u1", "dst": "atlasu", "dst_port": "b" },
-
-                { "src": "localx_fit", "dst": "atlasu", "dst_port": "t" },
-
-        
-
-                { "src": "v0", "dst": "atlasv", "dst_port": "a" },
-
-                { "src": "v1", "dst": "atlasv", "dst_port": "b" },
-
-                { "src": "localy_fit", "dst": "atlasv", "dst_port": "t" },
-
-        
-
-        { "src": "atlasu", "dst": "u_px_raw", "dst_port": "a" },
-        { "src": "atlasw", "dst": "u_px_raw", "dst_port": "b" },
-        { "src": "atlasv", "dst": "v_px_raw", "dst_port": "a" },
-        { "src": "atlasw", "dst": "v_px_raw", "dst_port": "b" },
-
-        { "src": "u_px_raw", "dst": "u_px", "dst_port": "a" },
-        { "src": "half", "dst": "u_px", "dst_port": "b" },
-        { "src": "v_px_raw", "dst": "v_px", "dst_port": "a" },
-        { "src": "half", "dst": "v_px", "dst_port": "b" },
-
-        { "src": "u_px", "dst": "u_low_f", "dst_port": "in" },
-        { "src": "v_px", "dst": "v_low_f", "dst_port": "in" },
-        
-        { "src": "u_low_f", "dst": "u_high_f", "dst_port": "a" },
-        { "src": "one_f", "dst": "u_high_f", "dst_port": "b" },
-        { "src": "v_low_f", "dst": "v_high_f", "dst_port": "a" },
-        { "src": "one_f", "dst": "v_high_f", "dst_port": "b" },
-
-        { "src": "u_px", "dst": "tx", "dst_port": "a" },
-        { "src": "u_low_f", "dst": "tx", "dst_port": "b" },
-        { "src": "v_px", "dst": "ty", "dst_port": "a" },
-        { "src": "v_low_f", "dst": "ty", "dst_port": "b" },
-
-        { "src": "v_low_f", "dst": "row0", "dst_port": "a" },
-        { "src": "atlasw", "dst": "row0", "dst_port": "b" },
-        { "src": "v_high_f", "dst": "row1", "dst_port": "a" },
-        { "src": "atlasw", "dst": "row1", "dst_port": "b" },
-
-        { "src": "row0", "dst": "idx00", "dst_port": "a" },
-        { "src": "u_low_f", "dst": "idx00", "dst_port": "b" },
-        { "src": "row0", "dst": "idx10", "dst_port": "a" },
-        { "src": "u_high_f", "dst": "idx10", "dst_port": "b" },
-        { "src": "row1", "dst": "idx01", "dst_port": "a" },
-        { "src": "u_low_f", "dst": "idx01", "dst_port": "b" },
-        { "src": "row1", "dst": "idx11", "dst_port": "a" },
-        { "src": "u_high_f", "dst": "idx11", "dst_port": "b" },
-
-        { "src": "fontatlas", "dst": "s00", "dst_port": "data" },
-        { "src": "idx00", "dst": "s00", "dst_port": "indices" },
-        { "src": "fontatlas", "dst": "s10", "dst_port": "data" },
-        { "src": "idx10", "dst": "s10", "dst_port": "indices" },
-        { "src": "fontatlas", "dst": "s01", "dst_port": "data" },
-        { "src": "idx01", "dst": "s01", "dst_port": "indices" },
-        { "src": "fontatlas", "dst": "s11", "dst_port": "data" },
-        { "src": "idx11", "dst": "s11", "dst_port": "indices" },
-
-        { "src": "s00", "dst": "v_top", "dst_port": "a" },
-        { "src": "s10", "dst": "v_top", "dst_port": "b" },
-        { "src": "tx", "dst": "v_top", "dst_port": "t" },
-
-        { "src": "s01", "dst": "v_bot", "dst_port": "a" },
-        { "src": "s11", "dst": "v_bot", "dst_port": "b" },
-        { "src": "tx", "dst": "v_bot", "dst_port": "t" },
-
-        { "src": "v_top", "dst": "sdf", "dst_port": "a" },
-        { "src": "v_bot", "dst": "sdf", "dst_port": "b" },
-        { "src": "ty", "dst": "sdf", "dst_port": "t" },
-
+        { "src": "u0", "dst": "atlasu", "dst_port": "a" },
+        { "src": "u1", "dst": "atlasu", "dst_port": "b" },
+        { "src": "localx", "dst": "atlasu", "dst_port": "t" },
+        { "src": "v0", "dst": "atlasv", "dst_port": "a" },
+        { "src": "v1", "dst": "atlasv", "dst_port": "b" },
+        { "src": "localy", "dst": "atlasv", "dst_port": "t" },
+        { "src": "atlasu", "dst": "au_px", "dst_port": "a" },
+        { "src": "atlas_dim", "dst": "au_px", "dst_port": "b" },
+        { "src": "atlasv", "dst": "av_px", "dst_port": "a" },
+        { "src": "atlas_dim", "dst": "av_px", "dst_port": "b" },
+        { "src": "au_px", "dst": "au_idx", "dst_port": "in" },
+        { "src": "av_px", "dst": "av_idx", "dst_port": "in" },
+        { "src": "av_idx", "dst": "rowoff", "dst_port": "a" },
+        { "src": "atlas_dim", "dst": "rowoff", "dst_port": "b" },
+        { "src": "rowoff", "dst": "flatidx", "dst_port": "a" },
+        { "src": "au_idx", "dst": "flatidx", "dst_port": "b" },
+        { "src": "fontatlas", "dst": "sdf", "dst_port": "data" },
+        { "src": "flatidx", "dst": "sdf", "dst_port": "indices" },
         { "src": "sdf", "dst": "mask", "dst_port": "x" },
         { "src": "edges", "dst": "mask", "dst_port": "edges" },
-        
         { "src": "charidx_f", "dst": "is_pos_x", "dst_port": "a" },
         { "src": "zero", "dst": "is_pos_x", "dst_port": "b" },
         { "src": "charidx_f", "dst": "is_within_len", "dst_port": "a" },
         { "src": "text_len", "dst": "is_within_len", "dst_port": "b" },
         { "src": "localy", "dst": "is_pos_y", "dst_port": "a" },
         { "src": "zero", "dst": "is_pos_y", "dst_port": "b" },
-        { "src": "localy", "dst": "is_within_height", "dst_port": "a" },
-        { "src": "one_f", "dst": "is_within_height", "dst_port": "b" },
-
+        { "src": "localy", "dst": "is_within_h", "dst_port": "a" },
+        { "src": "one", "dst": "is_within_h", "dst_port": "b" },
         { "src": "is_pos_x", "dst": "valid_x", "dst_port": "a" },
         { "src": "is_within_len", "dst": "valid_x", "dst_port": "b" },
         { "src": "is_pos_y", "dst": "valid_y", "dst_port": "a" },
-        { "src": "is_within_height", "dst": "valid_y", "dst_port": "b" },
+        { "src": "is_within_h", "dst": "valid_y", "dst_port": "b" },
         { "src": "valid_x", "dst": "is_valid", "dst_port": "a" },
         { "src": "valid_y", "dst": "is_valid", "dst_port": "b" },
-
         { "src": "is_valid", "dst": "final_alpha", "dst_port": "cond" },
         { "src": "mask", "dst": "final_alpha", "dst_port": "true" },
         { "src": "zero", "dst": "final_alpha", "dst_port": "false" },
-
         { "src": "final_alpha", "dst": "alpha", "dst_port": "in" }
     ]
 }
