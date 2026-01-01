@@ -1,0 +1,13 @@
+{
+    "nodes": [
+        { "id": "Data", "type": "Const", "data": {"value": [10, 20, 30], "dtype": "f32"} },
+        { "id": "Idx", "type": "Const", "data": {"value": [0, 5, 1], "dtype": "i32"} },
+        { "id": "G", "type": "Gather" },
+        { "id": "Out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Data", "dst": "G", "dst_port": "data" },
+        { "src": "Idx", "dst": "G", "dst_port": "indices" },
+        { "src": "G", "dst": "Out", "dst_port": "in" }
+    ]
+}

@@ -69,23 +69,18 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->register_idx = node_idx;
             sym->related_name_hash = 0;
             
+            MF_LOG_TRACE("CodeGen: Found symbol '%s' at reg %d", sym->name, node_idx);
+            
             sym->flags = 0;
             if (node->type == MF_NODE_INPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_INPUT;
             } else if (node->type == MF_NODE_OUTPUT) {
                 sym->flags |= MF_SYMBOL_FLAG_OUTPUT;
-                
-                // Try to find the input that drives this output's shape
-                mf_ir_node* source = find_shape_source(ir, node);
-                if (source && source->id) {
-                    sym->related_name_hash = mf_fnv1a_hash(source->id);
-                    MF_LOG_TRACE("Linked Output '%s' to Input '%s' (Shape Propagation)", node->id, source->id);
-                }
+                // ...
             } else {
-                // Constants and Named Logic nodes are internal state, 
-                // neither Input nor Output for the Pipeline interface.
                 sym->flags = 0; 
             }
+            MF_LOG_TRACE("CodeGen: Symbol '%s' flags: 0x%02X (Type: %d)", sym->name, sym->flags, node->type);
         }
 
         // Setup Tensor Descriptor

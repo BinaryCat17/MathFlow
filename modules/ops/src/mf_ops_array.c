@@ -178,16 +178,11 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
         if (src_indices->info.dtype == MF_DTYPE_F32) idx = (int)((f32*)idx_ptr)[i];
         else if (src_indices->info.dtype == MF_DTYPE_I32) idx = ((int32_t*)idx_ptr)[i];
         
-        // Safety: for Gather, we do NOT stop execution on OOB index, 
-        // just return 0 and log a warning (throttled).
         if (idx >= 0 && (size_t)idx < data_count) {
             memcpy(out_ptr + i * elem_size, data_ptr + idx * elem_size, elem_size);
         } else {
             memset(out_ptr + i * elem_size, 0, elem_size);
-            
-            // Optional: Throttle logging here if needed. 
-            // For now, let's keep it silent to let graphics run, 
-            // or use a trace log.
+            ctx->error = MF_ERROR_OUT_OF_BOUNDS;
         }
     }
 }

@@ -8,6 +8,7 @@
 #include <mathflow/base/mf_platform.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdalign.h>
 
 // --- Constants ---
 
@@ -35,7 +36,7 @@ typedef struct {
     void* heap_mem;
     size_t heap_size;
     mf_arena reg_arena;
-    u8 reg_arena_mem[MF_CPU_REG_ARENA_SZ]; 
+    _Alignas(16) u8 reg_arena_mem[MF_CPU_REG_ARENA_SZ]; 
 } mf_backend_cpu_worker_state;
 
 typedef struct {
@@ -59,7 +60,14 @@ static void* worker_init(int thread_idx, void* user_data) {
         MF_LOG_ERROR("CPU Backend: Failed to allocate worker state.");
         return NULL;
     }
-    state->heap_mem = malloc(MF_CPU_WORKER_HEAP_SZ);
+    
+    // Use aligned allocation for SIMD friendliness
+#ifdef _WIN32
+    state->heap_mem = _aligned_malloc(MF_CPU_WORKER_HEAP_SZ, 16);
+#else
+    state->heap_mem = aligned_alloc(16, MF_CPU_WORKER_HEAP_SZ);
+#endif
+
     if (!state->heap_mem) {
         MF_LOG_ERROR("CPU Backend: Failed to allocate worker heap (%zu bytes).", (size_t)MF_CPU_WORKER_HEAP_SZ);
         free(state);
@@ -75,7 +83,11 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
     (void)user_data;
     mf_backend_cpu_worker_state* state = (mf_backend_cpu_worker_state*)thread_local_data;
     if (!state) return;
+#ifdef _WIN32
+    _aligned_free(state->heap_mem);
+#else
     free(state->heap_mem);
+#endif
     free(state);
 }
 
@@ -214,7 +226,7 @@ static void mf_backend_cpu_dispatch(
 
     if (total_elements <= MF_CPU_INLINE_THRESHOLD || total_jobs == 1) {
         mf_backend_cpu_worker_state local_worker;
-        u8 local_heap[MF_KB(64)]; 
+        _Alignas(16) u8 local_heap[MF_KB(64)]; 
         local_worker.heap_mem = local_heap;
         local_worker.heap_size = sizeof(local_heap);
         mf_arena_init(&local_worker.temp_arena, local_worker.heap_mem, local_worker.heap_size);

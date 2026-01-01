@@ -15,7 +15,8 @@ typedef enum {
     MF_ERROR_OOM = 1,          
     MF_ERROR_SHAPE_MISMATCH = 2, 
     MF_ERROR_INVALID_OP = 3,
-    MF_ERROR_RUNTIME = 4
+    MF_ERROR_RUNTIME = 4,
+    MF_ERROR_OUT_OF_BOUNDS = 5
 } mf_exec_error;
 
 /**

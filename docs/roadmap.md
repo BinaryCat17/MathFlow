@@ -25,14 +25,14 @@
 *   **Phase 32: Memory Safety & OOM Handling**
     *   [x] **Explicit OOM Checks:** Add return value validation for all `MF_ARENA_PUSH` and `mf_buffer_alloc` calls.
     *   [x] **Allocator Diagnostics:** Ensure `mf_arena_alloc` and `mf_heap_alloc` log errors on failure.
-    *   [ ] **Alignment Audit:** Ensure all internal buffers (especially for workers) are properly aligned for SIMD.
+    *   [x] **Alignment Audit:** Ensure all internal buffers (especially for workers) are properly aligned for SIMD.
 *   **Phase 33: Runtime Observability**
     *   [x] **Tensor Op Logs:** Add `MF_LOG_ERROR` to `Slice`, `Reshape`, and `Transpose` when bounds or shapes are invalid.
-    *   [ ] **Backend Robustness:** Validate program limits (e.g., Max Registers) and check worker initialization.
+    *   [x] **Backend Robustness:** Validate program limits (e.g., Max Registers) and check worker initialization.
 *   **Phase 34: Refactoring for Safety**
-    *   [ ] **Atomic Error Reporting:** Standardize how runtime errors are propagated from background threads to the main engine.
+    *   [x] **Atomic Error Reporting:** Standardize how runtime errors are propagated from background threads to the main engine.
 *   **Phase 35: Integration Testing**
-    *   [ ] **Negative Tests:** Create a test suite for "invalid" graphs (cycles, type mismatches, OOM) to verify diagnostic output.
+    *   [x] **Negative Tests:** Create a test suite for "invalid" graphs (cycles, type mismatches, OOM) to verify diagnostic output.
 
 ---
 

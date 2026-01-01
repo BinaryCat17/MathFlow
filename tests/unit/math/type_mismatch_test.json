@@ -1,0 +1,11 @@
+{
+    "nodes": [
+        { "id": "F", "type": "Const", "data": {"value": 1.0, "dtype": "f32"} },
+        { "id": "I", "type": "Const", "data": {"value": 1, "dtype": "i32"} },
+        { "id": "Out", "type": "Add" }
+    ],
+    "links": [
+        { "src": "F", "dst": "Out", "dst_port": "a" },
+        { "src": "I", "dst": "Out", "dst_port": "b" }
+    ]
+}

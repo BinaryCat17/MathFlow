@@ -138,31 +138,47 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     mf_program* prog = load_prog_from_file(arena, path);
     if (!prog) return false;
 
+    MF_LOG_DEBUG("Loader: Raw graph has %u symbols", prog->meta.symbol_count);
+
+    // Count actual external ports (Inputs/Outputs)
+    u32 external_count = 0;
+    for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
+        MF_LOG_DEBUG("Loader: Symbol[%u] '%s' flags: 0x%02X", i, prog->symbols[i].name, prog->symbols[i].flags);
+        if (prog->symbols[i].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) {
+            external_count++;
+        }
+    }
+    MF_LOG_DEBUG("Loader: External symbol count: %u", external_count);
+
     // Use a temporary pipeline descriptor to bind the single graph
-    mf_pipeline_resource* res = MF_ARENA_PUSH(arena, mf_pipeline_resource, prog->meta.symbol_count);
+    mf_pipeline_resource* res = MF_ARENA_PUSH(arena, mf_pipeline_resource, external_count);
     mf_pipeline_kernel* ker = MF_ARENA_PUSH(arena, mf_pipeline_kernel, 1);
     
     ker[0].id = "main";
     ker[0].graph_path = path;
     ker[0].frequency = 1;
-    ker[0].binding_count = prog->meta.symbol_count;
+    ker[0].binding_count = external_count;
     ker[0].bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, ker[0].binding_count);
 
+    u32 res_idx = 0;
     for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
         mf_bin_symbol* sym = &prog->symbols[i];
+        if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
+
         mf_tensor* t = &prog->tensors[sym->register_idx];
         
-        res[i].name = sym->name;
-        res[i].dtype = t->info.dtype;
-        res[i].ndim = t->info.ndim;
-        memcpy(res[i].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+        res[res_idx].name = sym->name;
+        res[res_idx].dtype = t->info.dtype;
+        res[res_idx].ndim = t->info.ndim;
+        memcpy(res[res_idx].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
         
-        ker[0].bindings[i].kernel_port = sym->name;
-        ker[0].bindings[i].global_resource = sym->name;
+        ker[0].bindings[res_idx].kernel_port = sym->name;
+        ker[0].bindings[res_idx].global_resource = sym->name;
+        res_idx++;
     }
 
     mf_pipeline_desc pipe = {0};
-    pipe.resource_count = prog->meta.symbol_count;
+    pipe.resource_count = external_count;
     pipe.resources = res;
     pipe.kernel_count = 1;
     pipe.kernels = ker;
@@ -195,7 +211,54 @@ bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe) {
         }
     }
 
-    mf_engine_bind_pipeline(engine, pipe, programs);
+    // Synthesize resources if none provided (Raw Graph mode)
+    mf_pipeline_desc final_pipe = *pipe;
+    if (pipe->resource_count == 0 && pipe->kernel_count > 0) {
+        MF_LOG_DEBUG("Loader: Synthesizing resources for raw pipeline...");
+        u32 total_ext = 0;
+        for(u32 k=0; k<pipe->kernel_count; ++k) {
+            for(u32 s=0; s<programs[k]->meta.symbol_count; ++s) {
+                if (programs[k]->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) total_ext++;
+            }
+        }
+        
+        mf_pipeline_resource* res = MF_ARENA_PUSH(arena, mf_pipeline_resource, total_ext);
+        mf_pipeline_kernel* kernels_copy = MF_ARENA_PUSH(arena, mf_pipeline_kernel, pipe->kernel_count);
+        memcpy(kernels_copy, pipe->kernels, sizeof(mf_pipeline_kernel) * pipe->kernel_count);
+
+        u32 res_idx = 0;
+        for(u32 k=0; k<pipe->kernel_count; ++k) {
+            mf_pipeline_kernel* pk = &kernels_copy[k];
+            pk->binding_count = 0;
+            // Pre-allocate bindings for this kernel
+            u32 k_ext = 0;
+            for(u32 s=0; s<programs[k]->meta.symbol_count; ++s) {
+                if (programs[k]->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) k_ext++;
+            }
+            pk->bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, k_ext);
+
+            for(u32 s=0; s<programs[k]->meta.symbol_count; ++s) {
+                mf_bin_symbol* sym = &programs[k]->symbols[s];
+                if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
+                
+                mf_tensor* t = &programs[k]->tensors[sym->register_idx];
+                res[res_idx].name = sym->name;
+                res[res_idx].dtype = t->info.dtype;
+                res[res_idx].ndim = t->info.ndim;
+                memcpy(res[res_idx].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+                
+                pk->bindings[pk->binding_count].kernel_port = sym->name;
+                pk->bindings[pk->binding_count].global_resource = sym->name;
+                pk->binding_count++;
+                res_idx++;
+            }
+        }
+        final_pipe.resource_count = total_ext;
+        final_pipe.resources = res;
+        final_pipe.kernels = kernels_copy;
+    }
+
+    mf_engine_bind_pipeline(engine, &final_pipe, programs);
     free(programs);
 
     return true;
