@@ -22,6 +22,7 @@ static const mf_node_map_entry NODE_MAP[] = {
     {"MatMul", MF_NODE_MATMUL}, {"Transpose", MF_NODE_TRANSPOSE},
     {"Inverse", MF_NODE_INVERSE}, {"Dot", MF_NODE_DOT}, {"Length", MF_NODE_LENGTH}, {"Join", MF_NODE_JOIN},
     {"Greater", MF_NODE_GREATER}, {"Less", MF_NODE_LESS}, {"Equal", MF_NODE_EQUAL},
+    {"GreaterEqual", MF_NODE_GEQUAL}, {"LessEqual", MF_NODE_LEQUAL}, {"NotEqual", MF_NODE_NEQUAL},
     {"And", MF_NODE_AND}, {"Or", MF_NODE_OR}, {"Not", MF_NODE_NOT},
     {"Select", MF_NODE_SELECT},
     {"Range", MF_NODE_RANGE}, {"Index", MF_NODE_INDEX}, {"CumSum", MF_NODE_CUMSUM},
@@ -154,19 +155,24 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
     }
     else if (val->type == MF_JSON_VAL_STRING) {
         size_t cp_count = mf_utf8_to_utf32(val->as.s, NULL, 0);
-        t->info.dtype = MF_DTYPE_I32;
+        t->info.dtype = MF_DTYPE_F32;
         t->info.ndim = 1;
         t->info.shape[0] = (int32_t)cp_count;
         t->info.strides[0] = 1;
 
-        size_t bytes = cp_count * sizeof(int32_t);
+        size_t bytes = cp_count * sizeof(f32);
         mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
         void* mem = MF_ARENA_PUSH(arena, u8, bytes);
         mf_buffer_init_view(buf, mem, bytes);
         t->buffer = buf;
         t->byte_offset = 0;
         
-        mf_utf8_to_utf32(val->as.s, (u32*)mem, cp_count);
+        // Temporarily load as U32 then convert to F32
+        u32* tmp = malloc(cp_count * sizeof(u32));
+        mf_utf8_to_utf32(val->as.s, tmp, cp_count);
+        f32* dst = (f32*)mem;
+        for(size_t i=0; i<cp_count; ++i) dst[i] = (f32)tmp[i];
+        free(tmp);
     }
     else if (val->type == MF_JSON_VAL_ARRAY) {
         int count = (int)val->as.array.count;

@@ -111,22 +111,16 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         if (is_spatial && mf_tensor_is_valid(main_t)) {
             // ZERO-COPY WINDOW: Point worker tensor directly to a subset of the main buffer
             size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
-            size_t elem_size = dtype_sz * channels;
             
             worker_t->buffer = main_t->buffer;
-            worker_t->byte_offset = main_t->byte_offset + (start_idx * elem_size);
+            worker_t->byte_offset = main_t->byte_offset + (start_idx * dtype_sz);
             
-            if (channels == 1) {
-                worker_t->info.ndim = 1;
-                worker_t->info.shape[0] = (int32_t)count;
-                worker_t->info.strides[0] = 1;
-            } else {
-                worker_t->info.ndim = 2;
-                worker_t->info.shape[0] = (int32_t)count;
-                worker_t->info.shape[1] = channels;
-                worker_t->info.strides[1] = 1; // Channel stride
-                worker_t->info.strides[0] = channels; // Element stride
-            }
+            // Spatial tensors in worker context are ALWAYS flattened to [batch_size]
+            // regardless of their original channel count, because the domain already 
+            // accounts for channels.
+            worker_t->info.ndim = 1;
+            worker_t->info.shape[0] = (int32_t)count;
+            worker_t->info.strides[0] = 1;
         }
         else {
             // 2. Uniform Propagation (Scalars or small constants)

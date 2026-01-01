@@ -1,7 +1,7 @@
 {
     "nodes": [
         { "id": "pos", "type": "Input", "data": {"shape": [2], "dtype": "f32"} },
-        { "id": "text", "type": "Input", "data": {"shape": [-1], "dtype": "i32"} },
+        { "id": "text", "type": "Input", "data": {"shape": [-1], "dtype": "f32"} },
         { "id": "fontatlas", "type": "Input", "data": {"shape": [262144], "dtype": "f32"} },
         { "id": "fontinfo", "type": "Input", "data": {"shape": [9600], "dtype": "f32"} },
         { "id": "fontsize", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
@@ -9,12 +9,12 @@
         { "id": "pixelx", "type": "Index", "data": {"axis": 1} },
         { "id": "pixely", "type": "Index", "data": {"axis": 0} },
 
-        { "id": "idx0", "type": "Const", "data": {"value": 0, "dtype": "i32"} },
-        { "id": "idx1", "type": "Const", "data": {"value": 1, "dtype": "i32"} },
-        { "id": "idx2", "type": "Const", "data": {"value": 2, "dtype": "i32"} },
-        { "id": "idx3", "type": "Const", "data": {"value": 3, "dtype": "i32"} },
-        { "id": "idx4", "type": "Const", "data": {"value": 4, "dtype": "i32"} },
-        { "id": "eight", "type": "Const", "data": {"value": 8, "dtype": "i32"} },
+        { "id": "idx0", "type": "Const", "data": {"value": 0} },
+        { "id": "idx1", "type": "Const", "data": {"value": 1} },
+        { "id": "idx2", "type": "Const", "data": {"value": 2} },
+        { "id": "idx3", "type": "Const", "data": {"value": 3} },
+        { "id": "idx4", "type": "Const", "data": {"value": 4} },
+        { "id": "eight", "type": "Const", "data": {"value": 8} },
 
         { "id": "posx", "type": "Gather" },
         { "id": "posy", "type": "Gather" },
@@ -58,12 +58,22 @@
         
         { "id": "sdf", "type": "Gather" },
         
-        { "id": "e0", "type": "Const", "data": {"value": 0.45} },
-        { "id": "e1", "type": "Const", "data": {"value": 0.55} },
+        { "id": "edges", "type": "Const", "data": {"value": [0.45, 0.55]} },
         { "id": "mask", "type": "SmoothStep" },
 
         { "id": "zero", "type": "Const", "data": {"value": 0.0} },
-        { "id": "ispos", "type": "Greater" },
+        { "id": "one", "type": "Const", "data": {"value": 1.0} },
+        { "id": "text_len", "type": "Const", "data": {"value": 24.0} },
+        
+        { "id": "is_pos_x", "type": "GreaterEqual" },
+        { "id": "is_within_len", "type": "Less" },
+        { "id": "is_pos_y", "type": "GreaterEqual" },
+        { "id": "is_within_height", "type": "Less" },
+
+        { "id": "valid_x", "type": "And" },
+        { "id": "valid_y", "type": "And" },
+        { "id": "is_valid", "type": "And" },
+        
         { "id": "final_alpha", "type": "Select" },
         
         { "id": "alpha", "type": "Output" }
@@ -143,12 +153,30 @@
         { "src": "flatidx", "dst": "sdf", "dst_port": "indices" },
 
         { "src": "sdf", "dst": "mask", "dst_port": "x" },
-        { "src": "e0", "dst": "mask", "dst_port": "edges" },
+        { "src": "edges", "dst": "mask", "dst_port": "edges" },
         
-        { "src": "charidx", "dst": "ispos", "dst_port": "a" },
-        { "src": "zero", "dst": "ispos", "dst_port": "b" },
-        
-        { "src": "ispos", "dst": "final_alpha", "dst_port": "cond" },
+        { "src": "charidx_f", "dst": "is_pos_x", "dst_port": "a" },
+        { "src": "zero", "dst": "is_pos_x", "dst_port": "b" },
+
+        { "src": "charidx_f", "dst": "is_within_len", "dst_port": "a" },
+        { "src": "text_len", "dst": "is_within_len", "dst_port": "b" },
+
+        { "src": "localy", "dst": "is_pos_y", "dst_port": "a" },
+        { "src": "zero", "dst": "is_pos_y", "dst_port": "b" },
+
+        { "src": "localy", "dst": "is_within_height", "dst_port": "a" },
+        { "src": "one", "dst": "is_within_height", "dst_port": "b" },
+
+        { "src": "is_pos_x", "dst": "valid_x", "dst_port": "a" },
+        { "src": "is_within_len", "dst": "valid_x", "dst_port": "b" },
+
+        { "src": "is_pos_y", "dst": "valid_y", "dst_port": "a" },
+        { "src": "is_within_height", "dst": "valid_y", "dst_port": "b" },
+
+        { "src": "valid_x", "dst": "is_valid", "dst_port": "a" },
+        { "src": "valid_y", "dst": "is_valid", "dst_port": "b" },
+
+        { "src": "is_valid", "dst": "final_alpha", "dst_port": "cond" },
         { "src": "mask", "dst": "final_alpha", "dst_port": "true" },
         { "src": "zero", "dst": "final_alpha", "dst_port": "false" },
 

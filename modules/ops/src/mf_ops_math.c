@@ -6,33 +6,41 @@
 #include "mf_ops_internal.h"
 #include <math.h>
 
-// --- Arithmetic ---
+// --- Macros: Kernel Definitions (Optimized) ---
 
-static void op_add(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
-    if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
-    
-    f32* da = (f32*)mf_tensor_data(a); 
-    f32* db = (f32*)mf_tensor_data(b); 
-    f32* dd = (f32*)mf_tensor_data(dst);
-    
-    size_t sz_a = mf_tensor_count(a); 
-    size_t sz_b = mf_tensor_count(b);
-    size_t sz_dst = mf_tensor_count(dst);
-    
-    bool a_s = (sz_a == 1); 
-    bool b_s = (sz_b == 1);
-    
-    for(size_t i=0; i<sz_dst; ++i) { 
-        f32 va = a_s ? da[0] : da[i]; 
-        f32 vb = b_s ? db[0] : db[i]; 
-        dd[i] = va + vb; 
-    }
+#undef MF_KERNEL_BINARY
+#define MF_KERNEL_BINARY(NAME, OP) \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ); \
+    if (!dst || !a || !b) return; \
+    if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    bool a_s = (sz_a == 1); bool b_s = (sz_b == 1); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = (a_s ? da[0] : da[i]) OP (b_s ? db[0] : db[i]); \
 }
 
+#undef MF_KERNEL_BINARY_FUNC
+#define MF_KERNEL_BINARY_FUNC(NAME, FUNC) \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ); \
+    if (!dst || !a || !b) return; \
+    if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    bool a_s = (sz_a == 1); bool b_s = (sz_b == 1); \
+    for(size_t i=0; i<sz_dst; ++i) dd[i] = FUNC(a_s ? da[0] : da[i], b_s ? db[0] : db[i]); \
+}
+
+// --- Arithmetic ---
+
+MF_KERNEL_BINARY(add, +)
 MF_KERNEL_BINARY(sub, -)
 MF_KERNEL_BINARY(mul, *)
 MF_KERNEL_BINARY(div, /)
@@ -48,7 +56,7 @@ MF_KERNEL_UNARY(ceil, ceilf)
 MF_KERNEL_UNARY(abs, fabsf)
 MF_KERNEL_UNARY(sqrt, sqrtf)
 
-// --- Min/Max/Clamp ---
+// --- Min/Max/Clamp/Mix ---
 
 static void op_min(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
@@ -56,21 +64,12 @@ static void op_min(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
-    
-    f32* da = (f32*)mf_tensor_data(a); 
-    f32* db = (f32*)mf_tensor_data(b); 
-    f32* dd = (f32*)mf_tensor_data(dst);
-    
-    size_t sz_a = mf_tensor_count(a); 
-    size_t sz_b = mf_tensor_count(b);
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b);
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
-    
-    bool a_s = (sz_a == 1); 
-    bool b_s = (sz_b == 1);
-    
+    bool a_s = (sz_a == 1); bool b_s = (sz_b == 1);
     for(size_t i=0; i<sz_dst; ++i) { 
-        f32 va = a_s ? da[0] : da[i]; 
-        f32 vb = b_s ? db[0] : db[i]; 
+        f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i];
         dd[i] = (va < vb) ? va : vb; 
     }
 }
@@ -81,22 +80,30 @@ static void op_max(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !a || !b) return;
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
-    
-    f32* da = (f32*)mf_tensor_data(a); 
-    f32* db = (f32*)mf_tensor_data(b); 
-    f32* dd = (f32*)mf_tensor_data(dst);
-    
-    size_t sz_a = mf_tensor_count(a); 
-    size_t sz_b = mf_tensor_count(b);
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b);
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
-    
-    bool a_s = (sz_a == 1); 
-    bool b_s = (sz_b == 1);
-    
+    bool a_s = (sz_a == 1); bool b_s = (sz_b == 1);
     for(size_t i=0; i<sz_dst; ++i) { 
-        f32 va = a_s ? da[0] : da[i]; 
-        f32 vb = b_s ? db[0] : db[i]; 
+        f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i];
         dd[i] = (va > vb) ? va : vb; 
+    }
+}
+
+static void op_mix(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    mf_tensor* t = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
+    if (!dst || !a || !b || !t) return;
+    if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, t)) return;
+    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); size_t sz_t = mf_tensor_count(t);
+    f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dt = (f32*)mf_tensor_data(t); f32* dd = (f32*)mf_tensor_data(dst);
+    size_t sz_dst = mf_tensor_count(dst);
+    bool a_s = (sz_a == 1); bool b_s = (sz_b == 1); bool t_s = (sz_t == 1);
+    for(size_t i=0; i<sz_dst; ++i) { 
+        f32 va = a_s ? da[0] : da[i]; f32 vb = b_s ? db[0] : db[i]; f32 vt = t_s ? dt[0] : dt[i];
+        dd[i] = va * (1.0f - vt) + vb * vt;
     }
 }
 
@@ -105,31 +112,15 @@ static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* min_v = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     mf_tensor* max_v = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    
     if (!dst || !val || !min_v || !max_v) return;
     if (!mf_utils_resolve_ternary_shape(ctx, dst, val, min_v, max_v)) return;
-    
-    f32* d_val = (f32*)mf_tensor_data(val); 
-    f32* d_min = (f32*)mf_tensor_data(min_v); 
-    f32* d_max = (f32*)mf_tensor_data(max_v);
-    f32* d_dst = (f32*)mf_tensor_data(dst);
-    
-    size_t sz_val = mf_tensor_count(val);
-    size_t sz_min = mf_tensor_count(min_v);
-    size_t sz_max = mf_tensor_count(max_v);
+    size_t sz_val = mf_tensor_count(val); size_t sz_min = mf_tensor_count(min_v); size_t sz_max = mf_tensor_count(max_v);
+    f32* d_val = (f32*)mf_tensor_data(val); f32* d_min = (f32*)mf_tensor_data(min_v); f32* d_max = (f32*)mf_tensor_data(max_v); f32* d_dst = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
-    
-    bool val_s = (sz_val == 1);
-    bool min_s = (sz_min == 1);
-    bool max_s = (sz_max == 1);
-    
+    bool val_s = (sz_val == 1); bool min_s = (sz_min == 1); bool max_s = (sz_max == 1);
     for(size_t i=0; i<sz_dst; ++i) { 
-        f32 v = val_s ? d_val[0] : d_val[i];
-        f32 mn = min_s ? d_min[0] : d_min[i];
-        f32 mx = max_s ? d_max[0] : d_max[i];
-        
-        if (v < mn) v = mn;
-        if (v > mx) v = mx;
+        f32 v = val_s ? d_val[0] : d_val[i]; f32 mn = min_s ? d_min[0] : d_min[i]; f32 mx = max_s ? d_max[0] : d_max[i];
+        if (v < mn) v = mn; if (v > mx) v = mx;
         d_dst[i] = v;
     }
 }
@@ -141,27 +132,18 @@ static void op_smoothstep(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* edges = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !val || !edges) return;
-    
     if (!mf_utils_resolve_unary_shape(ctx, dst, val)) return; 
     dst->info.dtype = MF_DTYPE_F32;
-
-    f32* X = (f32*)mf_tensor_data(val);
-    f32* E = (f32*)mf_tensor_data(edges);
-    f32* D = (f32*)mf_tensor_data(dst);
-    
+    f32* X = (f32*)mf_tensor_data(val); f32* E = (f32*)mf_tensor_data(edges); f32* D = (f32*)mf_tensor_data(dst);
     size_t sz_edges = mf_tensor_count(edges);
     bool uniform_edges = (sz_edges == 2);
     size_t sz_dst = mf_tensor_count(dst);
-    
     for (size_t i = 0; i < sz_dst; ++i) {
         float x = X[i];
         float e0 = uniform_edges ? E[0] : E[i*2 + 0];
         float e1 = uniform_edges ? E[1] : E[i*2 + 1];
-        
         float t = (x - e0) / (e1 - e0);
-        if (t < 0.0f) t = 0.0f;
-        if (t > 1.0f) t = 1.0f;
-        
+        if (t < 0.0f) t = 0.0f; if (t > 1.0f) t = 1.0f;
         D[i] = t * t * (3.0f - 2.0f * t);
     }
 }
@@ -171,24 +153,14 @@ static void op_step(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* edge = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* x = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     if (!dst || !edge || !x) return;
-    
     if (!mf_utils_resolve_binary_shape(ctx, dst, edge, x)) return;
     dst->info.dtype = MF_DTYPE_F32;
-    
-    f32* de = (f32*)mf_tensor_data(edge); 
-    f32* dx = (f32*)mf_tensor_data(x); 
-    f32* dd = (f32*)mf_tensor_data(dst);
-    
-    size_t sz_edge = mf_tensor_count(edge);
-    size_t sz_x = mf_tensor_count(x);
+    size_t sz_edge = mf_tensor_count(edge); size_t sz_x = mf_tensor_count(x);
+    f32* de = (f32*)mf_tensor_data(edge); f32* dx = (f32*)mf_tensor_data(x); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
-    
-    bool e_s = (sz_edge == 1); 
-    bool x_s = (sz_x == 1);
-    
+    bool e_s = (sz_edge == 1); bool x_s = (sz_x == 1);
     for(size_t i=0; i<sz_dst; ++i) {
-        f32 e_val = e_s ? de[0] : de[i];
-        f32 x_val = x_s ? dx[0] : dx[i];
+        f32 e_val = e_s ? de[0] : de[i]; f32 x_val = x_s ? dx[0] : dx[i];
         dd[i] = (x_val >= e_val) ? 1.0f : 0.0f;
     }
 }
@@ -198,6 +170,7 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_SUB] = op_sub; 
     table[MF_OP_MUL] = op_mul; 
     table[MF_OP_DIV] = op_div;
+    table[MF_OP_MIX] = op_mix;
     table[MF_OP_SIN] = op_sin; 
     table[MF_OP_COS] = op_cos; 
     table[MF_OP_FLOOR] = op_floor; 

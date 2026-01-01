@@ -27,7 +27,7 @@ typedef enum {
     MF_OP_MAX = 11,
     MF_OP_ABS = 12,
     MF_OP_CLAMP = 13,
-    // MF_OP_MIX decomposed
+    MF_OP_MIX = 14,
     MF_OP_STEP = 15,
     MF_OP_SMOOTHSTEP = 16,
     

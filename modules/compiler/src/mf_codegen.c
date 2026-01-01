@@ -243,24 +243,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
             case MF_NODE_MIX:
                 if (s1 && s2 && s3) {
-                    inst->opcode = MF_OP_SUB;
+                    inst->opcode = MF_OP_MIX;
                     inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s2->out_reg_idx;
-                    inst->src2_idx = s1->out_reg_idx;
-                    instr_count++;
-                    
-                    inst = &instrs[instr_count];
-                    inst->opcode = MF_OP_MUL;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = node->out_reg_idx;
-                    inst->src2_idx = s3->out_reg_idx;
-                    instr_count++;
-
-                    inst = &instrs[instr_count];
-                    inst->opcode = MF_OP_ADD;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = node->out_reg_idx;
-                    inst->src2_idx = s1->out_reg_idx;
+                    inst->src1_idx = s1->out_reg_idx;
+                    inst->src2_idx = s2->out_reg_idx;
+                    inst->src3_idx = s3->out_reg_idx;
                     instr_count++;
                 }
                 break;

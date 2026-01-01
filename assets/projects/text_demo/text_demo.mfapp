@@ -9,7 +9,7 @@
             { "name": "u_Time", "dtype": "F32", "shape": [] },
             { "name": "u_ResX", "dtype": "F32", "shape": [] },
             { "name": "u_ResY", "dtype": "F32", "shape": [] },
-            { "name": "out_Color", "dtype": "F32", "shape": [600, 800] },
+            { "name": "out_Color", "dtype": "F32", "shape": [600, 800, 4] },
             { "name": "MyFont", "dtype": "F32", "shape": [262144] },
             { "name": "MyFont_Info", "dtype": "F32", "shape": [9600] }
         ],
@@ -33,5 +33,8 @@
             "path": "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 
             "size": 32 
         }
-    ]
+    ],
+    "runtime": {
+        "threads": 1
+    }
 }
