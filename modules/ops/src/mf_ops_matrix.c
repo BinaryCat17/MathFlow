@@ -44,6 +44,9 @@ static bool ensure_contiguous(mf_exec_ctx* ctx, const mf_tensor* src, mf_tensor*
         int s0 = src->info.strides[0];
         int s1 = src->info.strides[1];
         
+        // Safety: Check base pointer
+        if(!src_base || !dst_ptr) return false;
+
         for(int r=0; r<rows; ++r) {
             for(int c=0; c<cols; ++c) {
                 dst_ptr[r*cols + c] = src_base[r*s0 + c*s1];
@@ -60,7 +63,10 @@ static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
     
     size_t sz_a = mf_tensor_count(a);
     size_t sz_b = mf_tensor_count(b);
@@ -75,6 +81,8 @@ static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     dst->info.dtype = MF_DTYPE_F32;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
 
     f32* A = (f32*)mf_tensor_data(&a_cont); 
     f32* B = (f32*)mf_tensor_data(&b_cont); 
@@ -96,7 +104,9 @@ static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
 static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !a) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
 
     mf_tensor a_cont;
     if (!ensure_contiguous(ctx, a, &a_cont)) return;
@@ -104,6 +114,8 @@ static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
     int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
     dst->info.dtype = MF_DTYPE_F32;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
 
     f32* A = (f32*)mf_tensor_data(&a_cont); 
     f32* D = (f32*)mf_tensor_data(dst);
@@ -126,7 +138,10 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
     
     size_t sz_a = mf_tensor_count(a);
     int dim = (int)sqrtf((float)sz_a); 
@@ -138,6 +153,8 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     dst->info.dtype = a->info.dtype;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
 
     // Fast Path
     if (dim == 4 && sz_a == 16) {
@@ -172,13 +189,12 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
 static void op_transpose(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !a) return; 
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
     
     // Use O(1) metadata swap
-    // Ops consuming this must support strides (via ensure_contiguous fallback)
     if (!mf_tensor_transpose(dst, a)) {
-        // Fallback or error?
-        // If 1D or >2D, mf_tensor_transpose might fail currently (implementation limited to 2D)
         ctx->error = MF_ERROR_INVALID_OP;
     }
 }
@@ -186,13 +202,17 @@ static void op_transpose(mf_exec_ctx* ctx, const mf_instruction* inst) {
 static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !a) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
     
     mf_tensor a_cont;
     if (!ensure_contiguous(ctx, a, &a_cont)) return;
 
     dst->info.dtype = a->info.dtype;
     if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
 
     size_t sz_a = mf_tensor_count(a);
     int dim = (int)sqrtf((float)sz_a);
@@ -220,14 +240,15 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
 
     size_t sz_a = mf_tensor_count(a);
     size_t sz_b = mf_tensor_count(b);
     if (sz_a != sz_b) return; 
     
-    // Densify? Join requires copy anyway, so iterating strided source is better than 
-    // densify->copy. But for now, reuse ensure_contiguous for safety.
     mf_tensor a_cont, b_cont;
     if (!ensure_contiguous(ctx, a, &a_cont)) return;
     if (!ensure_contiguous(ctx, b, &b_cont)) return;
@@ -240,6 +261,8 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
 
     dst->info.dtype = a->info.dtype; 
     if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, out_ndim)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
     
     f32* A = (f32*)mf_tensor_data(&a_cont); 
     f32* B = (f32*)mf_tensor_data(&b_cont); 

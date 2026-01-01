@@ -227,7 +227,7 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         } else {
             memset(res->buffer_a, 0, sizeof(mf_buffer));
             memset(res->buffer_b, 0, sizeof(mf_buffer));
-            MF_LOG_WARN("Resource '%s' has dynamic shape. Staying unallocated.", res->name);
+            MF_LOG_TRACE("Resource '%s' has dynamic shape. Staying unallocated.", res->name);
         }
     }
 
@@ -467,13 +467,21 @@ void mf_engine_dispatch(mf_engine* engine) {
         MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
 
         // Execute Kernel
+        // Execute Kernel
         for (u32 f = 0; f < ker->frequency; ++f) {
             if (engine->backend.dispatch && kernel_domain) {
                 engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, kernel_domain);
+                
+                // Stop dispatching if a kernel encountered a runtime error
+                if (ker->state.error_code != 0) {
+                    MF_LOG_ERROR("Kernel '%s' failed with error code %d. Aborting pipeline dispatch.", ker->id, ker->state.error_code);
+                    goto end_dispatch;
+                }
             }
         }
     }
     
+end_dispatch:
     engine->frame_index++;
 }
 
@@ -542,6 +550,16 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
     if (!engine) return MF_ENGINE_ERR_NONE;
+    
+    // Check for internal engine errors (if we add them later to engine struct)
+    
+    // Check all kernels for runtime errors
+    for (u32 i = 0; i < engine->kernel_count; ++i) {
+        if (engine->kernels[i].state.error_code != 0) {
+            return MF_ENGINE_ERR_RUNTIME;
+        }
+    }
+    
     return MF_ENGINE_ERR_NONE;
 }
 

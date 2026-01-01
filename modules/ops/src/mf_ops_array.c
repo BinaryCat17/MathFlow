@@ -9,7 +9,9 @@
 static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !count_tensor) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, count_tensor);
 
     int count = 0;
     if (count_tensor->info.dtype == MF_DTYPE_F32) {
@@ -24,7 +26,9 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     int32_t shape[] = { count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
+    MF_CHECK_DST_DATA(ctx, dst);
     f32* d = (f32*)mf_tensor_data(dst);
+
     for (int i = 0; i < count; ++i) {
         d[i] = (f32)i;
     }
@@ -34,9 +38,13 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
 static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !src) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, src);
 
     if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return;
+    
+    MF_CHECK_DST_DATA(ctx, dst);
 
     if (src->info.dtype != MF_DTYPE_F32) return;
 
@@ -56,7 +64,9 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* mask = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     
-    if (!dst || !data || !mask) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, data);
+    MF_CHECK_INPUT(ctx, mask);
 
     size_t data_count = mf_tensor_count(data);
     size_t mask_count = mf_tensor_count(mask);
@@ -76,6 +86,8 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     int32_t new_shape[] = { (int32_t)true_count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, new_shape, 1)) return;
 
+    MF_CHECK_DST_DATA(ctx, dst);
+    
     size_t write_idx = 0;
     size_t elem_size = mf_dtype_size(data->info.dtype);
     u8* src_ptr = (u8*)mf_tensor_data(data);
@@ -98,7 +110,9 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
 static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    if (!dst || !axis_t) return;
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, axis_t);
 
     int axis = 0;
     if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
@@ -112,16 +126,10 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     int32_t shape[] = { (int32_t)count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
+    MF_CHECK_DST_DATA(ctx, dst);
     f32* d = (f32*)mf_tensor_data(dst);
     
-    // Unflattening Logic: Linear (Flat) -> N-Dimensional Coordinate
-    // We assume standard layout: (Row, Col) -> Row * Width + Col
-    // Global Index = ctx->tile_offset[0] + i
-    // Coord[axis] = (Global Index / Stride[axis]) % Shape[axis]
-    
-    // Calculate Stride for the requested axis
     u32 axis_stride = 1;
-    // Iterate from fastest (last) to just after axis
     for (int i = ctx->ndim - 1; i > axis; --i) {
         axis_stride *= ctx->domain_shape[i];
     }
@@ -144,11 +152,14 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* src_data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* src_indices = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     
-    if (!dst || !src_data || !src_indices) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, src_data);
+    MF_CHECK_INPUT(ctx, src_indices);
 
-    // Dest shape matches Indices shape
     if (!mf_utils_resolve_unary_shape(ctx, dst, src_indices)) return;
     dst->info.dtype = src_data->info.dtype;
+
+    MF_CHECK_DST_DATA(ctx, dst);
 
     size_t data_count = mf_tensor_count(src_data);
     size_t out_count = mf_tensor_count(dst);
@@ -158,16 +169,21 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u8* out_ptr = (u8*)mf_tensor_data(dst);
     void* idx_ptr = mf_tensor_data(src_indices);
 
+    MF_CHECK_PTR(ctx, data_ptr);
+    MF_CHECK_PTR(ctx, out_ptr);
+    MF_CHECK_PTR(ctx, idx_ptr);
+
     for (size_t i = 0; i < out_count; ++i) {
         int idx = 0;
         if (src_indices->info.dtype == MF_DTYPE_F32) idx = (int)((f32*)idx_ptr)[i];
         else if (src_indices->info.dtype == MF_DTYPE_I32) idx = ((int32_t*)idx_ptr)[i];
         
-        // Bounds checking
         if (idx >= 0 && (size_t)idx < data_count) {
             memcpy(out_ptr + i * elem_size, data_ptr + idx * elem_size, elem_size);
         } else {
-            memset(out_ptr + i * elem_size, 0, elem_size);
+            MF_LOG_ERROR("Runtime Error: Gather index %d out of bounds (size: %zu).", idx, data_count);
+            ctx->error = MF_ERROR_RUNTIME;
+            return;
         }
     }
 }

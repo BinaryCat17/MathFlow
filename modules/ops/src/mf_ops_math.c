@@ -14,8 +14,11 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ); \
-    if (!dst || !a || !b) return; \
+    MF_CHECK_DST_VIEW(ctx, dst); \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
+    MF_CHECK_INPUT(ctx, a); \
+    MF_CHECK_INPUT(ctx, b); \
+    MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
     f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
     size_t sz_dst = mf_tensor_count(dst); \
@@ -29,8 +32,11 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ); \
-    if (!dst || !a || !b) return; \
+    MF_CHECK_DST_VIEW(ctx, dst); \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
+    MF_CHECK_INPUT(ctx, a); \
+    MF_CHECK_INPUT(ctx, b); \
+    MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
     f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst); \
     size_t sz_dst = mf_tensor_count(dst); \
@@ -49,6 +55,20 @@ MF_KERNEL_BINARY_FUNC(pow, powf)
 
 // --- Unary Math ---
 
+#undef MF_KERNEL_UNARY
+#define MF_KERNEL_UNARY(NAME, FUNC) \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
+    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
+    MF_CHECK_DST_VIEW(ctx, dst); \
+    if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return; \
+    MF_CHECK_INPUT(ctx, src); \
+    MF_CHECK_DST_DATA(ctx, dst); \
+    f32* s = (f32*)mf_tensor_data(src); f32* d = (f32*)mf_tensor_data(dst); \
+    size_t sz = mf_tensor_count(dst); \
+    for(size_t i=0; i<sz; ++i) d[i] = FUNC(s[i]); \
+}
+
 MF_KERNEL_UNARY(sin, sinf)
 MF_KERNEL_UNARY(cos, cosf)
 MF_KERNEL_UNARY(floor, floorf)
@@ -62,8 +82,11 @@ static void op_min(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
+    MF_CHECK_DST_DATA(ctx, dst);
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b);
     f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
@@ -78,8 +101,11 @@ static void op_max(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return;
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
+    MF_CHECK_DST_DATA(ctx, dst);
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b);
     f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
@@ -95,8 +121,12 @@ static void op_mix(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     mf_tensor* t = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    if (!dst || !a || !b || !t) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, t)) return;
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
+    MF_CHECK_INPUT(ctx, t);
+    MF_CHECK_DST_DATA(ctx, dst);
     size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); size_t sz_t = mf_tensor_count(t);
     f32* da = (f32*)mf_tensor_data(a); f32* db = (f32*)mf_tensor_data(b); f32* dt = (f32*)mf_tensor_data(t); f32* dd = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
@@ -112,8 +142,12 @@ static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* min_v = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
     mf_tensor* max_v = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    if (!dst || !val || !min_v || !max_v) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_ternary_shape(ctx, dst, val, min_v, max_v)) return;
+    MF_CHECK_INPUT(ctx, val);
+    MF_CHECK_INPUT(ctx, min_v);
+    MF_CHECK_INPUT(ctx, max_v);
+    MF_CHECK_DST_DATA(ctx, dst);
     size_t sz_val = mf_tensor_count(val); size_t sz_min = mf_tensor_count(min_v); size_t sz_max = mf_tensor_count(max_v);
     f32* d_val = (f32*)mf_tensor_data(val); f32* d_min = (f32*)mf_tensor_data(min_v); f32* d_max = (f32*)mf_tensor_data(max_v); f32* d_dst = (f32*)mf_tensor_data(dst);
     size_t sz_dst = mf_tensor_count(dst);
@@ -131,8 +165,11 @@ static void op_smoothstep(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* val = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* edges = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !val || !edges) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_unary_shape(ctx, dst, val)) return; 
+    MF_CHECK_INPUT(ctx, val);
+    MF_CHECK_INPUT(ctx, edges);
+    MF_CHECK_DST_DATA(ctx, dst);
     dst->info.dtype = MF_DTYPE_F32;
     f32* X = (f32*)mf_tensor_data(val); f32* E = (f32*)mf_tensor_data(edges); f32* D = (f32*)mf_tensor_data(dst);
     size_t sz_edges = mf_tensor_count(edges);
@@ -152,8 +189,11 @@ static void op_step(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* edge = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* x = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    if (!dst || !edge || !x) return;
+    MF_CHECK_DST_VIEW(ctx, dst);
     if (!mf_utils_resolve_binary_shape(ctx, dst, edge, x)) return;
+    MF_CHECK_INPUT(ctx, edge);
+    MF_CHECK_INPUT(ctx, x);
+    MF_CHECK_DST_DATA(ctx, dst);
     dst->info.dtype = MF_DTYPE_F32;
     size_t sz_edge = mf_tensor_count(edge); size_t sz_x = mf_tensor_count(x);
     f32* de = (f32*)mf_tensor_data(edge); f32* dx = (f32*)mf_tensor_data(x); f32* dd = (f32*)mf_tensor_data(dst);

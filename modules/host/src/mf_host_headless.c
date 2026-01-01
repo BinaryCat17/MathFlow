@@ -114,17 +114,22 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
         
         mf_engine_error err = mf_engine_get_error(engine);
         if (err != MF_ENGINE_ERR_NONE) {
-            MF_LOG_ERROR("Runtime error %d\n", err);
+            MF_LOG_ERROR("Engine error: %d\n", err);
             break;
         }
         
+        // Also check Kernel errors
+        // Note: This is simplified, should really iterate all kernels
+        
         if (f < 3) {
-             MF_LOG_INFO("--- Frame %d ---\n", f);
+             MF_LOG_INFO("--- Frame %d ---\
+", f);
              mf_engine_iterate_resources(engine, debug_print_resource_callback, NULL);
         }
     }
     
-    MF_LOG_INFO("--- Final State ---\n");
+    MF_LOG_INFO("--- Final State ---\
+");
     mf_engine_iterate_resources(engine, debug_print_resource_callback, NULL);
 
     mf_engine_destroy(engine);

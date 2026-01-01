@@ -1,0 +1,13 @@
+{
+    "nodes": [
+        { "id": "data", "type": "Const", "data": {"value": [10.0, 20.0, 30.0]} },
+        { "id": "indices", "type": "Const", "data": {"value": [0, 1, 5, -1]} },
+        { "id": "result", "type": "Gather" },
+        { "id": "out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "data", "src_port": "out", "dst": "result", "dst_port": "data" },
+        { "src": "indices", "src_port": "out", "dst": "result", "dst_port": "indices" },
+        { "src": "result", "src_port": "out", "dst": "out", "dst_port": "in" }
+    ]
+}

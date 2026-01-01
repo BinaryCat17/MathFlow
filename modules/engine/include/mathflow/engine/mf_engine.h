@@ -74,7 +74,8 @@ typedef enum {
     MF_ENGINE_ERR_NONE = 0,
     MF_ENGINE_ERR_OOM,
     MF_ENGINE_ERR_SHAPE,
-    MF_ENGINE_ERR_INVALID_OP
+    MF_ENGINE_ERR_INVALID_OP,
+    MF_ENGINE_ERR_RUNTIME
 } mf_engine_error;
 
 mf_engine_error mf_engine_get_error(mf_engine* engine);
