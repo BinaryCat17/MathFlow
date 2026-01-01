@@ -1,10 +1,33 @@
 #include <mathflow/host/mf_host_desc.h>
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_platform.h>
 #include "mf_host_internal.h"
 #include "mf_loader.h"
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
+#include <stdio.h>
+
+void mf_host_init_logger(void) {
+    if (mf_fs_mkdir("logs")) {
+        // Option: clear directory on start?
+        // mf_fs_clear_dir("logs"); 
+    }
+
+    mf_log_init();
+
+    time_t now = time(NULL);
+    struct tm* t = localtime(&now);
+    char log_path[256];
+    if (t) {
+        strftime(log_path, sizeof(log_path), "logs/log_%Y-%m-%d_%H-%M-%S.txt", t);
+    } else {
+        strcpy(log_path, "logs/latest_log.txt");
+    }
+    
+    mf_log_add_file_sink(log_path, MF_LOG_LEVEL_TRACE);
+}
 
 void mf_host_desc_cleanup(mf_host_desc* desc) {
     if (!desc) return;

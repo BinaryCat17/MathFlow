@@ -7,17 +7,7 @@
 #include <time.h>
 
 int main(int argc, char** argv) {
-    if (mf_fs_mkdir("logs")) {
-        mf_fs_clear_dir("logs");
-    }
-
-    mf_log_init();
-
-    time_t now = time(NULL);
-    struct tm* t = localtime(&now);
-    char log_path[256];
-    strftime(log_path, sizeof(log_path), "logs/log_%Y-%m-%d_%H-%M-%S.txt", t);
-    mf_log_add_file_sink(log_path, MF_LOG_LEVEL_TRACE);
+    mf_host_init_logger();
 
     if (argc < 2) {
         printf("Usage: mf-window <app.mfapp> [--log-interval <seconds>]\n");

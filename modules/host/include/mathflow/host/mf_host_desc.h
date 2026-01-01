@@ -43,6 +43,12 @@ typedef struct mf_host_desc {
 } mf_host_desc;
 
 /**
+ * @brief Initializes the unified logging system for the host application.
+ * Creates the 'logs/' directory and sets up both console and file output.
+ */
+void mf_host_init_logger(void);
+
+/**
  * @brief Cleans up memory allocated within mf_host_desc (e.g. by manifest loader).
  */
 void mf_host_desc_cleanup(mf_host_desc* desc);

@@ -13,7 +13,7 @@ static void print_help(const char* prog) {
 }
 
 int main(int argc, char** argv) {
-    mf_log_init();
+    mf_host_init_logger();
 
     if (argc < 2) {
         print_help(argv[0]);
