@@ -39,6 +39,12 @@ static inline mf_tensor_iter mf_tensor_iter_begin(const mf_tensor* t) {
     return it;
 }
 
+#define _MF_ITER_CHECK_BOUNDS(it, msg_suffix) \
+    if ((it)->ptr > (it)->limit || ((it)->ptr < (it)->start && (it)->tensor->info.ndim > 0)) { \
+        MF_LOG_FATAL("Tensor iterator out of bounds " msg_suffix "! Ptr: %p, Range: [%p, %p]", \
+                     (it)->ptr, (it)->start, (it)->limit); \
+    }
+
 static inline void mf_tensor_iter_next(mf_tensor_iter* it) {
     if (it->is_contiguous) {
         it->ptr = (uint8_t*)it->ptr + it->element_size;
@@ -60,10 +66,7 @@ static inline void mf_tensor_iter_next(mf_tensor_iter* it) {
     }
 
 check_bounds:
-    if (it->ptr > it->limit || (it->ptr < it->start && it->tensor->info.ndim > 0)) {
-        MF_LOG_FATAL("Tensor iterator out of bounds! Ptr: %p, Range: [%p, %p]", 
-                     it->ptr, it->start, it->limit);
-    }
+    _MF_ITER_CHECK_BOUNDS(it, "during next()");
 }
 
 static inline void mf_tensor_iter_advance(mf_tensor_iter* it, i32 step) {
@@ -80,10 +83,7 @@ static inline void mf_tensor_iter_advance(mf_tensor_iter* it, i32 step) {
         return;
     }
 
-    if (it->ptr > it->limit || (it->ptr < it->start && it->tensor->info.ndim > 0)) {
-        MF_LOG_FATAL("Tensor iterator out of bounds after advance! Ptr: %p, Range: [%p, %p], Step: %d", 
-                     it->ptr, it->start, it->limit, step);
-    }
+    _MF_ITER_CHECK_BOUNDS(it, "during advance()");
 }
 
 // Helper for broadcasting/looping with potential scalar/mismatch shapes

@@ -55,17 +55,19 @@ graph TD
     *   `mf_types.h`: Core typedefs (`f32`, `u8`, `mf_type_info`) and access modes.
     *   `mf_memory`: Dual-allocator system (Stack Arena + Heap).
     *   `mf_buffer`: Raw memory container (owns `void* data`).
+    *   `mf_shape`: Shape inference and **Linear Stride Calculation**.
     *   `mf_math`: Basic scalar math functions.
-    *   `mf_log`: Logging subsystem.
-    *   `mf_utils`: Common utilities (hashing, path manipulation, file IO, UTF conversion).
+    *   `mf_log`: Thread-safe logging subsystem.
+    *   `mf_platform`: OS-independent abstractions (Atomics, Threads, Mutexes).
+    *   `mf_utils`: Common utilities (hashing, path manipulation, file IO).
 
 #### **ISA** (`modules/isa`)
 *   **Role:** The "Contract" or Interface. Defines the data structures used to communicate between modules. Pure data, no logic.
 *   **Contents:**
     *   `mf_program`: The compiled bytecode format.
-    *   `mf_instruction`: Opcode definitions. Supports up to 3 source operands.
+    *   `mf_instruction`: **STEP_N Layout**. Contains explicit **Linear Strides** for every operand.
     *   `mf_tensor`: **The View**. A lightweight struct (`info`, `buffer*`, `offset`) pointing to data.
-    *   `mf_state`: Holds registers (tensors) for a running program.
+    *   `mf_state`: Holds registers (tensors) and the **Global Error Pointer**.
 
 #### **Ops** (`modules/ops`)
 *   **Role:** The "Standard Library" of math functions. Stateless kernels implementing instructions.
@@ -105,6 +107,16 @@ graph TD
 
 #### **Backend** (`modules/backend_cpu`)
 *   **Role:** The execution engine. Distributes work across CPU threads using a windowed approach.
+
+---
+
+## Memory Safety & Error Handling
+
+MathFlow priorities visibility and fault isolation through three defensive layers:
+
+1.  **Protected Iterators:** `mf_tensor_iter` tracks `start` and `limit` pointers. Every step (`advance`) triggers a bounds check. Violation causes an immediate `MF_LOG_FATAL`.
+2.  **Atomic Kill Switch:** The `mf_engine` maintains an atomic error code. If any thread fails, it sets the global flag, stopping all other threads and kernels immediately.
+3.  **Kernel Crash Reports:** Detailed reports on failure including **Opcode Names**, register IDs, domain coordinates, and memory ranges.
 
 ---
 
@@ -195,16 +207,22 @@ The `.mfapp` file is the entry point for applications. It defines the window set
 }
 ```
 
-## Random Access & Domain Iteration
+## The STEP_N Execution Model
 
-### Domain Iteration
-The Backend determines the "Execution Domain" based on the shape of the bound **Output Tensor(s)**.
-*   If Output is `[800, 600, 4]`, the kernel executes `800 * 600 * 4` times (conceptually).
-*   **`Index` Nodes:** To know "where" the current thread is running (e.g., pixel coordinate), the graph must use `Index` nodes (`u_FragX`, `u_FragY`). These read from the thread context.
+MathFlow uses a generalized **Stride Model** for data processing.
+
+### Linear Strides
+The compiler calculates how pointers advance per domain element:
+*   **Stride 0:** Scalar/Broadcast. Pointer stays static.
+*   **Stride 1:** Flat linear array.
+*   **Stride N:** Multi-channel data (e.g. RGBA).
+
+Kernels perform unconditional pointer arithmetic (`ptr += stride`), eliminating branching in the hot loop.
+
+### Intrinsic Coordinates (Index)
+To know "where" the current thread is running (e.g. pixel coordinate), the graph must use `Index` nodes (`u_FragX`, `u_FragY`).
+*   **Mechanism:** These nodes read the current multi-dimensional index from the execution context (`tile_offset`) and output it as a spatial stream.
 
 ### Random Access (Gather)
-Standard operations (Add, Mul) operate on streams linearly. To implement logic like "Read the value at index `i`", MathFlow uses `MF_OP_GATHER`.
-
-*   **Logic:** `Output[i] = Source[ Indices[i] ]`
-*   **Usage:** Used for looking up state, texture sampling (future), or indirect addressing.
-*   **Input:** Requires a `Data` tensor and an `Indices` tensor. The Output shape follows the `Indices` shape.
+Standard operations are linear. For non-linear logic, MathFlow uses `MF_OP_GATHER`.
+*   **Safety:** Explicit bounds checking against the source size. Invalid access triggers the **Kill Switch**.

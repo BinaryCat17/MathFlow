@@ -1,6 +1,8 @@
 #ifndef MF_OPCODES_H
 #define MF_OPCODES_H
 
+#include <mathflow/base/mf_types.h>
+
 // MathFlow Instruction Set Architecture
 // Opcode Ranges:
 // 0    - 255 : Core Math (Basic Arithmetic, Logic, Comparison)
@@ -92,5 +94,10 @@ typedef enum {
     // --- Random / Noise (768 - ...) ---
 
 } mf_opcode;
+
+/**
+ * @brief Returns a human-readable name for a given opcode.
+ */
+const char* mf_opcode_to_str(u16 opcode);
 
 #endif // MF_OPCODES_H

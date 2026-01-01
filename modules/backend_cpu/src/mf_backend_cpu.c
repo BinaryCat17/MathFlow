@@ -113,13 +113,13 @@ static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t 
                  "==================================================\n"
                  "             KERNEL CRASH REPORT\n"
                  "==================================================\n"
-                 "  Instruction : #%u (Opcode: %d)\n"
+                 "  Instruction : #%u (Opcode: %s [%d])\n"
                  "  Registers   : D:%u, S1:%u, S2:%u, S3:%u\n"
                  "  Domain Coord: [%s]\n"
                  "  Linear Index: %u\n"
                  "  Error Type  : %s\n"
                  "==================================================",
-                 inst_idx, inst->opcode, 
+                 inst_idx, mf_opcode_to_str(inst->opcode), inst->opcode, 
                  inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx,
                  coords, ctx->linear_offset,
                  mf_exec_error_to_str(ctx->error));
@@ -216,7 +216,9 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     state->ctx.ndim = batch->ndim; 
     
     if (batch->main_state) {
-        state->ctx.global_error_ptr = (mf_atomic_i32*)&batch->main_state->error_code;
+        state->ctx.global_error_ptr = batch->main_state->global_error_ptr ? 
+                                      batch->main_state->global_error_ptr : 
+                                      &batch->main_state->error_code;
     }
 
     state->ctx.linear_offset = (u32)start_idx;
@@ -235,7 +237,10 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_cpu_exec(&state->ctx, batch->program, batch->op_table, batch);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
-        mf_atomic_store((mf_atomic_i32*)&batch->main_state->error_code, (int32_t)state->ctx.error);
+        mf_atomic_store(&batch->main_state->error_code, (int32_t)state->ctx.error);
+        if (batch->main_state->global_error_ptr) {
+            mf_atomic_store(batch->main_state->global_error_ptr, (int32_t)state->ctx.error);
+        }
     }
 }
 

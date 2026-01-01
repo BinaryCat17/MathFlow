@@ -3,6 +3,9 @@
 #include <mathflow/engine/mf_engine.h>
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
 #include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/host/mf_host_desc.h>
+#include <mathflow/base/mf_json.h>
+#include <mathflow/base/mf_shape.h>
 #include <mathflow/base/mf_log.h>
 #include <mathflow/base/mf_utils.h>
 
