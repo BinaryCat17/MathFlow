@@ -163,13 +163,8 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 void mf_ops_register_matrix(mf_op_func* table) {
-
     table[MF_OP_MATMUL] = op_matmul; 
-
     table[MF_OP_TRANSPOSE] = op_transpose; 
-
     table[MF_OP_INVERSE] = op_inverse;
-
     table[MF_OP_JOIN] = op_join;
-
 }
