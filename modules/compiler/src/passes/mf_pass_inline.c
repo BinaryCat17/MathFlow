@@ -11,27 +11,9 @@ bool mf_compile_load_json_ir(const char* json_path, mf_graph_ir* out_ir, mf_aren
 
 // --- Expansion Logic (Copied and cleaned from old parser) ---
 
-static bool is_input_connected(mf_graph_ir* ir, u32 node_idx, u32 port_idx) {
-    for (size_t i = 0; i < ir->link_count; ++i) {
-        if (ir->links[i].dst_node_idx == node_idx && ir->links[i].dst_port == port_idx) {
-            return true;
-        }
-    }
-    return false;
-}
-
 static bool needs_expansion(mf_graph_ir* ir) {
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].type == MF_NODE_CALL) return true;
-        
-        // Auto-const generation for Index/Step
-        if (mf_tensor_is_valid(&ir->nodes[i].constant)) {
-            if (ir->nodes[i].type == MF_NODE_INDEX || 
-                ir->nodes[i].type == MF_NODE_STEP) 
-            {
-                if (!is_input_connected(ir, (u32)i, 0)) return true;
-            }
-        }
     }
     return false;
 }
@@ -75,34 +57,6 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
     for (size_t i = 0; i < src->node_count; ++i) {
         mf_ir_node* node = &src->nodes[i];
         
-        // implicit const generation
-        if (mf_tensor_is_valid(&node->constant) && 
-           (node->type == MF_NODE_INDEX || node->type == MF_NODE_STEP)) 
-        {
-            if (!is_input_connected(src, (u32)i, 0)) {
-                char* const_id = mf_arena_sprintf(arena, "%s_impl_const", node->id ? node->id : "gen");
-                mf_ir_node const_node = {0};
-                const_node.id = const_id;
-                const_node.type = MF_NODE_CONST;
-                const_node.constant = node->constant; 
-                
-                node->constant.buffer = NULL;
-                node->constant.byte_offset = 0;
-                
-                mf_map_put(&global_map, const_id, current_idx);
-                APPEND_NODE(const_node);
-                u32 const_idx = current_idx++;
-                
-                mf_ir_link implicit_link = {0};
-                implicit_link.src_node_idx = const_idx;
-                implicit_link.dst_node_idx = current_idx; 
-                implicit_link.src_port = 0;
-                implicit_link.dst_port = 0;
-                
-                APPEND_LINK(implicit_link);
-            }
-        }
-
         if (node->type == MF_NODE_CALL) {
             if (!node->sub_graph_path) continue;
             
