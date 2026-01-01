@@ -5,9 +5,9 @@ This guide explains how to create interactive, graphical applications using the 
 ## 1. Concept
 
 A MathFlow application consists of three parts:
-1.  **Manifest (`.mfapp`):** Describes the Window, Global Resources (Memory), and the Pipeline (Kernels).
-2.  **Kernels (`.json`):** Graph files that define the logic. Usually split into **Logic** (State Update) and **Render** (Pixel Drawing).
-3.  **Assets:** Project files are typically stored in `assets/projects/<your_project>/`.
+1.  **Manifest (`.mfapp`):** Describes the Window, Assets, and the Computation Pipeline.
+2.  **Kernels (`.json`):** Graph files that define the logic (Logic vs Render).
+3.  **Assets:** External data like SDF fonts and images.
 
 ## 2. Project Structure
 
@@ -17,11 +17,12 @@ assets/projects/my_game/
   ├── my_game.mfapp      # The Entry Point
   ├── logic.json         # Updates game state
   └── render.json        # Draws the game state
+  └── font.ttf           # Optional font asset
 ```
 
 ## 3. The Manifest (.mfapp)
 
-The manifest links everything together. It allocates memory (Resources) and schedules kernels.
+The manifest is the orchestrator. It configures the window, allocates global memory, and binds kernels.
 
 **Example `my_game.mfapp`:**
 ```json
@@ -32,11 +33,15 @@ The manifest links everything together. It allocates memory (Resources) and sche
         "height": 600,
         "vsync": true
     },
+    "runtime": {
+        "threads": 0 // 0 = Auto-detect CPU cores
+    },
+    "assets": [
+        { "type": "font", "resource": "u_Font", "path": "font.ttf", "size": 32 }
+    ],
     "pipeline": {
         "resources": [
-            { "name": "GameState", "dtype": "F32", "shape": [10] },     // Shared Memory
-            { "name": "u_Mouse",   "dtype": "F32", "shape": [4] },      // Mouse Input
-            { "name": "Screen",    "dtype": "F32", "shape": [600, 800, 4] } // Output Image
+            { "name": "GameState", "dtype": "F32", "shape": [10] }
         ],
         "kernels": [
             {
@@ -44,8 +49,7 @@ The manifest links everything together. It allocates memory (Resources) and sche
                 "entry": "logic.json",
                 "bindings": [
                     { "port": "StateIn",  "resource": "GameState" },
-                    { "port": "StateOut", "resource": "GameState" },
-                    { "port": "Mouse",    "resource": "u_Mouse" }
+                    { "port": "StateOut", "resource": "GameState" }
                 ]
             },
             {
@@ -53,13 +57,22 @@ The manifest links everything together. It allocates memory (Resources) and sche
                 "entry": "render.json",
                 "bindings": [
                     { "port": "State", "resource": "GameState" },
-                    { "port": "Color", "resource": "Screen" }
+                    { "port": "Color", "resource": "out_Color" }
                 ]
             }
         ]
     }
 }
 ```
+
+### Automated Resources
+The Host automatically provides and updates these resources if they are used in your graphs:
+*   **`out_Color`**: The screen buffer (RGBA). Automatically resized on window resize.
+*   **`u_Time`**: Current time in seconds (F32).
+*   **`u_Resolution`**: [Width, Height] (F32[2]).
+*   **`u_ResX` / `u_ResY`**: Individual dimensions (F32).
+*   **`u_Aspect`**: Window aspect ratio (F32).
+*   **`u_Mouse`**: [X, Y, LeftClick, RightClick] (F32[4]).
 
 ## 4. The Logic Kernel (logic.json)
 
@@ -75,10 +88,8 @@ This graph reads the **Previous State** (`StateIn`) and computes the **Next Stat
 {
     "nodes": [
         { "id": "StateIn",  "type": "Input", "data": {"shape": [10], "dtype": "f32"} },
-        { "id": "Mouse",    "type": "Input", "data": {"shape": [4], "dtype": "f32"} },
         
         { "id": "One",      "type": "Const", "data": {"value": 1.0} },
-        
         { "id": "NewState", "type": "Add" },
         
         { "id": "StateOut", "type": "Output" }
@@ -99,7 +110,7 @@ This graph reads the **Previous State** (`StateIn`) and computes the **Next Stat
 This graph computes the color for **every pixel**. The backend executes this graph $Width \times Height$ times.
 
 **Key Concept:** Domain Iteration.
-*   The Output (`Color`) has shape `[600, 800, 4]`.
+*   The Output (`Color`) has shape `[height, width, 4]`.
 *   To know "which pixel" you are drawing, use `Index` nodes.
 
 **Example `render.json`:**
@@ -126,9 +137,8 @@ This graph computes the color for **every pixel**. The backend executes this gra
 **Tip: UV Coordinates**
 To get standard `[0, 1]` UV coordinates:
 1.  Get `X` (Index 1) and `Y` (Index 0).
-2.  Get Resolution inputs (`u_ResX`, `u_ResY`).
-3.  `UV.x = Div(X, u_ResX)`
-4.  `UV.y = Div(Y, u_ResY)`
+2.  `UV.x = Div(X, u_ResX)`
+3.  `UV.y = Div(Y, u_ResY)`
 
 ## 6. Accessing State (Gather)
 
@@ -151,20 +161,17 @@ You can call other graphs using the `Call` node. This is useful for shared logic
     "data": { "path": "lib/sdf_circle.json" } 
 }
 ```
-*   **Inputs/Outputs:** The `Call` node dynamically exposes ports matching the `Input` and `Output` nodes inside the referenced graph.
+*   **Inputs/Outputs:** The `Call` node dynamically exposes ports matching the `Input` and `Output` names inside the referenced graph.
 
 ## 8. Running
 
-Build the project and run `mf-window`:
-
+### Run a Manifest
 ```bash
-# Linux
-cmake --preset x64-debug-linux
-cmake --build out/build/x64-debug-linux
 ./out/build/x64-debug-linux/apps/mf-window/mf-window assets/projects/my_game/my_game.mfapp
+```
 
-# Windows
-cmake --preset x64-debug-win
-cmake --build out/build/x64-debug-win
-.\out\build\x64-debug-win\apps\mf-window\mf-window.exe assets\projects\my_game\my_game.mfapp
+### Quick Look (Raw Graph)
+You can also run a single `.json` graph directly. The host will synthesize a default manifest for you:
+```bash
+./out/build/x64-debug-linux/apps/mf-window/mf-window my_shader.json
 ```

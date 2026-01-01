@@ -11,12 +11,11 @@ graph TD
     subgraph App ["Application Layer"]
         Runner["mf-runner (CLI)"]
         Window["mf-window (GUI)"]
-        Host["Host (Window/Input)"]
+        Host["Host (Window/Input/Assets)"]
     end
 
     subgraph Core ["Core Orchestration"]
         Engine["Engine (State/Resources)"]
-        Loader["Loader (IO)"]
         Compiler["Compiler (JSON -> Bin)"]
     end
 
@@ -27,18 +26,15 @@ graph TD
 
     subgraph Foundation ["Foundation (Shared)"]
         ISA["ISA (Bytecode/Tensors)"]
-        Base["Base (Memory/Math)"]
+        Base["Base (Memory/Math/IO)"]
     end
 
     %% Active Workflow Flow
     Runner --> Host
     Window --> Host
     
+    Host --> Compiler
     Host --> Engine
-    Host --> Loader
-    
-    Loader --> Compiler
-    Loader --> Engine
     
     Engine -.-> Backend
     Backend --> Ops
@@ -56,82 +52,72 @@ graph TD
 #### **Base** (`modules/base`)
 *   **Role:** The bedrock. Zero external dependencies.
 *   **Contents:**
-    *   `mf_types.h`: Core typedefs (`f32`, `u8`, `mf_type_info`).
+    *   `mf_types.h`: Core typedefs (`f32`, `u8`, `mf_type_info`) and access modes.
     *   `mf_memory`: Dual-allocator system (Stack Arena + Heap).
     *   `mf_buffer`: Raw memory container (owns `void* data`).
     *   `mf_math`: Basic scalar math functions.
     *   `mf_log`: Logging subsystem.
+    *   `mf_utils`: Common utilities (hashing, path manipulation, file IO, UTF conversion).
 
 #### **ISA** (`modules/isa`)
 *   **Role:** The "Contract" or Interface. Defines the data structures used to communicate between modules. Pure data, no logic.
 *   **Contents:**
     *   `mf_program`: The compiled bytecode format.
-    *   `mf_instruction`: Opcode definitions (`MF_OP_ADD`, `MF_OP_SELECT`). Supports up to 3 source operands (Ternary Ops).
-    *   `mf_tensor`: **The View**. A lightweight struct (`info`, `buffer*`, `offset`) that points to data. Does *not* own memory.
+    *   `mf_instruction`: Opcode definitions. Supports up to 3 source operands.
+    *   `mf_tensor`: **The View**. A lightweight struct (`info`, `buffer*`, `offset`) pointing to data.
     *   `mf_state`: Holds registers (tensors) for a running program.
 
 #### **Ops** (`modules/ops`)
-*   **Role:** The "Standard Library" of math functions.
-*   **Contents:**
-    *   Stateless functions implementing the instructions (`op_add`, `op_matmul`).
-    *   Handles shape resolution logic (broadcasting).
-    *   **Crucial:** Operations are agnostic to where data lives (CPU/GPU).
+*   **Role:** The "Standard Library" of math functions. Stateless kernels implementing instructions.
 
-### 2. Compilation & Loading
+### 2. Compilation & Orchestration
 
 #### **Compiler** (`modules/compiler`)
 *   **Role:** Translates human-readable Graphs (JSON) into machine-efficient Bytecode (`mf_program`).
-*   **Architecture:** Modular Pipeline of independent passes.
-*   **Process:**
-    1.  **Parse:** JSON -> `mf_ast`. Includes source tracking (line/column) for error reporting.
-    2.  **Lower:** AST -> `mf_graph_ir`. Maps named ports to numeric indices and resolves constants.
-    3.  **Inline:** Recursively expands `Call` nodes, embedding subgraphs into the flat IR.
-    4.  **Analyze:** Static analysis pass. Performs type checking and shape inference (including wildcard `0` broadcasting for dynamic shapes).
-    5.  **CodeGen:** Topologically sorts the graph and emits `mf_instruction` bytecode.
-
-#### **Loader** (`modules/loader`)
-*   **Role:** IO Bridge.
-*   **Function:** Reads files from disk, calls the Compiler, and hydrates the Engine with the resulting Programs.
-*   **Optimization:** Names are converted to FNV-1a hashes during loading for `O(1)` resource binding.
-
-### 3. Runtime Core
-
-#### **Backend** (`modules/backend_cpu`)
-*   **Role:** The "Muscle". Executes the bytecode.
-*   **Logic:**
-    *   **Windowed Execution:** Splits large tasks (e.g., 4K image) into small linear jobs (e.g., 4096 elements).
-    *   **Zero-Copy Views:** Workers execute directly on global buffers by creating "Tensor Views" with byte offsets.
-    *   **Thread Pool:** Distributes jobs across CPU cores.
+*   **Architecture:** Pipeline of passes (Parse -> Lower -> Inline -> Analyze -> CodeGen).
 
 #### **Engine** (`modules/engine`)
 *   **Role:** The "Brain" / Orchestrator.
 *   **Responsibilities:**
-    *   **Resource Management:** Allocates Global Buffers (the physical memory).
-    *   **Pipeline Management:** Coordinates multiple Kernels (Physics, Render).
-    *   **State Machine:** Manages Double Buffering (Front/Back) for temporal consistency.
-    *   **Dispatch:** Binds Resources to Kernels and commands the Backend to execute.
+    *   **Resource Management:** Allocates and manages Global Buffers.
+    *   **Pipeline Management:** Coordinates multiple Kernels and execution order.
+    *   **Double Buffering:** Manages Ping-Pong (Front/Back) state.
 
-### 4. Application Layer
+### 3. Application Layer
 
 #### **Host** (`modules/host`)
-*   **Role:** The shell.
-*   **Implementations:**
-    *   `mf_host_headless`: For CLI/Testing.
-    *   `mf_host_sdl`: For Visual output (Window, Input handling).
-*   **Manifest:** Loads `.mfapp` files to configure the window and pipeline.
+*   **Role:** The Interface between Engine and the Outside World (OS, Files, Window).
+*   **Responsibilities:**
+    *   **Application Lifecycle:** Manages `mf_engine` creation, initialization, and shutdown.
+    *   **Manifest Loading:** Parses `.mfapp` files and configures the system. Supports "Raw Graph" loading by synthesizing implicit pipelines.
+    *   **Asset Loading:** Loads external data (Images, Fonts) into Engine resources.
+    *   **Platform Support:**
+        *   `mf_host_headless`: For CLI execution and testing.
+        *   `mf_host_sdl`: For interactive GUI applications.
+    *   **System Resources:** Automated updates for `u_Time`, `u_Resolution`, and `u_Mouse`.
+
+#### **Backend** (`modules/backend_cpu`)
+*   **Role:** The execution engine. Distributes work across CPU threads using a windowed approach.
 
 ---
 
 ## The Pipeline Model
+MathFlow orchestrates execution via a **Pipeline**.
 
-MathFlow orchestrates execution via a **Pipeline**, moving away from a monolithic script to a system of interacting kernels.
+1.  **Kernel:** A compiled Graph (Program). Stateless function $Y = F(X)$.
+2.  **Resource:** A named Global Buffer managed by the Engine.
+3.  **Binding:** Link between a Kernel Port and a Global Resource.
+4.  **Scheduler:** The Host/Engine executes Kernels sequentially, swapping Front/Back buffers at the end of the frame.
 
-1.  **Kernel:** A single compiled Graph (Program). It is stateless and pure ($Y = F(X)$).
-2.  **Resource:** A named Global Buffer (e.g., `out_Color`, `Physics.Pos`). Persists across frames.
-3.  **Binding:** Explicit link between a Kernel Port and a Global Resource.
-    *   *Zero-Copy:* The Kernel's input/output tensor is a View into the Global Resource's buffer.
-4.  **Scheduler:** The Engine executes Kernels sequentially.
-    *   **Double Buffering:** Resources automatically swap Front/Back buffers each frame to ensure thread safety and temporal consistency.
+## Data Flow
+
+1.  **Load:** Host loads configuration (Manifest or raw JSON).
+2.  **Initialize:** Host creates Engine, compiles programs, and allocates resources.
+3.  **Loop:**
+    *   Host updates system inputs (Time, Mouse).
+    *   Engine determines active buffers.
+    *   Backend executes kernels in parallel.
+    *   Host presents output (e.g., rendering `out_Color` via SDL).
 
 ---
 
