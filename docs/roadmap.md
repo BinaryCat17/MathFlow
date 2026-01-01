@@ -209,18 +209,18 @@
     - `inventory_render.json`: Draws the grid and items based on state.
     - `inventory.mfapp`: Orchestrates the pipeline.
 
-## Phase 29: Text Rendering (SDF & Strings)
+## Phase 29: Text Rendering (SDF & Strings) (Completed)
 **Objective:** Enable text rendering without violating the "Pure Math" philosophy. Instead of imperative "Draw" commands, we treat text as a sampling problem using **SDF (Signed Distance Field) Font Atlases** generated from **TrueType Fonts**.
 
-- [ ] **Step 1: Asset Loader (Image & Font):**
+- [x] **Step 1: Asset Loader (Image & Font):**
     - Add `stb` (includes `stb_image` and `stb_truetype`) to dependencies.
     - Update `mf_loader` to support loading images (PNG/BMP) into `mf_buffer`.
     - Implement `mf_loader_load_font`: Loads a `.ttf`, uses `stb_truetype` to bake an **SDF Atlas** into a Global Resource (`mf_buffer`).
-- [ ] **Step 2: String Literals (Data):**
+- [x] **Step 2: String Literals (Data):**
     - Update `mf_pass_lower.c` to compile String Consts as `i32` Arrays (UTF-32 Code Points) instead of Hash IDs.
     - Allows Basic Unicode support (Latin + Cyrillic) without complex UTF-8 decoding in the kernel.
     - Example: `"value": "Hi"` -> Tensor `[72, 105]`.
-- [ ] **Step 3: Text Sampling Subgraph:**
+- [x] **Step 3: Text Sampling Subgraph:**
     - Create `lib/text/render_text.json`.
     - Logic:
         1. Map Screen UV -> Character Index in String.

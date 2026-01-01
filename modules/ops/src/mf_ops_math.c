@@ -154,6 +154,7 @@ static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
     bool val_s = (sz_val == 1); bool min_s = (sz_min == 1); bool max_s = (sz_max == 1);
     for(size_t i=0; i<sz_dst; ++i) { 
         f32 v = val_s ? d_val[0] : d_val[i]; f32 mn = min_s ? d_min[0] : d_min[i]; f32 mx = max_s ? d_max[0] : d_max[i];
+        if (isnan(v)) v = mn;
         if (v < mn) v = mn; if (v > mx) v = mx;
         d_dst[i] = v;
     }

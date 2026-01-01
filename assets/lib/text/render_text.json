@@ -22,6 +22,10 @@
         { "id": "charw", "type": "Mul" },
         { "id": "charidx_f", "type": "Div" },
         { "id": "charidx", "type": "Floor" },
+        
+        { "id": "text_len_minus_1", "type": "Const", "data": {"value": 23.0} },
+        { "id": "safe_charidx", "type": "Clamp" },
+
         { "id": "charcode", "type": "Gather" },
         { "id": "base_idx", "type": "Mul" },
         { "id": "u0_idx", "type": "Add" },
@@ -49,12 +53,22 @@
         { "id": "localx", "type": "Sub" },
         { "id": "atlasu", "type": "Mix" },
         { "id": "atlasv", "type": "Mix" },
+        
+        { "id": "zero_f", "type": "Const", "data": {"value": 0.0} },
+        { "id": "one_f", "type": "Const", "data": {"value": 1.0} },
+        { "id": "safe_atlasu", "type": "Clamp" },
+        { "id": "safe_atlasv", "type": "Clamp" },
+
         { "id": "au_px", "type": "Mul" },
         { "id": "av_px", "type": "Mul" },
         { "id": "au_idx", "type": "Floor" },
         { "id": "av_idx", "type": "Floor" },
         { "id": "rowoff", "type": "Mul" },
         { "id": "flatidx", "type": "Add" },
+        
+        { "id": "atlas_max_idx", "type": "Const", "data": {"value": 262143.0} },
+        { "id": "safe_flatidx", "type": "Clamp" },
+
         { "id": "sdf", "type": "Gather" },
         { "id": "edges", "type": "Const", "data": {"value": [0.45, 0.55]} },
         { "id": "mask", "type": "SmoothStep" },
@@ -85,8 +99,14 @@
         { "src": "dx", "dst": "charidx_f", "dst_port": "a" },
         { "src": "charw", "dst": "charidx_f", "dst_port": "b" },
         { "src": "charidx_f", "dst": "charidx", "dst_port": "in" },
+        
+        { "src": "charidx", "dst": "safe_charidx", "dst_port": "in" },
+        { "src": "zero", "dst": "safe_charidx", "dst_port": "min" },
+        { "src": "text_len_minus_1", "dst": "safe_charidx", "dst_port": "max" },
+
         { "src": "text", "dst": "charcode", "dst_port": "data" },
-        { "src": "charidx", "dst": "charcode", "dst_port": "indices" },
+        { "src": "safe_charidx", "dst": "charcode", "dst_port": "indices" },
+
         { "src": "charcode", "dst": "base_idx", "dst_port": "a" },
         { "src": "eight", "dst": "base_idx", "dst_port": "b" },
         { "src": "base_idx", "dst": "u0_idx", "dst_port": "a" },
@@ -135,9 +155,18 @@
         { "src": "v0", "dst": "atlasv", "dst_port": "a" },
         { "src": "v1", "dst": "atlasv", "dst_port": "b" },
         { "src": "localy", "dst": "atlasv", "dst_port": "t" },
-        { "src": "atlasu", "dst": "au_px", "dst_port": "a" },
+        
+        { "src": "atlasu", "dst": "safe_atlasu", "dst_port": "in" },
+        { "src": "zero_f", "dst": "safe_atlasu", "dst_port": "min" },
+        { "src": "one_f",  "dst": "safe_atlasu", "dst_port": "max" },
+        
+        { "src": "atlasv", "dst": "safe_atlasv", "dst_port": "in" },
+        { "src": "zero_f", "dst": "safe_atlasv", "dst_port": "min" },
+        { "src": "one_f",  "dst": "safe_atlasv", "dst_port": "max" },
+
+        { "src": "safe_atlasu", "dst": "au_px", "dst_port": "a" },
         { "src": "atlas_dim", "dst": "au_px", "dst_port": "b" },
-        { "src": "atlasv", "dst": "av_px", "dst_port": "a" },
+        { "src": "safe_atlasv", "dst": "av_px", "dst_port": "a" },
         { "src": "atlas_dim", "dst": "av_px", "dst_port": "b" },
         { "src": "au_px", "dst": "au_idx", "dst_port": "in" },
         { "src": "av_px", "dst": "av_idx", "dst_port": "in" },
@@ -145,8 +174,14 @@
         { "src": "atlas_dim", "dst": "rowoff", "dst_port": "b" },
         { "src": "rowoff", "dst": "flatidx", "dst_port": "a" },
         { "src": "au_idx", "dst": "flatidx", "dst_port": "b" },
+        
+        { "src": "flatidx", "dst": "safe_flatidx", "dst_port": "in" },
+        { "src": "zero_f", "dst": "safe_flatidx", "dst_port": "min" },
+        { "src": "atlas_max_idx", "dst": "safe_flatidx", "dst_port": "max" },
+
         { "src": "fontatlas", "dst": "sdf", "dst_port": "data" },
-        { "src": "flatidx", "dst": "sdf", "dst_port": "indices" },
+        { "src": "safe_flatidx", "dst": "sdf", "dst_port": "indices" },
+
         { "src": "sdf", "dst": "mask", "dst_port": "x" },
         { "src": "edges", "dst": "mask", "dst_port": "edges" },
         { "src": "charidx_f", "dst": "is_pos_x", "dst_port": "a" },

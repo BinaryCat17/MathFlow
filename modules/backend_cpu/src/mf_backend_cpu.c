@@ -205,6 +205,9 @@ static void mf_backend_cpu_dispatch(
     };
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
 
+    MF_LOG_TRACE("CPU Dispatch: elements=%zu, ndim=%u, shape=[%u, %u, %u]", 
+        total_elements, batch.ndim, batch.domain_shape[0], batch.domain_shape[1], batch.domain_shape[2]);
+
     u32 total_jobs = (u32)((total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
 
     if (total_elements <= MF_CPU_INLINE_THRESHOLD || total_jobs == 1) {
