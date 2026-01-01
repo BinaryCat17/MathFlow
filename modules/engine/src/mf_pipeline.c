@@ -44,17 +44,10 @@ static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
         res->name_hash = mf_fnv1a_hash(res->name);
         
         memset(&res->desc, 0, sizeof(mf_tensor));
-        res->desc.info.dtype = desc->dtype;
-        res->desc.info.ndim = desc->ndim;
-        memcpy(res->desc.info.shape, desc->shape, sizeof(int32_t) * desc->ndim);
+        mf_type_info_init_contiguous(&res->desc.info, desc->dtype, desc->shape, desc->ndim);
         
-        int32_t stride = 1;
         bool is_dynamic = false;
-        for (int k = desc->ndim - 1; k >= 0; --k) {
-            res->desc.info.strides[k] = stride;
-            if (desc->shape[k] > 0) stride *= desc->shape[k];
-            else is_dynamic = true;
-        }
+        for (int k = 0; k < desc->ndim; ++k) if (desc->shape[k] <= 0) is_dynamic = true;
         
         res->size_bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
         res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);

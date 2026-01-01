@@ -55,15 +55,7 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         offset += sizeof(mf_bin_tensor_desc);
         
         mf_tensor* t = &prog->tensors[i];
-        t->info.dtype = (mf_dtype)desc->dtype;
-        t->info.ndim = desc->ndim;
-        memcpy(t->info.shape, desc->shape, sizeof(int32_t) * MF_MAX_DIMS);
-        
-        int32_t stride = 1;
-        for (int k = t->info.ndim - 1; k >= 0; --k) {
-            t->info.strides[k] = stride;
-            stride *= t->info.shape[k];
-        }
+        mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, desc->shape, desc->ndim);
     }
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
@@ -106,21 +98,9 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
         mf_compiler_diag_init(&diag, arena);
         
         mf_graph_ir ir = {0};
-        if (!mf_compile_load_json(path, &ir, arena, &diag)) {
-            MF_LOG_ERROR("Failed to load/parse JSON: %s", path);
-            for (uint32_t i = 0; i < diag.error_count; ++i) {
-                MF_LOG_ERROR("  %s:%u:%u: %s", diag.errors[i].loc.file, diag.errors[i].loc.line, diag.errors[i].loc.column, diag.errors[i].message);
-            }
-            return NULL;
-        }
+        if (!mf_compile_load_json(path, &ir, arena, &diag)) return NULL;
         
         mf_program* prog = mf_compile(&ir, arena, &diag);
-        if (!prog) {
-            MF_LOG_ERROR("Failed to compile graph: %s", path);
-            for (uint32_t i = 0; i < diag.error_count; ++i) {
-                MF_LOG_ERROR("  %s:%u:%u: %s", diag.errors[i].loc.file, diag.errors[i].loc.line, diag.errors[i].loc.column, diag.errors[i].message);
-            }
-        }
         return prog;
     } else if (strcmp(ext, "bin") == 0) {
         return _load_binary(path, arena);
@@ -146,7 +126,6 @@ static void _synthesize_raw_pipeline(mf_arena* arena, mf_pipeline_desc* out_pipe
     for (u32 k = 0; k < out_pipe->kernel_count; ++k) {
         mf_pipeline_kernel* pk = &kernels_copy[k];
         
-        // Count external symbols for this specific kernel to allocate bindings
         u32 k_ext = 0;
         for (u32 s = 0; s < programs[k]->meta.symbol_count; ++s) {
             if (programs[k]->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) k_ext++;

@@ -257,16 +257,8 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     mf_resource_inst* res = &engine->resources[res_idx];
     mf_allocator* alloc = (mf_allocator*)&engine->heap;
     
-    mf_type_info new_info = res->desc.info;
-    new_info.ndim = new_ndim;
-    memcpy(new_info.shape, new_shape, sizeof(int32_t) * MF_MAX_DIMS);
-    
-    // Recalculate strides
-    int32_t stride = 1;
-    for (int k = new_ndim - 1; k >= 0; --k) {
-        new_info.strides[k] = stride;
-        stride *= (new_shape[k] > 0 ? new_shape[k] : 1);
-    }
+    mf_type_info new_info;
+    mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, new_shape, new_ndim);
     
     size_t new_bytes = 1;
     for(int d=0; d<new_ndim; ++d) new_bytes *= (new_shape[d] > 0 ? new_shape[d] : 1);

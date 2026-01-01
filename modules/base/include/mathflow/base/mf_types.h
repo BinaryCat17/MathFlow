@@ -71,6 +71,22 @@ static inline size_t mf_dtype_size(mf_dtype type) {
     }
 }
 
+static inline void mf_type_info_init_contiguous(mf_type_info* info, mf_dtype dtype, const int32_t* shape, uint8_t ndim) {
+    info->dtype = dtype;
+    info->ndim = ndim;
+    if (ndim > 0 && shape) {
+        for (int i = 0; i < ndim; ++i) info->shape[i] = shape[i];
+        
+        int32_t stride = 1;
+        for (int k = ndim - 1; k >= 0; --k) {
+            info->strides[k] = stride;
+            stride *= (shape[k] > 0 ? shape[k] : 1);
+        }
+    } else {
+        info->ndim = 0;
+    }
+}
+
 /**
  * @brief Parses a string into an mf_dtype.
  * Case-insensitive, supports: "f32", "i32", "u8", "bool".

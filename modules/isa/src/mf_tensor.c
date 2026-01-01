@@ -143,15 +143,7 @@ bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_
     mf_tensor_view(dst, src);
     
     // Modify Metadata
-    dst->info.ndim = (uint8_t)ndim;
-    for(int i=0; i<ndim; ++i) dst->info.shape[i] = new_shape[i];
-    
-    // Recalculate Strides (Row-Major)
-    int32_t stride = 1;
-    for (int k = ndim - 1; k >= 0; --k) {
-        dst->info.strides[k] = stride;
-        stride *= new_shape[k];
-    }
+    mf_type_info_init_contiguous(&dst->info, src->info.dtype, new_shape, (uint8_t)ndim);
     
     return true;
 }
