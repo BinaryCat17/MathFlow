@@ -220,7 +220,7 @@
     - Update `mf_pass_lower.c` to compile String Consts as `i32` Arrays (UTF-32 Code Points) instead of Hash IDs.
     - Allows Basic Unicode support (Latin + Cyrillic) without complex UTF-8 decoding in the kernel.
     - Example: `"value": "Hi"` -> Tensor `[72, 105]`.
-- [x] **Step 3: Text Sampling Subgraph:**
+- [x] Step 3: Text Sampling Subgraph:
     - Create `lib/text/render_text.json`.
     - Logic:
         1. Map Screen UV -> Character Index in String.
@@ -228,6 +228,28 @@
         3. Map Char Code -> Atlas UV (using baked glyph metadata).
         4. `MF_OP_GATHER` (Sample) SDF from Atlas.
         5. `SmoothStep` for crisp edges.
+
+---
+
+## Phase 30: Host Refactor & Application Lifecycle
+**Objective:** Eliminate redundancy between `headless` and `sdl` hosts, fix memory leaks in manifest loading, and establish a clean, modular "Application" interface.
+
+- [ ] **Step 1: Unified Host Context:**
+    - Create `mf_host_context` to hold the shared state: `mf_engine`, `mf_host_desc`, and common resource handles.
+    - Implement `mf_host_init` and `mf_host_cleanup` to centralize engine creation and resource management.
+    - **Memory Safety:** Implement `mf_host_desc_destroy` to correctly free all strings and arrays allocated by the manifest loader.
+
+- [ ] **Step 2: Automated Uniforms & Resizing:**
+    - Move "Standard Uniform" updates (`u_Time`, `u_Resolution`, `u_ResX`, etc.) into a shared `mf_host_update_system_resources` function.
+    - Centralize `out_Color` resizing logic to handle window resize events consistently.
+
+- [ ] **Step 3: Manifest Purity:**
+    - Refactor `mf_manifest_loader` to treat "Single Graph" entries as ephemeral single-kernel pipelines.
+    - Remove legacy `graph_path` logic from hosts; they should only care about `mf_pipeline`.
+
+- [ ] **Step 4: Modular SDL Host:**
+    - Extract SDL-specific logic (Pixel Conversion, Screenshot, Event Polling) into standalone helper functions.
+    - Decouple Input: Create a platform-agnostic `mf_input_state` structure that SDL fills and the Host Context applies to the engine.
 
 ---
 

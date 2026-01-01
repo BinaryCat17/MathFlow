@@ -114,19 +114,11 @@ static u32 get_port_index(mf_node_type type, const char* port_name) {
 
 // --- Helpers ---
 
-static mf_dtype parse_dtype(const char* s) {
-    if (!s) return MF_DTYPE_F32;
-    if (strcmp(s, "f32") == 0) return MF_DTYPE_F32;
-    if (strcmp(s, "i32") == 0) return MF_DTYPE_I32;
-    if (strcmp(s, "bool") == 0 || strcmp(s, "u8") == 0) return MF_DTYPE_U8;
-    return MF_DTYPE_F32;
-}
-
 static void parse_const_tensor(const mf_json_value* val, const mf_json_value* node_data, mf_tensor* t, mf_arena* arena) {
     mf_dtype target_dtype = MF_DTYPE_F32;
     if (node_data) {
         const mf_json_value* v_dt = mf_json_get_field(node_data, "dtype");
-        if (v_dt && v_dt->type == MF_JSON_VAL_STRING) target_dtype = parse_dtype(v_dt->as.s);
+        if (v_dt && v_dt->type == MF_JSON_VAL_STRING) target_dtype = mf_dtype_from_str(v_dt->as.s);
     }
 
     if (val->type == MF_JSON_VAL_NUMBER) {
@@ -267,7 +259,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
                     return false;
                 }
                 
-                dst->constant.info.dtype = v_dtype ? parse_dtype(v_dtype->as.s) : MF_DTYPE_F32;
+                dst->constant.info.dtype = v_dtype ? mf_dtype_from_str(v_dtype->as.s) : MF_DTYPE_F32;
                 dst->constant.info.ndim = (uint8_t)v_shape->as.array.count;
                 if (dst->constant.info.ndim > MF_MAX_DIMS) dst->constant.info.ndim = MF_MAX_DIMS;
                 

@@ -56,13 +56,19 @@ typedef struct {
 } mf_type_info;
 
 static inline size_t mf_dtype_size(mf_dtype type) {
-    switch (type) {
+    switch(type) {
         case MF_DTYPE_F32: return 4;
         case MF_DTYPE_I32: return 4;
         case MF_DTYPE_U8:  return 1;
         default: return 0;
     }
 }
+
+/**
+ * @brief Parses a string into an mf_dtype.
+ * Case-insensitive, supports: "f32", "i32", "u8", "bool".
+ */
+mf_dtype mf_dtype_from_str(const char* s);
 
 // --- Access Modes ---
 typedef enum {
@@ -72,3 +78,4 @@ typedef enum {
 } mf_access_mode;
 
 #endif // MF_TYPES_H
+

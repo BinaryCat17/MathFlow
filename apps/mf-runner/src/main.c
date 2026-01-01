@@ -40,7 +40,12 @@ int main(int argc, char** argv) {
         const char* ext = strrchr(mfapp_path, '.');
         if (ext && (strcmp(ext, ".json") == 0 || strcmp(ext, ".bin") == 0)) {
             MF_LOG_WARN("Loading raw graph directly. Consider using .mfapp.");
-            app_desc.graph_path = mfapp_path;
+            app_desc.has_pipeline = true;
+            app_desc.pipeline.kernel_count = 1;
+            app_desc.pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+            app_desc.pipeline.kernels[0].id = strdup("main");
+            app_desc.pipeline.kernels[0].graph_path = strdup(mfapp_path);
+            app_desc.pipeline.kernels[0].frequency = 1;
             app_desc.window_title = "Raw Graph";
         } else {
              MF_LOG_ERROR("Failed to load manifest %s", mfapp_path);
@@ -48,7 +53,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    MF_LOG_INFO("MathFlow Runner | App: %s | Graph: %s", app_desc.window_title, app_desc.graph_path);
+    const char* entry_info = app_desc.has_pipeline ? app_desc.pipeline.kernels[0].graph_path : "Pipeline";
+    MF_LOG_INFO("MathFlow Runner | App: %s | Entry: %s", app_desc.window_title, entry_info);
 
     int result = mf_host_run_headless(&app_desc, frames);
 

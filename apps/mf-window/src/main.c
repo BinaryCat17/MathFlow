@@ -45,7 +45,12 @@ int main(int argc, char** argv) {
         const char* ext = strrchr(mfapp_path, '.');
         if (ext && (strcmp(ext, ".json") == 0 || strcmp(ext, ".bin") == 0)) {
             MF_LOG_WARN("Loading raw graph directly.");
-            desc.graph_path = mfapp_path;
+            desc.has_pipeline = true;
+            desc.pipeline.kernel_count = 1;
+            desc.pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+            desc.pipeline.kernels[0].id = strdup("main");
+            desc.pipeline.kernels[0].graph_path = strdup(mfapp_path);
+            desc.pipeline.kernels[0].frequency = 1;
             desc.window_title = "MathFlow Visualizer";
             desc.width = 800;
             desc.height = 600;
@@ -57,9 +62,10 @@ int main(int argc, char** argv) {
         }
     }
 
+    const char* entry_info = desc.has_pipeline ? desc.pipeline.kernels[0].graph_path : "Pipeline";
     MF_LOG_INFO("MathFlow Visualizer");
     MF_LOG_INFO("App: %s", desc.window_title);
-    MF_LOG_INFO("Graph: %s", desc.graph_path);
+    MF_LOG_INFO("Entry: %s", entry_info);
     MF_LOG_INFO("Resolution: %dx%d", desc.width, desc.height);
 
     return mf_host_run(&desc);

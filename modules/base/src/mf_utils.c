@@ -219,3 +219,14 @@ bool mf_map_get_ptr(mf_str_map* map, const char* key, void** out_ptr) {
     }
     return false;
 }
+
+mf_dtype mf_dtype_from_str(const char* s) {
+    if (!s) return MF_DTYPE_F32;
+    
+    // Case-insensitive comparison
+    if (strcasecmp(s, "f32") == 0) return MF_DTYPE_F32;
+    if (strcasecmp(s, "i32") == 0) return MF_DTYPE_I32;
+    if (strcasecmp(s, "u8") == 0 || strcasecmp(s, "bool") == 0) return MF_DTYPE_U8;
+    
+    return MF_DTYPE_F32;
+}

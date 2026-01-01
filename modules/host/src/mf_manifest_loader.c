@@ -7,14 +7,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-static mf_dtype parse_dtype_str(const char* s) {
-    if (!s) return MF_DTYPE_F32;
-    if (strcmp(s, "F32") == 0) return MF_DTYPE_F32;
-    if (strcmp(s, "I32") == 0) return MF_DTYPE_I32;
-    if (strcmp(s, "U8") == 0) return MF_DTYPE_U8;
-    return MF_DTYPE_F32;
-}
-
 // --- Loader ---
 
 int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
@@ -46,26 +38,32 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     out_desc->width = 800;
     out_desc->height = 600;
     out_desc->window_title = "MathFlow App";
-    out_desc->graph_path = NULL;
     out_desc->has_pipeline = false;
     memset(&out_desc->pipeline, 0, sizeof(out_desc->pipeline));
 
     char* base_dir = mf_path_get_dir(mfapp_path, &arena);
 
-    // 1. Runtime Section
+    // 1. Runtime Section (Legacy/Simple)
     const mf_json_value* runtime = mf_json_get_field(root, "runtime");
     if (runtime && runtime->type == MF_JSON_VAL_OBJECT) {
-        const mf_json_value* entry = mf_json_get_field(runtime, "entry");
-        if (entry && entry->type == MF_JSON_VAL_STRING) {
-            char* path = mf_path_join(base_dir, entry->as.s, &arena);
-            out_desc->graph_path = strdup(path);
-        }
-        
         const mf_json_value* threads = mf_json_get_field(runtime, "threads");
         if (threads && threads->type == MF_JSON_VAL_NUMBER) out_desc->num_threads = (u32)threads->as.n;
+        
+        // If we don't have a pipeline yet, we can use runtime.entry
+        const mf_json_value* entry = mf_json_get_field(runtime, "entry");
+        if (entry && entry->type == MF_JSON_VAL_STRING && !mf_json_get_field(root, "pipeline")) {
+            out_desc->has_pipeline = true;
+            out_desc->pipeline.kernel_count = 1;
+            out_desc->pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+            out_desc->pipeline.kernels[0].id = strdup("main");
+            char* path = mf_path_join(base_dir, entry->as.s, &arena);
+            out_desc->pipeline.kernels[0].graph_path = strdup(path);
+            out_desc->pipeline.kernels[0].frequency = 1;
+        }
     }
 
     // 2. Window Section
+    // ... (no changes here, but keeping for context) ...
     const mf_json_value* window = mf_json_get_field(root, "window");
     if (window && window->type == MF_JSON_VAL_OBJECT) {
         const mf_json_value* title = mf_json_get_field(window, "title");
@@ -108,7 +106,7 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
                 if (name && name->type == MF_JSON_VAL_STRING) pr->name = strdup(name->as.s);
                 
                 const mf_json_value* dtype = mf_json_get_field(res, "dtype");
-                if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = parse_dtype_str(dtype->as.s);
+                if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = mf_dtype_from_str(dtype->as.s);
                 
                 const mf_json_value* shape = mf_json_get_field(res, "shape");
                 if (shape && shape->type == MF_JSON_VAL_ARRAY) {
@@ -198,7 +196,7 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
     // Cleanup
     free(arena_mem);
     
-    if (!out_desc->graph_path && !out_desc->has_pipeline) {
+    if (!out_desc->has_pipeline) {
         MF_LOG_ERROR("Manifest missing runtime.entry or pipeline section");
         return -3;
     }

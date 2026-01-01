@@ -4,6 +4,7 @@ find_package(SDL2 CONFIG QUIET)
 add_library(mf_host_core STATIC
     src/mf_manifest_loader.c
     src/mf_host_headless.c
+    src/mf_host_common.c
 )
 add_library(MathFlow::host_core ALIAS mf_host_core)
 
