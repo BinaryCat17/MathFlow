@@ -13,7 +13,6 @@ static void print_help(const char* prog) {
 }
 
 int main(int argc, char** argv) {
-    // Init Logging
     mf_log_init();
 
     if (argc < 2) {
@@ -28,32 +27,19 @@ int main(int argc, char** argv) {
         if (strcmp(argv[i], "--frames") == 0 && i + 1 < argc) {
             frames = atoi(argv[i+1]);
             i++;
-        }
-        else if (strcmp(argv[i], "--trace") == 0) {
+        } else if (strcmp(argv[i], "--trace") == 0) {
             mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
         }
     }
 
-        mf_host_desc app_desc = {0};
-
-        if (mf_app_load_config(mfapp_path, &app_desc) != 0) {
-
-            MF_LOG_ERROR("Failed to load application from %s", mfapp_path);
-
-            return 1;
-
-        }
-
-    
-
-        int result = mf_host_run_headless(&app_desc, frames);
-
-        mf_host_desc_cleanup(&app_desc);
-
-    
-
-        return result;
-
+    mf_host_desc app_desc = {0};
+    if (mf_app_load_config(mfapp_path, &app_desc) != 0) {
+        MF_LOG_ERROR("Failed to load application from %s", mfapp_path);
+        return 1;
     }
 
-    
+    int result = mf_host_run_headless(&app_desc, frames);
+    mf_host_desc_cleanup(&app_desc);
+
+    return result;
+}
