@@ -1,8 +1,13 @@
 {
     "nodes": [
-        { "id": "edge0", "type": "Input" },
-        { "id": "edge1", "type": "Input" },
+        { "id": "edges", "type": "Input" },
         { "id": "x", "type": "Input" },
+        
+        { "id": "idx0", "type": "Const", "data": {"value": 0} },
+        { "id": "idx1", "type": "Const", "data": {"value": 1} },
+        
+        { "id": "edge0", "type": "Gather" },
+        { "id": "edge1", "type": "Gather" },
         
         { "id": "sub1", "type": "Sub" },
         { "id": "sub2", "type": "Sub" },
@@ -21,6 +26,11 @@
         { "id": "out", "type": "Output" }
     ],
     "links": [
+        { "src": "edges", "dst": "edge0", "dst_port": "data" },
+        { "src": "idx0",  "dst": "edge0", "dst_port": "indices" },
+        { "src": "edges", "dst": "edge1", "dst_port": "data" },
+        { "src": "idx1",  "dst": "edge1", "dst_port": "indices" },
+
         { "src": "x",     "dst": "sub1", "dst_port": "a" },
         { "src": "edge0", "dst": "sub1", "dst_port": "b" },
         { "src": "edge1", "dst": "sub2", "dst_port": "a" },

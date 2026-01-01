@@ -17,7 +17,8 @@ typedef struct mf_state {
     
     // Error flag set by execution contexts.
     // 0 = No Error. Uses mf_exec_error codes.
-    mf_atomic_i32 error_code;
+    mf_atomic_i32  error_code;
+    mf_atomic_i32* global_error_ptr; // Points to engine->error_code for global Kill Switch
 } mf_state;
 
 #endif // MF_STATE_H

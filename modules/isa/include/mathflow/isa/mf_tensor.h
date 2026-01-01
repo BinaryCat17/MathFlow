@@ -32,8 +32,12 @@ static inline bool mf_tensor_is_scalar(const mf_tensor* t) {
 }
 
 static inline size_t mf_tensor_count(const mf_tensor* t) {
+    if (!t || t->info.ndim == 0) return 1;
     size_t count = 1;
-    for(int i=0; i < t->info.ndim; ++i) count *= t->info.shape[i];
+    for(int i=0; i < t->info.ndim; ++i) {
+        int32_t dim = t->info.shape[i];
+        count *= (dim > 0 ? (size_t)dim : 0);
+    }
     return count;
 }
 

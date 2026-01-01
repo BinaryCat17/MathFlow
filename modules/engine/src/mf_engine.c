@@ -120,6 +120,7 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
 
     engine->front_idx = 0;
     engine->back_idx = 1;
+    mf_atomic_store(&engine->error_code, 0);
 
     return engine;
 }
@@ -162,6 +163,7 @@ void mf_engine_reset(mf_engine* engine) {
     
     engine->kernel_count = 0;
     engine->resource_count = 0;
+    mf_atomic_store(&engine->error_code, 0);
 }
 
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
@@ -172,6 +174,10 @@ mf_arena* mf_engine_get_arena(mf_engine* engine) {
 void mf_engine_dispatch(mf_engine* engine) {
     if (!engine) return;
 
+    if (mf_atomic_load(&engine->error_code) != 0) {
+        return; // Global Kill Switch is active
+    }
+
     MF_LOG_TRACE("Dispatching Pipeline frame %llu", (unsigned long long)engine->frame_index);
     
     u8 front = engine->front_idx;
@@ -179,6 +185,9 @@ void mf_engine_dispatch(mf_engine* engine) {
 
     for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
+
+        // Double check error before starting each kernel
+        if (mf_atomic_load(&engine->error_code) != 0) break;
         
         // 1. Pre-Execution Tasks: Auto-Resize
         for (u32 i = 0; i < ker->resize_task_count; ++i) {
@@ -210,6 +219,9 @@ void mf_engine_dispatch(mf_engine* engine) {
 
         for (u32 f = 0; f < ker->frequency; ++f) {
             if (engine->backend.dispatch) {
+                // Ensure kernel knows about global error state
+                ker->state.global_error_ptr = &engine->error_code;
+
                 // Execute each task in the program
                 for (u32 t = 0; t < ker->program->meta.task_count; ++t) {
                     mf_task* task = &ker->program->tasks[t];
@@ -224,8 +236,14 @@ void mf_engine_dispatch(mf_engine* engine) {
                         task->inst_count
                     );
                     
-                    if (ker->state.error_code != 0) {
-                        MF_LOG_ERROR("Kernel '%s' task %u failed: %s", ker->id, t, mf_exec_error_to_str((mf_exec_error)ker->state.error_code));
+                    if (ker->state.error_code != 0 || mf_atomic_load(&engine->error_code) != 0) {
+                        MF_LOG_ERROR("Kernel '%s' task %u failed or interrupted. Engine Error: %d, Local Error: %d", 
+                            ker->id, t, (int)mf_atomic_load(&engine->error_code), (int)mf_atomic_load(&ker->state.error_code));
+                        
+                        // Propagate local error to global if not already set
+                        if (mf_atomic_load(&engine->error_code) == 0) {
+                            mf_atomic_store(&engine->error_code, (int32_t)mf_atomic_load(&ker->state.error_code));
+                        }
                         goto end_dispatch;
                     }
                 }
@@ -289,15 +307,31 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     return true;
 }
 
+void mf_engine_sync_resource(mf_engine* engine, const char* name) {
+    if (!engine || !name) return;
+    u32 hash = mf_fnv1a_hash(name);
+    int32_t idx = find_resource_idx(engine, hash);
+    if (idx == -1) return;
+
+    mf_resource_inst* res = &engine->resources[idx];
+    if (res->buffers[0] && res->buffers[1] && res->buffers[0]->data && res->buffers[1]->data) {
+        size_t bytes = res->size_bytes;
+        u8 front = engine->front_idx;
+        u8 back = 1 - front;
+        memcpy(res->buffers[back]->data, res->buffers[front]->data, bytes);
+    }
+}
+
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
     if (!engine) return MF_ENGINE_ERR_NONE;
     
-    // Check for internal engine errors (if we add them later to engine struct)
-    
-    // Check all kernels for runtime errors
-    for (u32 i = 0; i < engine->kernel_count; ++i) {
-        if (engine->kernels[i].state.error_code != 0) {
-            return MF_ENGINE_ERR_RUNTIME;
+    int32_t err = mf_atomic_load(&engine->error_code);
+    if (err != 0) {
+        switch(err) {
+            case MF_ERROR_OOM:            return MF_ENGINE_ERR_OOM;
+            case MF_ERROR_SHAPE_MISMATCH: return MF_ENGINE_ERR_SHAPE;
+            case MF_ERROR_INVALID_OP:     return MF_ENGINE_ERR_INVALID_OP;
+            default:                      return MF_ENGINE_ERR_RUNTIME;
         }
     }
     

@@ -78,6 +78,11 @@ mf_tensor*      mf_engine_map_resource(mf_engine* engine, const char* name);
 bool            mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_t* new_shape, uint8_t new_ndim);
 
 /**
+ * @brief Synchronizes front and back buffers for a resource (for static data loading).
+ */
+void            mf_engine_sync_resource(mf_engine* engine, const char* name);
+
+/**
  * @brief Returns the last error status.
  */
 mf_engine_error mf_engine_get_error(mf_engine* engine);

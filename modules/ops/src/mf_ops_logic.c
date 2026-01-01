@@ -53,10 +53,10 @@ static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
         
         memcpy(it_dst.ptr, condition ? it_t.ptr : it_f.ptr, esize);
 
-        if (sz_c > 1) mf_tensor_iter_next(&it_c);
-        if (sz_t > 1) mf_tensor_iter_next(&it_t);
-        if (sz_f > 1) mf_tensor_iter_next(&it_f);
-        mf_tensor_iter_next(&it_dst);
+        mf_tensor_iter_advance(&it_c, inst->strides[1]);
+        mf_tensor_iter_advance(&it_t, inst->strides[2]);
+        mf_tensor_iter_advance(&it_f, inst->strides[3]);
+        mf_tensor_iter_advance(&it_dst, inst->strides[0]);
     }
 }
 

@@ -6,7 +6,9 @@
 #include <mathflow/base/mf_thread_pool.h>
 #include <mathflow/base/mf_log.h>
 #include <mathflow/base/mf_platform.h>
+#include <mathflow/base/mf_shape.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
 #include <stdalign.h>
 
@@ -15,16 +17,10 @@
 #define MF_CPU_JOB_SIZE         4096         // Elements per job (Linear)
 #define MF_CPU_INLINE_THRESHOLD 1024         // If total elements < this, run inline
 #define MF_CPU_WORKER_HEAP_SZ   (16*1024*1024) // 16MB per worker
-#define MF_CPU_REG_ARENA_SZ     8192         // 8KB for registers metadata
+#define MF_CPU_REG_ARENA_SZ     (64*1024)    // 64KB for registers metadata
 #define MF_MAX_REGISTERS        512          // Max tensors per program
 
 // --- Internal Structures ---
-
-typedef enum {
-    MF_TENSOR_ROLE_UNIFORM,
-    MF_TENSOR_ROLE_SPATIAL,
-    MF_TENSOR_ROLE_REDUCTION,
-} mf_tensor_role;
 
 typedef struct {
     mf_thread_pool* pool;
@@ -52,8 +48,7 @@ typedef struct {
     size_t total_elements;
     u8 ndim;
     u32 domain_shape[MF_MAX_DIMS];
-    mf_tensor_role roles[MF_MAX_REGISTERS];
-    int channels[MF_MAX_REGISTERS];
+    i32 strides[MF_MAX_REGISTERS];
 
     // Parallel Reduction Support
     f32* reduction_scratch; // [num_threads * num_registers]
@@ -107,6 +102,29 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 
 // --- Execution Logic ---
 
+static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t inst_idx) {
+    char coords[128] = {0};
+    int pos = 0;
+    for (int d = 0; d < ctx->ndim; ++d) {
+        pos += sprintf(coords + pos, "%u%s", ctx->tile_offset[d], (d < ctx->ndim - 1) ? ", " : "");
+    }
+
+    MF_LOG_FATAL("\n"
+                 "==================================================\n"
+                 "             KERNEL CRASH REPORT\n"
+                 "==================================================\n"
+                 "  Instruction : #%u (Opcode: %d)\n"
+                 "  Registers   : D:%u, S1:%u, S2:%u, S3:%u\n"
+                 "  Domain Coord: [%s]\n"
+                 "  Linear Index: %u\n"
+                 "  Error Type  : %s\n"
+                 "==================================================",
+                 inst_idx, inst->opcode, 
+                 inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx,
+                 coords, ctx->linear_offset,
+                 mf_exec_error_to_str(ctx->error));
+}
+
 static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table, const mf_cpu_parallel_batch* batch) {
     const mf_instruction* code = program->code;
     const uint32_t end_inst = batch->start_inst + batch->inst_count;
@@ -115,10 +133,18 @@ static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_o
         // Stop if local error OR global error detected by another thread
         if (ctx->error != MF_ERROR_NONE) break;
         if (batch->main_state && mf_atomic_load((mf_atomic_i32*)&batch->main_state->error_code) != 0) break;
+        if (ctx->global_error_ptr && mf_atomic_load(ctx->global_error_ptr) != 0) break;
 
         const mf_instruction* inst = &code[i];
         mf_op_func op = op_table[inst->opcode];
-        if (op) op(ctx, inst);
+        if (op) {
+            op(ctx, inst);
+            
+            if (ctx->error != MF_ERROR_NONE) {
+                report_crash(ctx, inst, i);
+                break;
+            }
+        }
     }
 }
 
@@ -135,21 +161,25 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         // Start with a full copy
         *worker_t = *main_t;
 
-        if (batch->roles[i] == MF_TENSOR_ROLE_SPATIAL && mf_tensor_is_valid(main_t)) {
+        i32 stride = batch->strides[i];
+        if (mf_tensor_is_valid(main_t)) {
             size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
-            worker_t->byte_offset = main_t->byte_offset + (start_idx * dtype_sz * (size_t)batch->channels[i]);
-            
-            // Adjust metadata for the flat window view
-            worker_t->info.ndim = (batch->channels[i] > 1) ? 2 : 1;
+            worker_t->byte_offset = main_t->byte_offset + (start_idx * (size_t)stride * dtype_sz);
+        } else {
+            worker_t->byte_offset = 0;
+        }
+        
+        // Adjust metadata for the flat window view
+        if (stride > 0) {
+            worker_t->info.ndim = (stride > 1) ? 2 : 1;
             worker_t->info.shape[0] = (int32_t)count;
-            worker_t->info.strides[0] = batch->channels[i];
-            if (batch->channels[i] > 1) {
-                worker_t->info.shape[1] = batch->channels[i];
+            worker_t->info.strides[0] = stride;
+            if (stride > 1) {
+                worker_t->info.shape[1] = stride;
                 worker_t->info.strides[1] = 1;
             }
-        } else if (batch->roles[i] == MF_TENSOR_ROLE_REDUCTION && batch->reduction_scratch) {
+        } else if (batch->reduction_scratch && stride == -1) {
             // Redirect output to thread-local scratch space
-            // We create a temporary buffer object on the arena for this view
             mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
             scratch_buf->data = &batch->reduction_scratch[tid * MF_MAX_REGISTERS + i];
             scratch_buf->size_bytes = sizeof(f32);
@@ -159,7 +189,6 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
             
             worker_t->buffer = scratch_buf;
             worker_t->byte_offset = 0;
-            // The op will write to this local float
         }
     }
 }
@@ -279,30 +308,16 @@ static void mf_backend_cpu_dispatch(
         batch.active_regs[batch.active_reg_count++] = (u16)i;
 
         mf_tensor* main_t = &main_state->registers[i];
-        batch.roles[i] = MF_TENSOR_ROLE_UNIFORM;
-        batch.channels[i] = 1;
-
-        if (!mf_tensor_is_valid(main_t)) continue;
-
-        size_t t_count = mf_tensor_count(main_t);
-        bool is_constant = main_state->ownership_flags && (main_state->ownership_flags[i] == 0);
-
-        if (t_count == total_elements && !is_constant) {
-            batch.roles[i] = MF_TENSOR_ROLE_SPATIAL;
-            batch.channels[i] = 1;
-        } else if (total_elements > 0 && t_count > total_elements && t_count % total_elements == 0 && !is_constant) {
-            batch.roles[i] = MF_TENSOR_ROLE_SPATIAL;
-            batch.channels[i] = (int)(t_count / total_elements);
-        }
+        batch.strides[i] = mf_shape_calc_linear_stride(mf_tensor_count(main_t), total_elements);
     }
 
-    // Refine reductions: only mark as REDUCTION if it's a SUM over a SPATIAL input
+    // Refine reductions: only mark as REDUCTION (-1) if it's a SUM over a SPATIAL input
     has_reductions = false;
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         if (inst->opcode == MF_OP_SUM) {
-            if (batch.roles[inst->src1_idx] == MF_TENSOR_ROLE_SPATIAL) {
-                batch.roles[inst->dest_idx] = MF_TENSOR_ROLE_REDUCTION;
+            if (batch.strides[inst->src1_idx] > 0) {
+                batch.strides[inst->dest_idx] = -1; // Flag for reduction
                 has_reductions = true;
             }
         }
@@ -321,7 +336,7 @@ static void mf_backend_cpu_dispatch(
 
     if (total_elements <= MF_CPU_INLINE_THRESHOLD || total_jobs == 1) {
         mf_backend_cpu_worker_state local_worker;
-        _Alignas(16) u8 local_heap[MF_KB(64)]; 
+        _Alignas(16) u8 local_heap[MF_MB(4)]; 
         local_worker.thread_idx = 0;
         local_worker.heap_mem = local_heap;
         local_worker.heap_size = sizeof(local_heap);
@@ -344,7 +359,7 @@ static void mf_backend_cpu_dispatch(
     // 4. Merge Reductions
     if (has_reductions && batch.reduction_scratch) {
         for (u32 reg_idx = 0; reg_idx < program->meta.tensor_count; ++reg_idx) {
-            if (batch.roles[reg_idx] == MF_TENSOR_ROLE_REDUCTION) {
+            if (batch.strides[reg_idx] == -1) {
                 f32 final_val = 0;
                 for (int t = 0; t < num_threads; ++t) {
                     final_val += batch.reduction_scratch[t * MF_MAX_REGISTERS + reg_idx];

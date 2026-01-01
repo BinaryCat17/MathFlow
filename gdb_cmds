@@ -1,0 +1,9 @@
+run
+frame 1
+print *src_data
+print *src_indices
+print idx
+print data_count
+print elem_size
+print src_ptr
+quit

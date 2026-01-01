@@ -180,4 +180,9 @@ void mf_log_message(mf_log_level level, const char* file, int line, const char* 
         }
     }
     mf_mutex_unlock(&g_logger.mutex);
+
+    // 3. Fatal error handling
+    if (level == MF_LOG_LEVEL_FATAL) {
+        abort();
+    }
 }

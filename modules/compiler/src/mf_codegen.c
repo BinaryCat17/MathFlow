@@ -38,12 +38,10 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     u32 task_count = 0;
     u32 current_symbol = 0;
     u32 current_domain_node_idx = UINT32_MAX;
-    u32 current_extra_idx = 0;
 
     for (size_t i = 0; i < sorted_count; ++i) {
         mf_ir_node* node = sorted[i];
         u32 node_idx = (u32)(node - ir->nodes); 
-        // node->out_reg_idx is already set by liveness pass
         u16 reg_idx = node->out_reg_idx;
         
         // Symbol Table
@@ -59,9 +57,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
         // Tensor Descriptor
         mf_tensor* t_desc = &prog->tensors[reg_idx];
-        // If multiple nodes share a register, the liveness pass ensures they don't overlap.
-        // We only update the descriptor if it was empty, OR we just let the last node win 
-        // (which is fine since they should have compatible shapes or we'll resize anyway).
         t_desc->info = node->out_shape.info;
         
         mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
@@ -79,7 +74,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         bool emitted = false;
 
         if (node->type == MF_NODE_SIZE && s1) {
-            // Lower SIZE to a Constant tensor containing the element count
             t_desc->info.dtype = MF_DTYPE_F32;
             t_desc->info.ndim = 0;
             t_desc->info.shape[0] = 1;
@@ -93,15 +87,23 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             mf_buffer_init_view(count_buf, count_data, sizeof(f32));
             t_desc->buffer = count_buf;
             t_desc->byte_offset = 0;
-
-            // We don't emit any instruction, it's just a constant register now
             emitted = false; 
         } else {
             mf_instruction* inst = &instrs[instr_count];
+            memset(inst, 0, sizeof(mf_instruction));
             inst->dest_idx = reg_idx;
             inst->src1_idx = s1 ? s1->out_reg_idx : 0;
             inst->src2_idx = s2 ? s2->out_reg_idx : 0;
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
+
+            // Calculate Strides relative to domain
+            u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+            size_t dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
+            
+            inst->strides[0] = mf_shape_calc_linear_stride(mf_tensor_count(&node->out_shape), dom_count);
+            inst->strides[1] = s1 ? mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), dom_count) : 0;
+            inst->strides[2] = s2 ? mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), dom_count) : 0;
+            inst->strides[3] = s3 ? mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), dom_count) : 0;
 
             if (meta->category == MF_OP_CAT_SPECIAL) {
                 if (node->type == MF_NODE_INPUT && s1) {
@@ -117,7 +119,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         }
 
         if (emitted) {
-            // Task splitting based on explicit domain assignment OR Access Pattern
             bool is_global = (meta->access_pattern == MF_ACCESS_GLOBAL);
             bool domain_changed = (current_domain_node_idx == UINT32_MAX || node->domain_node_idx != current_domain_node_idx);
 
@@ -128,13 +129,13 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 tasks[task_count].start_inst = start_instr_idx;
                 
                 if (is_global && s1) {
-                    tasks[task_count].domain_reg = (u32)(s1 - ir->nodes);
+                    tasks[task_count].domain_reg = s1->out_reg_idx;
                     current_domain_node_idx = UINT32_MAX; 
                 } else {
-                    tasks[task_count].domain_reg = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+                    u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+                    tasks[task_count].domain_reg = ir->nodes[dom_node_idx].out_reg_idx;
                     current_domain_node_idx = node->domain_node_idx;
                 }
-                
                 task_count++;
             }
         }

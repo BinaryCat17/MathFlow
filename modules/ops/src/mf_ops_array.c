@@ -47,8 +47,8 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     for (size_t i = 0; i < count; ++i) {
         sum += *((f32*)it_src.ptr);
         *((f32*)it_dst.ptr) = sum;
-        mf_tensor_iter_next(&it_src);
-        mf_tensor_iter_next(&it_dst);
+        mf_tensor_iter_advance(&it_src, inst->strides[1]);
+        mf_tensor_iter_advance(&it_dst, inst->strides[0]);
     }
 }
 
@@ -77,7 +77,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor_iter it_count = mf_tensor_iter_begin(mask);
     for(size_t i=0; i<count; ++i) {
         if (_check_mask_ptr(mask, it_count.ptr)) true_count++;
-        mf_tensor_iter_next(&it_count);
+        mf_tensor_iter_advance(&it_count, inst->strides[2]);
     }
 
     dst->info.dtype = data->info.dtype;
@@ -97,8 +97,8 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
             memcpy(dst_ptr + write_idx * elem_size, it_data.ptr, elem_size);
             write_idx++;
         }
-        mf_tensor_iter_next(&it_data);
-        mf_tensor_iter_next(&it_mask);
+        mf_tensor_iter_advance(&it_data, inst->strides[1]);
+        mf_tensor_iter_advance(&it_mask, inst->strides[2]);
     }
 }
 
@@ -163,8 +163,9 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
             void* src_ptr = mf_tensor_iter_get_at_linear(src_data, (size_t)idx);
             memcpy(it_dst.ptr, src_ptr, elem_size);
         } else {
-            memset(it_dst.ptr, 0, elem_size);
+            MF_LOG_ERROR("Gather out of bounds! Index %d (Data Size: %zu)", idx, data_count);
             ctx->error = MF_ERROR_OUT_OF_BOUNDS;
+            break;
         }
         mf_tensor_iter_next(&it_idx);
         mf_tensor_iter_next(&it_dst);

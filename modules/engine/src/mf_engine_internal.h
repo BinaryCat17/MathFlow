@@ -76,6 +76,9 @@ struct mf_engine {
     u8 front_idx;             // Index for Read
     u8 back_idx;              // Index for Write
     
+    // Status
+    mf_atomic_i32 error_code; // Global Kill Switch (Atomic)
+
     // Stats
     uint64_t frame_index;
 };

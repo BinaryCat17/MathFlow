@@ -19,4 +19,10 @@ void mf_shape_calc_strides(mf_type_info* info);
  */
 void mf_shape_format(const mf_type_info* info, char* buf, size_t size);
 
+/**
+ * Calculates the linear element-stride of an operand relative to a domain.
+ * Used for the STEP_N execution model.
+ */
+i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count);
+
 #endif // MF_SHAPE_H

@@ -74,3 +74,13 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
 
     return false;
 }
+
+i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
+    if (dom_count <= 1) return (op_count > 0) ? 1 : 0;
+    
+    if (op_count == dom_count) return 1;
+    if (op_count == 1) return 0;
+    if (op_count > dom_count && (op_count % dom_count == 0)) return (i32)(op_count / dom_count);
+    
+    return 0; // Default to broadcast/constant
+}

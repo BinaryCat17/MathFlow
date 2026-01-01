@@ -84,9 +84,9 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
         TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
         TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
         *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        if (sz_a > 1) mf_tensor_iter_next(&it_a); \
-        if (sz_b > 1) mf_tensor_iter_next(&it_b); \
-        mf_tensor_iter_next(&it_dst); \
+        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
+        mf_tensor_iter_advance(&it_b, inst->strides[2]); \
+        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
     } \
 }
 
@@ -114,10 +114,10 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
         TYPE_B vb = *((TYPE_B*)it_b.ptr); \
         TYPE_C vc = *((TYPE_C*)it_c.ptr); \
         *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        if (sz_a > 1) mf_tensor_iter_next(&it_a); \
-        if (sz_b > 1) mf_tensor_iter_next(&it_b); \
-        if (sz_c > 1) mf_tensor_iter_next(&it_c); \
-        mf_tensor_iter_next(&it_dst); \
+        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
+        mf_tensor_iter_advance(&it_b, inst->strides[2]); \
+        mf_tensor_iter_advance(&it_c, inst->strides[3]); \
+        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
     } \
 }
 
@@ -136,7 +136,8 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     for(size_t i=0; i<sz_dst; ++i) { \
         TYPE_IN v = *((TYPE_IN*)it_a.ptr); \
         *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        mf_tensor_iter_next(&it_a); mf_tensor_iter_next(&it_dst); \
+        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
+        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
     } \
 }
 

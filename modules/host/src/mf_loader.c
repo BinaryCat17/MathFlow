@@ -98,7 +98,32 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     return prog;
 }
 
-static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
+static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* ker, const mf_pipeline_desc* pipe) {
+    if (!ker || !pipe) return;
+    for (size_t i = 0; i < ir->node_count; ++i) {
+        mf_ir_node* node = &ir->nodes[i];
+        if (node->type != MF_NODE_INPUT && node->type != MF_NODE_OUTPUT) continue;
+
+        for (u32 b = 0; b < ker->binding_count; ++b) {
+            if (strcmp(node->id, ker->bindings[b].kernel_port) == 0) {
+                const char* res_name = ker->bindings[b].global_resource;
+                for (u32 r = 0; r < pipe->resource_count; ++r) {
+                    if (strcmp(res_name, pipe->resources[r].name) == 0) {
+                        node->out_shape.info.dtype = pipe->resources[r].dtype;
+                        node->out_shape.info.ndim = pipe->resources[r].ndim;
+                        memcpy(node->out_shape.info.shape, pipe->resources[r].shape, sizeof(int32_t)*MF_MAX_DIMS);
+                        mf_shape_calc_strides(&node->out_shape.info);
+                        node->constant = node->out_shape;
+                        break;
+                    }
+                }
+                break;
+            }
+        }
+    }
+}
+
+static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const mf_pipeline_kernel* ker, const mf_pipeline_desc* pipe) {
     const char* ext = mf_path_get_ext(path);
     if (strcmp(ext, "json") == 0) {
         mf_compiler_diag diag;
@@ -107,6 +132,10 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(path, &ir, arena, &diag)) return NULL;
         
+        if (ker && pipe) {
+            _patch_ir_from_manifest(&ir, ker, pipe);
+        }
+
         mf_program* prog = mf_compile(&ir, arena, &diag);
         return prog;
     } else if (strcmp(ext, "bin") == 0) {
@@ -193,7 +222,7 @@ bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe) {
     mf_program** programs = malloc(sizeof(mf_program*) * pipe->kernel_count);
     
     for (u32 i = 0; i < pipe->kernel_count; ++i) {
-        programs[i] = load_prog_from_file(arena, pipe->kernels[i].graph_path);
+        programs[i] = load_prog_from_file(arena, pipe->kernels[i].graph_path, &pipe->kernels[i], pipe);
         if (!programs[i]) {
             MF_LOG_ERROR("Loader: Failed to load kernel program %s", pipe->kernels[i].graph_path);
             free(programs);
@@ -295,6 +324,7 @@ bool mf_loader_load_image(mf_engine* engine, const char* resource_name, const ch
     }
 
     stbi_image_free(data);
+    mf_engine_sync_resource(engine, resource_name);
     MF_LOG_INFO("Loader: Loaded image %s into '%s' [%dx%d]", path, resource_name, w, h);
     return true;
 }
@@ -426,6 +456,8 @@ bool mf_loader_load_font(mf_engine* engine, const char* resource_name, const cha
         size_t pixels = (size_t)atlas_w * atlas_h;
         f32* dst = (f32*)t->buffer->data;
         for(size_t i=0; i<pixels; ++i) dst[i] = (f32)atlas_data[i] / 255.0f;
+        
+        mf_engine_sync_resource(engine, resource_name);
     }
 
     // Upload Info
@@ -440,6 +472,7 @@ bool mf_loader_load_font(mf_engine* engine, const char* resource_name, const cha
              if (mf_engine_resize_resource(engine, info_name, shape, 1)) {
                  t_info = mf_engine_map_resource(engine, info_name);
                  memcpy(t_info->buffer->data, glyph_info, max_codepoint * 8 * sizeof(f32));
+                 mf_engine_sync_resource(engine, info_name);
              }
         } else {
             MF_LOG_WARN("Loader: Info resource '%s' not found. Font loaded but metadata lost.", info_name);

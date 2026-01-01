@@ -30,42 +30,7 @@ MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
 
 MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, fmaf(va, vb, vc))
 
-static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* v = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* min_val = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    mf_tensor* max_val = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, v);
-    MF_CHECK_INPUT(ctx, min_val);
-    MF_CHECK_INPUT(ctx, max_val);
-    
-    if (!mf_utils_resolve_ternary_shape(ctx, dst, v, min_val, max_val)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    size_t sz_v = mf_tensor_count(v);
-    size_t sz_min = mf_tensor_count(min_val);
-    size_t sz_max = mf_tensor_count(max_val);
-    size_t sz_dst = mf_tensor_count(dst);
-    
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
-    mf_tensor_iter it_v = mf_tensor_iter_begin(v);
-    mf_tensor_iter it_min = mf_tensor_iter_begin(min_val);
-    mf_tensor_iter it_max = mf_tensor_iter_begin(max_val);
-    
-    for(size_t i=0; i<sz_dst; ++i) {
-        f32 val = *((f32*)it_v.ptr);
-        f32 lo = *((f32*)it_min.ptr);
-        f32 hi = *((f32*)it_max.ptr);
-        *((f32*)it_dst.ptr) = (val < lo) ? lo : (val > hi ? hi : val);
-        
-        mf_tensor_iter_next(&it_v); 
-        mf_tensor_iter_next(&it_min); 
-        mf_tensor_iter_next(&it_max); 
-        mf_tensor_iter_next(&it_dst);
-    }
-}
+MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, (va < vb ? vb : (va > vc ? vc : va)))
 
 // --- Reduction ---
 
@@ -83,7 +48,7 @@ static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor_iter it = mf_tensor_iter_begin(src);
     for (size_t i = 0; i < count; ++i) {
         sum += *((f32*)it.ptr);
-        mf_tensor_iter_next(&it);
+        mf_tensor_iter_advance(&it, 1);
     }
     
     *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum;
