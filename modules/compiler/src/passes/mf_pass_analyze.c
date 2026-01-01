@@ -9,22 +9,6 @@
 #define MF_REPORT(node, msg, ...) \
     mf_compiler_diag_report(diag, (node)->loc, msg, ##__VA_ARGS__)
 
-// --- Metadata Table ---
-
-typedef struct {
-    u32 type_mask;
-    mf_out_rule out_rule;
-    mf_shape_rule shape_rule;
-    mf_op_category category;
-} mf_op_metadata;
-
-static const mf_op_metadata OP_METADATA[] = {
-#define MF_OP(suffix, name, op, cat, mask, rule, shape, p1, p2, p3) \
-    [MF_NODE_##suffix] = { mask, rule, shape, cat },
-    MF_OP_LIST
-#undef MF_OP
-};
-
 // --- Helpers ---
 
 static void format_shape(const mf_tensor* t, char* buf, size_t size) {
@@ -97,7 +81,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
         mf_ir_node* node = sorted_nodes[i];
         if (node->type == MF_NODE_UNKNOWN || node->type >= MF_NODE_COUNT) continue;
 
-        const mf_op_metadata* meta = &OP_METADATA[node->type];
+        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
         
         mf_ir_node* s1 = find_input_source(ir, (u32)(node - ir->nodes), 0);
         mf_ir_node* s2 = find_input_source(ir, (u32)(node - ir->nodes), 1);

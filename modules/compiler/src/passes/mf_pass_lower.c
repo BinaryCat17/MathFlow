@@ -5,52 +5,23 @@
 #include <string.h>
 #include <stdio.h>
 
-// --- Type Mapping ---
-
-typedef struct {
-    const char* name;
-    mf_node_type type;
-} mf_node_map_entry;
-
-static const mf_node_map_entry NODE_MAP[] = {
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) { name, MF_NODE_##suffix },
-    MF_OP_LIST
-#undef MF_OP
-    {NULL, MF_NODE_UNKNOWN}
-};
+// --- Metadata Lookups ---
 
 static mf_node_type get_node_type(const char* type_str) {
     if (!type_str) return MF_NODE_UNKNOWN;
-    for (const mf_node_map_entry* e = NODE_MAP; e->name; ++e) {
-        if (strcmp(type_str, e->name) == 0) return e->type;
+    for (int i = 1; i < MF_NODE_COUNT; ++i) {
+        if (strcmp(type_str, MF_OP_METADATA[i].name) == 0) return (mf_node_type)i;
     }
     return MF_NODE_UNKNOWN;
 }
 
-// --- Port Mapping ---
-
-typedef struct {
-    mf_node_type type;
-    const char* port_name;
-    u32 port_index;
-} mf_node_port_entry;
-
-static const mf_node_port_entry PORT_MAP[] = {
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) \
-    { MF_NODE_##suffix, p1, 0 }, \
-    { MF_NODE_##suffix, p2, 1 }, \
-    { MF_NODE_##suffix, p3, 2 },
-    MF_OP_LIST
-#undef MF_OP
-    {MF_NODE_UNKNOWN, NULL, 0}
-};
-
 static u32 get_port_index(mf_node_type type, const char* port_name) {
-    if (!port_name) return 0;
-    for (const mf_node_port_entry* e = PORT_MAP; e->port_name || e->type != MF_NODE_UNKNOWN; ++e) {
-        if (e->port_name && e->type == type && strcmp(e->port_name, port_name) == 0) return e->port_index;
+    if (!port_name || type >= MF_NODE_COUNT) return 0;
+    const mf_op_metadata* meta = &MF_OP_METADATA[type];
+    for (u32 i = 0; i < 3; ++i) {
+        if (meta->ports[i] && strcmp(meta->ports[i], port_name) == 0) return i;
     }
-    return 0; // Default or Error? Currently default.
+    return 0;
 }
 
 // --- Helpers ---

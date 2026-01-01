@@ -1,5 +1,6 @@
 add_library(mf_compiler STATIC
     src/mf_compiler.c
+    src/mf_op_metadata.c
     src/passes/mf_pass_lower.c
     src/passes/mf_pass_inline.c
     src/passes/mf_pass_analyze.c

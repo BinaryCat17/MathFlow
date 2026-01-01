@@ -133,32 +133,29 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             t_desc->byte_offset = 0;
         }
 
+        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
         mf_instruction* inst = &instrs[instr_count];
         inst->dest_idx = node->out_reg_idx;
         if (s1) inst->src1_idx = s1->out_reg_idx;
         if (s2) inst->src2_idx = s2->out_reg_idx;
         if (s3) inst->src3_idx = s3->out_reg_idx;
 
-        switch (node->type) {
-#define MF_OP(suffix, name, op_val, cat, mask, out_rule, shape_rule, p1, p2, p3) \
-            case MF_NODE_##suffix: \
-                if (cat == MF_OP_CAT_SPECIAL) { \
-                    if (MF_NODE_##suffix == MF_NODE_INPUT && s1) { \
-                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1->out_reg_idx; instr_count++; \
-                    } else if (MF_NODE_##suffix == MF_NODE_OUTPUT) { \
-                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1 ? s1->out_reg_idx : 0; instr_count++; \
-                    } else if (MF_NODE_##suffix == MF_NODE_COPY) { \
-                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1 ? s1->out_reg_idx : 0; instr_count++; \
-                    } \
-                } else { \
-                    inst->opcode = op_val; \
-                    if (MF_NODE_##suffix == MF_NODE_INDEX && !s1) inst->src1_idx = inst->dest_idx; \
-                    instr_count++; \
-                } break;
-            MF_OP_LIST
-#undef MF_OP
-
-            default: break;
+        if (meta->category == MF_OP_CAT_SPECIAL) {
+            if (node->type == MF_NODE_INPUT && s1) {
+                inst->opcode = MF_OP_COPY;
+                inst->src1_idx = s1->out_reg_idx;
+                instr_count++;
+            } else if (node->type == MF_NODE_OUTPUT || node->type == MF_NODE_COPY) {
+                inst->opcode = MF_OP_COPY;
+                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
+                instr_count++;
+            }
+        } else {
+            inst->opcode = meta->opcode;
+            if (node->type == MF_NODE_INDEX && !s1) {
+                inst->src1_idx = inst->dest_idx;
+            }
+            instr_count++;
         }
     }
 

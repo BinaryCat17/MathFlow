@@ -37,6 +37,18 @@ typedef enum {
 } mf_node_type;
 
 typedef struct {
+    const char* name;
+    u16 opcode;
+    mf_op_category category;
+    u32 type_mask;
+    mf_out_rule out_rule;
+    mf_shape_rule shape_rule;
+    const char* ports[3];
+} mf_op_metadata;
+
+extern const mf_op_metadata MF_OP_METADATA[MF_NODE_COUNT];
+
+typedef struct {
     const char* id; 
     mf_node_type type;
     
