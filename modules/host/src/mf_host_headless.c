@@ -1,51 +1,15 @@
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/engine/mf_engine.h>
+#include <mathflow/isa/mf_tensor.h>
 #include <mathflow/base/mf_log.h>
 #include "mf_host_internal.h"
 #include "mf_loader.h"
 #include <stdio.h>
 #include <string.h>
 
-static void print_tensor(const char* name, mf_tensor* t) {
-    void* data_ptr = mf_tensor_data(t);
-    if (!t || !data_ptr) {
-        printf("  %s: (Empty)\n", name ? name : "?");
-        return;
-    }
-    
-    printf("  '%s' ", name ? name : "?"); 
-    
-    printf("Shape: [");
-    for(int i=0; i<t->info.ndim; ++i) printf("%d%s", t->info.shape[i], i < t->info.ndim-1 ? "," : "");
-    printf("] ");
-    
-    size_t count = mf_tensor_count(t);
-    if (t->info.dtype == MF_DTYPE_F32) {
-        printf("F32: {");
-        f32* data = (f32*)data_ptr;
-        size_t limit = count > 16 ? 16 : count;
-        for(size_t i=0; i<limit; ++i) printf("%.2f%s", data[i], i < limit-1 ? ", " : "");
-        if (count > limit) printf("... (+%zu)", count - limit);
-        printf("}\n");
-    } else if (t->info.dtype == MF_DTYPE_I32) {
-        printf("I32: {");
-        int32_t* data = (int32_t*)data_ptr;
-        size_t limit = count > 16 ? 16 : count;
-        for(size_t i=0; i<limit; ++i) printf("%d%s", data[i], i < limit-1 ? ", " : "");
-        if (count > limit) printf("... (+%zu)", count - limit);
-        printf("}\n");
-    } else if (t->info.dtype == MF_DTYPE_U8) {
-        printf("Bool: {");
-        u8* data = (u8*)data_ptr;
-        size_t limit = count > 16 ? 16 : count;
-        for(size_t i=0; i<limit; ++i) printf("%s%s", data[i] ? "true" : "false", i < limit-1 ? ", " : "");
-        printf("}\n");
-    }
-}
-
 static void debug_print_resource_callback(const char* name, mf_tensor* t, void* user_data) {
     (void)user_data;
-    print_tensor(name, t);
+    mf_tensor_print(name, t);
 }
 
 int mf_host_run_headless(const mf_host_desc* desc, int frames) {
@@ -61,9 +25,7 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
     for (int f = 0; f < frames; ++f) {
         mf_host_app_set_time(&app, (f32)f * 0.016f);
 
-        mf_engine_dispatch(app.engine);
-        
-        mf_engine_error err = mf_engine_get_error(app.engine);
+        mf_engine_error err = mf_host_app_step(&app);
         if (err != MF_ENGINE_ERR_NONE) {
             MF_LOG_ERROR("Engine failure: %s", mf_engine_error_to_str(err));
             break;

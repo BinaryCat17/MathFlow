@@ -93,12 +93,15 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 
 // --- Execution Logic ---
 
-static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table) {
+static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table, const mf_cpu_parallel_batch* batch) {
     const size_t code_count = program->meta.instruction_count;
     const mf_instruction* code = program->code;
     
     for (size_t i = 0; i < code_count; ++i) {
+        // Stop if local error OR global error detected by another thread
         if (ctx->error != MF_ERROR_NONE) break;
+        if (batch->main_state && mf_atomic_load((mf_atomic_i32*)&batch->main_state->error_code) != 0) break;
+
         const mf_instruction* inst = &code[i];
         mf_op_func op = op_table[inst->opcode];
         if (op) op(ctx, inst);
@@ -154,6 +157,10 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     state->ctx.batch_size = (u32)count;
     state->ctx.ndim = batch->ndim; 
     state->ctx.tile_offset[0] = (u32)start_idx; 
+    
+    if (batch->main_state) {
+        state->ctx.global_error_ptr = (mf_atomic_i32*)&batch->main_state->error_code;
+    }
 
     // Unflatten start index for N-dimensional operations (e.g. op_index)
     size_t temp_idx = start_idx;
@@ -168,7 +175,7 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
 
     prepare_registers(state, batch, start_idx, count);
 
-    mf_cpu_exec(&state->ctx, batch->program, batch->op_table);
+    mf_cpu_exec(&state->ctx, batch->program, batch->op_table, batch);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
         mf_atomic_store((mf_atomic_i32*)&batch->main_state->error_code, (int32_t)state->ctx.error);

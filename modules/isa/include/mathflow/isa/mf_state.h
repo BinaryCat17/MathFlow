@@ -3,6 +3,7 @@
 
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/base/mf_memory.h>
+#include <mathflow/base/mf_platform.h>
 
 /**
  * @brief Persistent container for tensor data and memory management.
@@ -16,7 +17,7 @@ typedef struct mf_state {
     
     // Error flag set by execution contexts.
     // 0 = No Error. Uses mf_exec_error codes.
-    volatile int32_t error_code;
+    mf_atomic_i32 error_code;
 } mf_state;
 
 #endif // MF_STATE_H

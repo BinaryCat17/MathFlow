@@ -77,4 +77,13 @@ bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_
 // Create a view with swapped dimensions (modifies strides)
 bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src);
 
+// --- Debugging ---
+
+/**
+ * @brief Prints tensor metadata and contents to stdout.
+ * @param name Optional label for the tensor.
+ * @param t The tensor to print.
+ */
+void mf_tensor_print(const char* name, const mf_tensor* t);
+
 #endif // MF_TENSOR_H

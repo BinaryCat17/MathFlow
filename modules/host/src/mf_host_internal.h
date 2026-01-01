@@ -45,6 +45,12 @@ void mf_host_app_set_resolution(mf_host_app* app, int width, int height);
 void mf_host_app_set_mouse(mf_host_app* app, float x, float y, bool lmb, bool rmb);
 
 /**
+ * @brief Executes a single frame of the application.
+ * Updates state, runs kernels, and checks for errors.
+ */
+mf_engine_error mf_host_app_step(mf_host_app* app);
+
+/**
  * @brief Shuts down the application context.
  */
 void mf_host_app_cleanup(mf_host_app* app);

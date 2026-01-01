@@ -13,13 +13,7 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, count_tensor);
 
-    int count = 0;
-    if (count_tensor->info.dtype == MF_DTYPE_F32) {
-        count = (int)((f32*)mf_tensor_data(count_tensor))[0];
-    } else if (count_tensor->info.dtype == MF_DTYPE_I32) {
-        count = ((int32_t*)mf_tensor_data(count_tensor))[0];
-    }
-    
+    int count = mf_utils_get_scalar_int(count_tensor);
     if (count < 0) count = 0;
 
     dst->info.dtype = MF_DTYPE_F32;
@@ -29,9 +23,7 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_DATA(ctx, dst);
     f32* d = (f32*)mf_tensor_data(dst);
 
-    for (int i = 0; i < count; ++i) {
-        d[i] = (f32)i;
-    }
+    for (int i = 0; i < count; ++i) d[i] = (f32)i;
 }
 
 // --- Op: CumSum (Prefix Sum) ---
@@ -43,7 +35,6 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, src);
 
     if (!mf_utils_resolve_unary_shape(ctx, dst, src)) return;
-    
     MF_CHECK_DST_DATA(ctx, dst);
 
     if (src->info.dtype != MF_DTYPE_F32) return;
@@ -58,6 +49,14 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
+static inline bool _check_mask(const mf_tensor* mask, size_t i) {
+    void* d = mf_tensor_data(mask);
+    if (mask->info.dtype == MF_DTYPE_U8) return ((u8*)d)[i] != 0;
+    if (mask->info.dtype == MF_DTYPE_F32) return ((f32*)d)[i] > 0.5f;
+    if (mask->info.dtype == MF_DTYPE_I32) return ((int32_t*)d)[i] != 0;
+    return false;
+}
+
 // --- Op: Compress (Filter) ---
 static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
@@ -68,19 +67,12 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, data);
     MF_CHECK_INPUT(ctx, mask);
 
-    size_t data_count = mf_tensor_count(data);
-    size_t mask_count = mf_tensor_count(mask);
-    size_t count = (data_count < mask_count) ? data_count : mask_count;
+    size_t count_data = mf_tensor_count(data);
+    size_t count_mask = mf_tensor_count(mask);
+    size_t count = (count_data < count_mask) ? count_data : count_mask;
     
     size_t true_count = 0;
-    for(size_t i=0; i<count; ++i) {
-        bool keep = false;
-        if (mask->info.dtype == MF_DTYPE_U8) keep = ((u8*)mf_tensor_data(mask))[i] != 0;
-        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f;
-        else if (mask->info.dtype == MF_DTYPE_I32) keep = ((int32_t*)mf_tensor_data(mask))[i] != 0;
-        
-        if (keep) true_count++;
-    }
+    for(size_t i=0; i<count; ++i) if (_check_mask(mask, i)) true_count++;
 
     dst->info.dtype = data->info.dtype;
     int32_t new_shape[] = { (int32_t)true_count };
@@ -94,12 +86,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u8* dst_ptr = (u8*)mf_tensor_data(dst);
 
     for(size_t i=0; i<count; ++i) {
-        bool keep = false;
-        if (mask->info.dtype == MF_DTYPE_U8) keep = ((u8*)mf_tensor_data(mask))[i] != 0;
-        else if (mask->info.dtype == MF_DTYPE_F32) keep = ((f32*)mf_tensor_data(mask))[i] > 0.5f;
-        else if (mask->info.dtype == MF_DTYPE_I32) keep = ((int32_t*)mf_tensor_data(mask))[i] != 0;
-
-        if (keep) {
+        if (_check_mask(mask, i)) {
             memcpy(dst_ptr + write_idx * elem_size, src_ptr + i * elem_size, elem_size);
             write_idx++;
         }
@@ -114,10 +101,7 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, axis_t);
 
-    int axis = 0;
-    if (axis_t->info.dtype == MF_DTYPE_F32) axis = (int)((f32*)mf_tensor_data(axis_t))[0];
-    else if (axis_t->info.dtype == MF_DTYPE_I32) axis = ((int32_t*)mf_tensor_data(axis_t))[0];
-    
+    int axis = mf_utils_get_scalar_int(axis_t);
     if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
 
     size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
@@ -130,19 +114,14 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     f32* d = (f32*)mf_tensor_data(dst);
     
     u32 axis_stride = 1;
-    for (int i = ctx->ndim - 1; i > axis; --i) {
-        axis_stride *= ctx->domain_shape[i];
-    }
+    for (int i = ctx->ndim - 1; i > axis; --i) axis_stride *= ctx->domain_shape[i];
     u32 axis_size = ctx->domain_shape[axis];
-    
     if (axis_size == 0) axis_size = 1;
 
     u32 start_linear = ctx->tile_offset[0];
-
     for (size_t i = 0; i < count; ++i) {
         u32 global_idx = start_linear + (u32)i;
-        u32 coord = (global_idx / axis_stride) % axis_size;
-        d[i] = (f32)coord;
+        d[i] = (f32)((global_idx / axis_stride) % axis_size);
     }
 }
 
@@ -168,16 +147,10 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u8* data_ptr = (u8*)mf_tensor_data(src_data);
     u8* out_ptr = (u8*)mf_tensor_data(dst);
     void* idx_ptr = mf_tensor_data(src_indices);
-
-    MF_CHECK_PTR(ctx, data_ptr);
-    MF_CHECK_PTR(ctx, out_ptr);
-    MF_CHECK_PTR(ctx, idx_ptr);
+    bool idx_is_f32 = (src_indices->info.dtype == MF_DTYPE_F32);
 
     for (size_t i = 0; i < out_count; ++i) {
-        int idx = 0;
-        if (src_indices->info.dtype == MF_DTYPE_F32) idx = (int)((f32*)idx_ptr)[i];
-        else if (src_indices->info.dtype == MF_DTYPE_I32) idx = ((int32_t*)idx_ptr)[i];
-        
+        int idx = idx_is_f32 ? (int)((f32*)idx_ptr)[i] : ((int32_t*)idx_ptr)[i];
         if (idx >= 0 && (size_t)idx < data_count) {
             memcpy(out_ptr + i * elem_size, data_ptr + idx * elem_size, elem_size);
         } else {
@@ -187,7 +160,6 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
-// --- Registration ---
 void mf_ops_array_register(mf_op_func* table) {
     table[MF_OP_RANGE] = op_range;
     table[MF_OP_INDEX] = op_index;

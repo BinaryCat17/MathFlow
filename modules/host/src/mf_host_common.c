@@ -166,6 +166,13 @@ void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
     if (t_aspect) { f32* d = mf_tensor_data(t_aspect); if (d) *d = (f32)width / (f32)height; }
 }
 
+mf_engine_error mf_host_app_step(mf_host_app* app) {
+    if (!app || !app->engine) return MF_ENGINE_ERR_NONE;
+
+    mf_engine_dispatch(app->engine);
+    return mf_engine_get_error(app->engine);
+}
+
 void mf_host_app_cleanup(mf_host_app* app) {
     if (!app) return;
     if (app->engine) {

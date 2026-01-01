@@ -134,7 +134,11 @@ int mf_host_run(const mf_host_desc* desc) {
                               (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0, 
                               (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0);
 
-        mf_engine_dispatch(app.engine);
+        mf_engine_error err = mf_host_app_step(&app);
+        if (err != MF_ENGINE_ERR_NONE) {
+            MF_LOG_ERROR("Engine failure: %s", mf_engine_error_to_str(err));
+            running = false;
+        }
         
         mf_tensor* t_out = mf_engine_map_resource(app.engine, "out_Color");
         if (t_out && frame_buffer) {

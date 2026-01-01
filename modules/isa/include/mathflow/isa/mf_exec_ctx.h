@@ -4,6 +4,7 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/base/mf_memory.h>
+#include <mathflow/base/mf_platform.h>
 #include <string.h> // memset
 
 // Forward decl
@@ -54,6 +55,7 @@ struct mf_exec_ctx {
 
     // State
     mf_exec_error error;
+    mf_atomic_i32* global_error_ptr;
     
     // User Data
     void* user_data;
@@ -70,6 +72,7 @@ static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size
     ctx->tile_size[0] = 1;
     ctx->domain_shape[0] = 1;
     ctx->batch_size = 1;
+    ctx->global_error_ptr = NULL;
 }
 
 static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_access_mode mode) {

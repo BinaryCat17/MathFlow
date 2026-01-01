@@ -173,8 +173,49 @@ bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src) {
     // BUT: The goal of Phase 22 is to Enable it.
     
     // Let's implement it correctly for the Tensor struct.
-    dst->info.strides[0] = src->info.strides[1];
-    dst->info.strides[1] = src->info.strides[0];
     
     return true;
+}
+
+#include <stdio.h>
+
+void mf_tensor_print(const char* name, const mf_tensor* t) {
+    if (!t) {
+        printf("  %s: (NULL)\n", name ? name : "?");
+        return;
+    }
+    void* data_ptr = (void*)mf_tensor_data(t);
+    if (!data_ptr) {
+        printf("  %s: (Empty)\n", name ? name : "?");
+        return;
+    }
+    
+    printf("  '%s' ", name ? name : "?"); 
+    
+    printf("Shape: [");
+    for(int i=0; i<t->info.ndim; ++i) printf("%d%s", t->info.shape[i], i < t->info.ndim-1 ? "," : "");
+    printf("] ");
+    
+    size_t count = mf_tensor_count(t);
+    if (t->info.dtype == MF_DTYPE_F32) {
+        printf("F32: {");
+        f32* data = (f32*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
+        for(size_t i=0; i<limit; ++i) printf("%.2f%s", data[i], i < limit-1 ? ", " : "");
+        if (count > limit) printf("... (+%zu)", count - limit);
+        printf("}\n");
+    } else if (t->info.dtype == MF_DTYPE_I32) {
+        printf("I32: {");
+        int32_t* data = (int32_t*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
+        for(size_t i=0; i<limit; ++i) printf("%d%s", data[i], i < limit-1 ? ", " : "");
+        if (count > limit) printf("... (+%zu)", count - limit);
+        printf("}\n");
+    } else if (t->info.dtype == MF_DTYPE_U8) {
+        printf("Bool: {");
+        u8* data = (u8*)data_ptr;
+        size_t limit = count > 16 ? 16 : count;
+        for(size_t i=0; i<limit; ++i) printf("%s%s", data[i] ? "true" : "false", i < limit-1 ? ", " : "");
+        printf("}\n");
+    }
 }
