@@ -14,12 +14,13 @@
 typedef struct {
     u32 type_mask;
     mf_out_rule out_rule;
+    mf_shape_rule shape_rule;
     mf_op_category category;
 } mf_op_metadata;
 
 static const mf_op_metadata OP_METADATA[] = {
-#define MF_OP(suffix, name, op, cat, mask, rule, p1, p2, p3) \
-    [MF_NODE_##suffix] = { mask, rule, cat },
+#define MF_OP(suffix, name, op, cat, mask, rule, shape, p1, p2, p3) \
+    [MF_NODE_##suffix] = { mask, rule, shape, cat },
     MF_OP_LIST
 #undef MF_OP
 };
@@ -115,112 +116,106 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             return false;
         }
 
-        // 3. Resolve Output Shape (Category based)
-        switch (meta->category) {
-            case MF_OP_CAT_SPECIAL:
+        // 3. Resolve Output Shape (Rule based)
+        switch (meta->shape_rule) {
+            case MF_SHAPE_SPECIAL:
                 if (node->type == MF_NODE_CONST) {
                     node->out_shape = node->constant;
                 } else if (node->type == MF_NODE_INPUT) {
                     node->out_shape = s1 ? s1->out_shape : node->constant;
+                } else if (node->type == MF_NODE_CALL) {
+                    // Call shape is determined by the entry graph output ports (Handled by Inline Pass)
+                }
+                break;
+
+            case MF_SHAPE_SAME_AS_S1:
+                if (s1) {
+                    out->info = s1->out_shape.info;
                 } else if (node->type == MF_NODE_OUTPUT) {
-                    if (!s1) { MF_REPORT(node, "Output not connected"); return false; }
-                    node->out_shape = s1->out_shape;
-                } else if (node->type == MF_NODE_COPY) {
-                    if (s1) node->out_shape = s1->out_shape;
+                     MF_REPORT(node, "Output not connected"); return false;
                 }
                 break;
 
-            case MF_OP_CAT_UNARY:
-                if (s1) out->info.ndim = s1->out_shape.info.ndim;
-                if (s1) memcpy(out->info.shape, s1->out_shape.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
-                break;
-
-            case MF_OP_CAT_BINARY:
-                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
-                if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out, diag)) return false;
-                break;
-
-            case MF_OP_CAT_TERNARY:
-                if (node->type == MF_NODE_SELECT) {
-                    if (!s1 || !s2) { MF_REPORT(node, "Select requires at least cond and true inputs"); return false; }
-                    if (s3) {
-                        mf_tensor tmp;
-                        if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp, diag)) return false;
-                        if (!check_broadcast(node, &tmp, &s3->out_shape, out, diag)) return false;
-                    } else {
-                        if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out, diag)) return false;
-                    }
+            case MF_SHAPE_BROADCAST:
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for broadcast op"); return false; }
+                if (s3) {
+                    mf_tensor tmp;
+                    if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp, diag)) return false;
+                    if (!check_broadcast(node, &tmp, &s3->out_shape, out, diag)) return false;
                 } else {
-                    if (!s1 || !s2 || !s3) { MF_REPORT(node, "Missing inputs for ternary op"); return false; }
-                    {
-                        mf_tensor tmp;
-                        if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, &tmp, diag)) return false;
-                        if (!check_broadcast(node, &tmp, &s3->out_shape, out, diag)) return false;
+                    if (!check_broadcast(node, &s1->out_shape, &s2->out_shape, out, diag)) return false;
+                }
+                break;
+
+            case MF_SHAPE_MATMUL:
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for MatMul"); return false; }
+                if (s1->out_shape.info.ndim != 2 || s2->out_shape.info.ndim != 2) {
+                    MF_REPORT(node, "MatMul requires 2D matrices"); return false;
+                }
+                if (s1->out_shape.info.shape[1] != s2->out_shape.info.shape[0]) {
+                    MF_REPORT(node, "MatMul dimension mismatch"); return false;
+                }
+                out->info.ndim = 2;
+                out->info.shape[0] = s1->out_shape.info.shape[0];
+                out->info.shape[1] = s2->out_shape.info.shape[1];
+                break;
+
+            case MF_SHAPE_TRANSPOSE:
+                if (!s1) return false;
+                out->info = s1->out_shape.info;
+                if (out->info.ndim == 2) {
+                    int32_t t = out->info.shape[0];
+                    out->info.shape[0] = out->info.shape[1];
+                    out->info.shape[1] = t;
+                }
+                break;
+
+            case MF_SHAPE_DOT:
+                if (!s1 || !s2) return false;
+                out->info.ndim = s1->out_shape.info.ndim > 0 ? s1->out_shape.info.ndim - 1 : 0;
+                for(int k=0; k<out->info.ndim; ++k) out->info.shape[k] = s1->out_shape.info.shape[k];
+                break;
+
+            case MF_SHAPE_JOIN:
+                if (!s1 || !s2) return false;
+                out->info = s1->out_shape.info;
+                out->info.shape[out->info.ndim++] = 2;
+                break;
+
+            case MF_SHAPE_GATHER:
+                if (!s1 || !s2) return false;
+                out->info.ndim = s2->out_shape.info.ndim;
+                memcpy(out->info.shape, s2->out_shape.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+                break;
+
+            case MF_SHAPE_RESHAPE:
+                if (!s1 || !s2) return false;
+                if (mf_tensor_is_valid(&s2->constant)) {
+                    int ndim = (int)mf_tensor_count(&s2->constant);
+                    out->info.ndim = (uint8_t)ndim;
+                    void* d = mf_tensor_data(&s2->constant);
+                    for(int k=0; k<ndim && k<MF_MAX_DIMS; ++k) {
+                        out->info.shape[k] = (s2->constant.info.dtype == MF_DTYPE_F32) ? (int)((f32*)d)[k] : ((int*)d)[k];
                     }
                 }
                 break;
 
-            case MF_OP_CAT_MATRIX:
-                if (node->type == MF_NODE_MATMUL) {
-                    if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for MatMul"); return false; }
-                    if (s1->out_shape.info.ndim != 2 || s2->out_shape.info.ndim != 2) {
-                        MF_REPORT(node, "MatMul requires 2D matrices"); return false;
-                    }
-                    if (s1->out_shape.info.shape[1] != s2->out_shape.info.shape[0]) {
-                        MF_REPORT(node, "MatMul dimension mismatch"); return false;
-                    }
-                    out->info.ndim = 2;
-                    out->info.shape[0] = s1->out_shape.info.shape[0];
-                    out->info.shape[1] = s2->out_shape.info.shape[1];
-                } else if (node->type == MF_NODE_TRANSPOSE) {
-                    if (!s1) return false;
-                    out->info = s1->out_shape.info;
-                    if (out->info.ndim == 2) {
-                        int32_t t = out->info.shape[0];
-                        out->info.shape[0] = out->info.shape[1];
-                        out->info.shape[1] = t;
-                    }
-                } else if (node->type == MF_NODE_DOT) {
-                    if (!s1 || !s2) return false;
-                    out->info.ndim = s1->out_shape.info.ndim > 0 ? s1->out_shape.info.ndim - 1 : 0;
-                    for(int k=0; k<out->info.ndim; ++k) out->info.shape[k] = s1->out_shape.info.shape[k];
-                } else if (node->type == MF_NODE_JOIN) {
-                    if (!s1 || !s2) return false;
-                    out->info = s1->out_shape.info;
-                    out->info.shape[out->info.ndim++] = 2;
+            case MF_SHAPE_SLICE:
+                if (!s1 || !s2) return false;
+                out->info.ndim = 1;
+                if (mf_tensor_is_valid(&s2->constant)) {
+                    void* d = mf_tensor_data(&s2->constant);
+                    out->info.shape[0] = (s2->constant.info.dtype == MF_DTYPE_F32) ? (int)((f32*)d)[1] : ((int*)d)[1];
                 }
                 break;
 
-            case MF_OP_CAT_ARRAY:
-                if (node->type == MF_NODE_GATHER) {
-                    if (!s1 || !s2) return false;
-                    out->info.ndim = s2->out_shape.info.ndim;
-                    memcpy(out->info.shape, s2->out_shape.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
-                } else if (node->type == MF_NODE_RESHAPE) {
-                    if (!s1 || !s2) return false;
-                    if (mf_tensor_is_valid(&s2->constant)) {
-                        int ndim = (int)mf_tensor_count(&s2->constant);
-                        out->info.ndim = (uint8_t)ndim;
-                        void* d = mf_tensor_data(&s2->constant);
-                        for(int k=0; k<ndim && k<MF_MAX_DIMS; ++k) {
-                            out->info.shape[k] = (s2->constant.info.dtype == MF_DTYPE_F32) ? (int)((f32*)d)[k] : ((int*)d)[k];
-                        }
-                    }
-                } else if (node->type == MF_NODE_SLICE) {
-                    if (!s1 || !s2) return false;
-                    out->info.ndim = 1;
-                    if (mf_tensor_is_valid(&s2->constant)) {
-                        void* d = mf_tensor_data(&s2->constant);
-                        out->info.shape[0] = (s2->constant.info.dtype == MF_DTYPE_F32) ? (int)((f32*)d)[1] : ((int*)d)[1];
-                    }
-                } else if (node->type == MF_NODE_INDEX || node->type == MF_NODE_RANGE) {
-                    out->info.ndim = 1;
-                    out->info.shape[0] = 0; // Dynamic
-                }
+            case MF_SHAPE_DYNAMIC_1D:
+                out->info.ndim = 1;
+                out->info.shape[0] = 0; // Dynamic
                 break;
         }
 
-        // 2. Resolve Output DType (Must happen AFTER shape, as categories might set info)
+        // 2. Resolve Output DType (Must happen AFTER shape, as rules might set info)
         switch (meta->out_rule) {
             case MF_OUT_SAME_AS_INPUT:   out->info.dtype = s1 ? s1->out_shape.info.dtype : MF_DTYPE_F32; break;
             case MF_OUT_SAME_AS_INPUT_2: out->info.dtype = s2 ? s2->out_shape.info.dtype : MF_DTYPE_F32; break;

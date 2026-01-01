@@ -29,7 +29,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) MF_NODE_##suffix,
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) MF_NODE_##suffix,
     MF_OP_LIST
 #undef MF_OP
 

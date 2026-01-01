@@ -42,9 +42,9 @@
 *Goal: Transform the compiler into a meta-data driven system and unlock hardware-level optimizations.*
 
 *   **Phase 36: Unified Operation Definitions (X-Macros)**
-    *   [ ] **Single Source of Truth:** Create `mf_op_defs.h` with metadata: Opcode, Name, Category (UNARY, BINARY, etc.), and **Type Masks**.
-    *   [ ] **Signature-Based Inference:** Add shape/type propagation rules directly into the macro to automate `mf_pass_analyze.c`.
-    *   [ ] **Auto-Mapping:** Replace manual `NODE_MAP` and `PORT_MAP` in `mf_pass_lower.c` with macro-generated tables.
+    *   [x] **Single Source of Truth:** Create `mf_op_defs.h` with metadata: Opcode, Name, Category (UNARY, BINARY, etc.), and **Type Masks**.
+    *   [x] **Signature-Based Inference:** Add shape/type propagation rules directly into the macro to automate `mf_pass_analyze.c`.
+    *   [x] **Auto-Mapping:** Replace manual `NODE_MAP` and `PORT_MAP` in `mf_pass_lower.c` with macro-generated tables.
 *   **Phase 37: Compiler Consolidation**
     *   [ ] **Generic Analyze Pass:** Use operation categories to handle shape inference logic.
     *   [ ] **Macro-Driven CodeGen:** Eliminate giant switch-cases in `mf_codegen.c` by expanding opcodes directly from definitions.

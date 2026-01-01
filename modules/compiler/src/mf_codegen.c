@@ -140,16 +140,20 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         if (s3) inst->src3_idx = s3->out_reg_idx;
 
         switch (node->type) {
-#define MF_OP(suffix, name, op_val, cat, mask, out_rule, p1, p2, p3) \
+#define MF_OP(suffix, name, op_val, cat, mask, out_rule, shape_rule, p1, p2, p3) \
             case MF_NODE_##suffix: \
-                if (MF_NODE_##suffix == MF_NODE_INPUT) { \
-                    if (s1) { inst->opcode = MF_OP_COPY; inst->src1_idx = s1->out_reg_idx; instr_count++; } \
-                } else if (MF_NODE_##suffix == MF_NODE_OUTPUT) { \
-                    inst->opcode = MF_OP_COPY; inst->dest_idx = node->out_reg_idx; inst->src1_idx = s1 ? s1->out_reg_idx : 0; inst->src2_idx = 0; instr_count++; \
-                } else if (MF_NODE_##suffix == MF_NODE_INDEX) { \
-                    inst->opcode = MF_OP_INDEX; if (!s1) inst->src1_idx = inst->dest_idx; instr_count++; \
-                } else if (cat != MF_OP_CAT_SPECIAL) { \
-                    inst->opcode = op_val; instr_count++; \
+                if (cat == MF_OP_CAT_SPECIAL) { \
+                    if (MF_NODE_##suffix == MF_NODE_INPUT && s1) { \
+                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1->out_reg_idx; instr_count++; \
+                    } else if (MF_NODE_##suffix == MF_NODE_OUTPUT) { \
+                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1 ? s1->out_reg_idx : 0; instr_count++; \
+                    } else if (MF_NODE_##suffix == MF_NODE_COPY) { \
+                         inst->opcode = MF_OP_COPY; inst->src1_idx = s1 ? s1->out_reg_idx : 0; instr_count++; \
+                    } \
+                } else { \
+                    inst->opcode = op_val; \
+                    if (MF_NODE_##suffix == MF_NODE_INDEX && !s1) inst->src1_idx = inst->dest_idx; \
+                    instr_count++; \
                 } break;
             MF_OP_LIST
 #undef MF_OP

@@ -13,7 +13,7 @@ typedef struct {
 } mf_node_map_entry;
 
 static const mf_node_map_entry NODE_MAP[] = {
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) { name, MF_NODE_##suffix },
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) { name, MF_NODE_##suffix },
     MF_OP_LIST
 #undef MF_OP
     {NULL, MF_NODE_UNKNOWN}
@@ -36,7 +36,7 @@ typedef struct {
 } mf_node_port_entry;
 
 static const mf_node_port_entry PORT_MAP[] = {
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) \
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, p1, p2, p3) \
     { MF_NODE_##suffix, p1, 0 }, \
     { MF_NODE_##suffix, p2, 1 }, \
     { MF_NODE_##suffix, p3, 2 },
