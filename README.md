@@ -8,6 +8,7 @@
 
 *   **Data-Oriented Architecture:** Data is stored in Structure-of-Arrays (Columns), optimized for SIMD and GPU transfer.
 *   **Modular Design:** Decoupled modules for Compiler, VM, and Backends.
+*   **Optimizing Compiler:** Multi-pass pipeline featuring instruction fusion (FMA), advanced lowering (MEAN decomposition), and liveness-based register allocation (Buffer Aliasing).
 *   **Portable C11:** Written in strict C11, no heavy dependencies (only `cJSON` for the compiler).
 *   **Safety & Abstraction:** Accessor API with bounds checking protects memory integrity while keeping the backend agnostic to storage location (RAM/VRAM).
 *   **Cross-Platform:** Built with CMake, supports Linux and Windows via presets.
