@@ -122,15 +122,16 @@ int mf_host_run(const mf_host_desc* desc) {
                 free(frame_buffer);
                 frame_buffer = malloc((size_t)win_w * (size_t)win_h * 4);
                 
-                mf_host_app_handle_resize(&app, win_w, win_h);
+                mf_host_app_set_resolution(&app, win_w, win_h);
             }
         }
         
         int mx, my;
         u32 buttons = SDL_GetMouseState(&mx, &my);
-        mf_host_app_update_system_resources(&app, current_time, (f32)mx, (f32)my, 
-                                            (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0, 
-                                            (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0);
+        mf_host_app_set_time(&app, current_time);
+        mf_host_app_set_mouse(&app, (f32)mx, (f32)my, 
+                              (buttons & SDL_BUTTON(SDL_BUTTON_LEFT)) != 0, 
+                              (buttons & SDL_BUTTON(SDL_BUTTON_RIGHT)) != 0);
 
         mf_engine_dispatch(app.engine);
         

@@ -58,8 +58,7 @@ int mf_host_run_headless(const mf_host_desc* desc, int frames) {
 
     MF_LOG_INFO("Running for %d frames...\n", frames);
     for (int f = 0; f < frames; ++f) {
-        // Simple time increment for headless
-        mf_host_app_update_system_resources(&app, (f32)f * 0.016f, 0, 0, false, false);
+        mf_host_app_set_time(&app, (f32)f * 0.016f);
 
         mf_engine_dispatch(app.engine);
         

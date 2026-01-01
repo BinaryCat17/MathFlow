@@ -73,19 +73,24 @@ typedef struct {
 
 /**
  * @brief Initializes the host application using the provided descriptor.
- * This creates the engine, loads the pipeline/graph, and binds standard resources.
+ * This creates the engine, loads the pipeline, and binds standard resources.
  */
 int mf_host_app_init(mf_host_app* app, const mf_host_desc* desc);
 
 /**
- * @brief Updates standard resources (time, resolution, mouse) in the context.
+ * @brief Sets the global time resource (u_Time).
  */
-void mf_host_app_update_system_resources(mf_host_app* app, float delta_time, float mouse_x, float mouse_y, bool lmb, bool rmb);
+void mf_host_app_set_time(mf_host_app* app, float current_time);
 
 /**
- * @brief Handles window resize events, updating out_Color and resolution resources.
+ * @brief Sets the output resolution and updates associated resources (out_Color, u_Resolution, etc).
  */
-void mf_host_app_handle_resize(mf_host_app* app, int width, int height);
+void mf_host_app_set_resolution(mf_host_app* app, int width, int height);
+
+/**
+ * @brief Sets mouse input resources (u_Mouse, u_MouseX, u_MouseY).
+ */
+void mf_host_app_set_mouse(mf_host_app* app, float x, float y, bool lmb, bool rmb);
 
 /**
  * @brief Shuts down the application and frees all resources.

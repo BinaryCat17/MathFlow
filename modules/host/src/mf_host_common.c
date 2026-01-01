@@ -78,46 +78,45 @@ int mf_host_app_init(mf_host_app* app, const mf_host_desc* desc) {
         }
     }
 
-    // Initial resize for output and resolution
-    mf_host_app_handle_resize(app, desc->width, desc->height);
+    // Initial resolution setup for output and uniforms
+    mf_host_app_set_resolution(app, desc->width, desc->height);
 
     app->is_initialized = true;
     return 0;
 }
 
-void mf_host_app_update_system_resources(mf_host_app* app, float current_time, float mouse_x, float mouse_y, bool lmb, bool rmb) {
+void mf_host_app_set_time(mf_host_app* app, float current_time) {
     if (!app || !app->is_initialized) return;
-
-    // Cache handles on first use or if they were invalidated (though they shouldn't be)
     if (!app->resources.time) app->resources.time = mf_engine_map_resource(app->engine, "u_Time");
-    if (!app->resources.mouse) app->resources.mouse = mf_engine_map_resource(app->engine, "u_Mouse");
-    if (!app->resources.res_x) app->resources.res_x = mf_engine_map_resource(app->engine, "u_ResX");
-    if (!app->resources.res_y) app->resources.res_y = mf_engine_map_resource(app->engine, "u_ResY");
-    if (!app->resources.aspect) app->resources.aspect = mf_engine_map_resource(app->engine, "u_Aspect");
-
+    
     if (app->resources.time) {
         f32* d = (f32*)mf_tensor_data(app->resources.time);
         if (d) *d = current_time;
     }
+}
+
+void mf_host_app_set_mouse(mf_host_app* app, float x, float y, bool lmb, bool rmb) {
+    if (!app || !app->is_initialized) return;
+    if (!app->resources.mouse) app->resources.mouse = mf_engine_map_resource(app->engine, "u_Mouse");
 
     if (app->resources.mouse) {
         f32* d = (f32*)mf_tensor_data(app->resources.mouse);
         if (d) {
-            d[0] = mouse_x;
-            d[1] = mouse_y;
+            d[0] = x;
+            d[1] = y;
             d[2] = lmb ? 1.0f : 0.0f;
             d[3] = rmb ? 1.0f : 0.0f;
         }
     }
 
-    // Individual mouse coords if available
+    // Individual mouse coords if available (optional)
     mf_tensor* t_mx = mf_engine_map_resource(app->engine, "u_MouseX");
-    if (t_mx) { f32* d = mf_tensor_data(t_mx); if (d) *d = mouse_x; }
+    if (t_mx) { f32* d = mf_tensor_data(t_mx); if (d) *d = x; }
     mf_tensor* t_my = mf_engine_map_resource(app->engine, "u_MouseY");
-    if (t_my) { f32* d = mf_tensor_data(t_my); if (d) *d = mouse_y; }
+    if (t_my) { f32* d = mf_tensor_data(t_my); if (d) *d = y; }
 }
 
-void mf_host_app_handle_resize(mf_host_app* app, int width, int height) {
+void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
     if (!app || !app->engine) return;
 
     app->desc.width = width;
@@ -135,7 +134,7 @@ void mf_host_app_handle_resize(mf_host_app* app, int width, int height) {
         }
     }
 
-    // Force re-cache or update individual resolution uniforms
+    // Update individual resolution uniforms if they exist
     mf_tensor* t_rx = mf_engine_map_resource(app->engine, "u_ResX");
     if (t_rx) { f32* d = mf_tensor_data(t_rx); if (d) *d = (f32)width; }
     mf_tensor* t_ry = mf_engine_map_resource(app->engine, "u_ResY");
