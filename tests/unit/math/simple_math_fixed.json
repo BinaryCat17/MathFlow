@@ -1,0 +1,22 @@
+{
+    "nodes": [
+        { "id": "1", "type": "Const", "data": {"value": [1.0, 2.0, 3.0]} },
+        { "id": "2", "type": "Const", "data": {"value": [4.0, 5.0, 6.0]} },
+        { "id": "4", "type": "Const", "data": {"value": 2.0} },
+
+        { "id": "3_node", "type": "Add" },
+        { "id": "out_3", "type": "Output" },
+        
+        { "id": "5_node", "type": "Mul" },
+        { "id": "out_5", "type": "Output" }
+    ],
+    "links": [
+        { "src": "1", "src_port": "out", "dst": "3_node", "dst_port": "a" },
+        { "src": "2", "src_port": "out", "dst": "3_node", "dst_port": "b" },
+        { "src": "3_node", "src_port": "out", "dst": "out_3", "dst_port": "in" },
+        
+        { "src": "3_node", "src_port": "out", "dst": "5_node", "dst_port": "a" },
+        { "src": "4", "src_port": "out", "dst": "5_node", "dst_port": "b" },
+        { "src": "5_node", "src_port": "out", "dst": "out_5", "dst_port": "in" }
+    ]
+}
