@@ -74,7 +74,14 @@ graph TD
 
 #### **Compiler** (`modules/compiler`)
 *   **Role:** Translates human-readable Graphs (JSON) into machine-efficient Bytecode (`mf_program`).
-*   **Architecture:** Pipeline of passes (Parse -> Lower -> Inline -> Analyze -> CodeGen).
+*   **Architecture:** Pipeline of passes:
+    *   **Lowering:** JSON AST -> Flat IR.
+    *   **Inlining:** Recursive expansion of sub-graphs.
+    *   **Optimization (Fusion):** Combines operations (e.g., `Mul + Add -> FMA`).
+    *   **Analysis:** Shape and Type inference/propagation.
+    *   **Register Allocation:** Liveness analysis to minimize memory by reusing registers (**Buffer Aliasing**).
+    *   **Domain Splitting:** Groups instructions into tasks based on output shapes.
+    *   **CodeGen:** Emits binary bytecode and constant data.
 
 #### **Engine** (`modules/engine`)
 *   **Role:** The "Brain" / Orchestrator.
@@ -121,7 +128,7 @@ MathFlow orchestrates execution via a **Pipeline**.
 
 ---
 
-## Memory Model (Phase 22)
+## Memory Model
 
 MathFlow distinguishes between **Storage** and **View**.
 
@@ -135,24 +142,19 @@ MathFlow distinguishes between **Storage** and **View**.
     *   Lightweight (created on stack/arena).
     *   **Zero-Copy Ops:** `Slice`, `Reshape`, and `Transpose` creates a new *View* without touching the *Buffer*.
 
-3.  **Execution:**
+3.  **Register Allocation (Buffer Aliasing):**
+    *   The compiler performs **Liveness Analysis** to detect when a tensor is no longer needed.
+    *   Registers are reused for non-overlapping lifetimes.
+    *   **In-place Operations:** Element-wise ops (Add, Sub, etc.) can reuse their input register for the output if the input "dies" at that instruction.
+    *   **Persistent Registers:** Inputs, Constants, and Outputs are protected from reuse to maintain interface integrity.
+
+4.  **Execution:**
     *   The Engine allocates **A** and **B** buffers for every global resource.
     *   On Frame N: Inputs read from **A**, Outputs write to **B**.
     *   On Frame N+1: Swap A/B.
     *   The Backend creates temporary Views into these buffers for each worker thread.
 
 ---
-
-## Data Flow
-
-1.  **Load:** Host loads `app.mfapp`. Loader parses JSON, compiles Graphs into `mf_program`.
-2.  **Bind:** Engine allocates Global Resources (`mf_buffer`) and links them to Kernel Ports.
-3.  **Loop:**
-    *   Host updates Input Resources (Mouse, Time).
-    *   Engine determines active buffers (A/B).
-    *   **Dispatch:** Backend splits domain into jobs.
-    *   **Execute:** Workers compute math, writing directly to Output Buffers (via Views).
-    *   Host reads Output Resource (`out_Color`) and renders to screen.
 
 ## Pipeline Manifest (.mfapp)
 
