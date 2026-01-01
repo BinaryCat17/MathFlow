@@ -42,6 +42,23 @@
 
 ---
 
+## Future Milestones
+
+### Milestone 11: The Standard Library & ISA Purity
+*Goal: Transform MathFlow into a minimal-core engine where compound logic lives in a versioned JSON library.*
+
+*   **Phase 49: Global Registry & Search Paths**
+    *   [ ] **Implicit Call System:** Allow the compiler to resolve unknown node types (e.g., `Normalize`) by searching in `assets/lib/` without explicit `path`.
+    *   [ ] **Global Prelude:** Automatically "import" a set of standard operations during the Inline pass.
+*   **Phase 50: The Great Decomposition**
+    *   [ ] **Compound Op Migration:** Move `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` into the JSON library.
+    *   [ ] **Mean Removal:** Fully remove `Mean` from the compiler C-code and define it as a library alias.
+*   **Phase 51: ISA Purity & Backend Shrinking**
+    *   [ ] **Kernel Cleanup:** Remove `mf_ops_matrix.c` and other complex kernels from the runtime.
+    *   [ ] **Minimal ISA:** Refine the ISA to only include hardware-aligned primitives (Arithmetic, Logic, FMA, Sum, Gather/Scatter).
+
+---
+
 ## Completed Phases (Archive)
 
 ### Milestone 9: The Task-Based Evolution (The Multi-Domain Engine)
