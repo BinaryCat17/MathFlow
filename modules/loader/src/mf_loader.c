@@ -4,6 +4,7 @@
 #include <mathflow/backend_cpu/mf_backend_cpu.h>
 #include <mathflow/isa/mf_opcodes.h>
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_utils.h>
 
 #include <stdio.h>
 #include <string.h>
@@ -17,45 +18,12 @@
 
 void mf_loader_init_backend(mf_backend* backend, int num_threads) {
     if (!backend) return;
-    // Hardcoded to CPU for now, but this is the Injection Point for future backends.
     mf_backend_cpu_init(backend, num_threads);
-}
-
-static const char* get_filename_ext(const char *filename) {
-    const char *dot = strrchr(filename, '.');
-    if(!dot || dot == filename) return "";
-    return dot + 1;
-}
-
-static char* read_file_bin(const char* path, size_t* out_len) {
-    FILE* f = fopen(path, "rb");
-    if (!f) {
-        MF_LOG_ERROR("Could not open file for reading: %s", path);
-        return NULL;
-    }
-    fseek(f, 0, SEEK_END);
-    long length = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char* buffer = malloc(length);
-    if (!buffer) {
-        MF_LOG_ERROR("Memory allocation failed for file buffer (%ld bytes): %s", length, path);
-        fclose(f);
-        return NULL;
-    }
-    if (fread(buffer, 1, length, f) != (size_t)length) {
-        MF_LOG_ERROR("Failed to read file content: %s", path);
-        free(buffer);
-        fclose(f);
-        return NULL;
-    }
-    fclose(f);
-    if (out_len) *out_len = length;
-    return buffer;
 }
 
 static mf_program* _load_binary(const char* path, mf_arena* arena) {
     size_t len = 0;
-    char* data = read_file_bin(path, &len);
+    char* data = mf_file_read_bin(path, &len);
     if (!data) return NULL;
 
     if (len < sizeof(mf_bin_header)) { free(data); return NULL; }
@@ -72,17 +40,14 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
 
     size_t offset = sizeof(mf_bin_header);
     
-    // Code
     prog->code = MF_ARENA_PUSH(arena, mf_instruction, head->instruction_count);
     memcpy(prog->code, data + offset, sizeof(mf_instruction) * head->instruction_count);
     offset += sizeof(mf_instruction) * head->instruction_count;
 
-    // Symbol Table
     prog->symbols = MF_ARENA_PUSH(arena, mf_bin_symbol, head->symbol_count);
     memcpy(prog->symbols, data + offset, sizeof(mf_bin_symbol) * head->symbol_count);
     offset += sizeof(mf_bin_symbol) * head->symbol_count;
 
-    // Tensor Descriptors
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
     
     for (u32 i = 0; i < head->tensor_count; ++i) {
@@ -94,10 +59,6 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         t->info.ndim = desc->ndim;
         memcpy(t->info.shape, desc->shape, sizeof(int32_t) * MF_MAX_DIMS);
         
-        // Initialize strides? Or leave 0? Ops usually calculate strides on fly if 0, or we should init them.
-        // Let's init them for safety.
-        // TODO: mf_tensor_calc_strides(t); 
-        // For now, simple standard layout:
         int32_t stride = 1;
         for (int k = t->info.ndim - 1; k >= 0; --k) {
             t->info.strides[k] = stride;
@@ -105,7 +66,6 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         }
     }
 
-    // Data Blob
     size_t desc_start_offset = sizeof(mf_bin_header) + 
                                sizeof(mf_instruction) * head->instruction_count +
                                sizeof(mf_bin_symbol) * head->symbol_count;
@@ -123,13 +83,11 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
             void* mem = MF_ARENA_PUSH(arena, u8, bytes);
             memcpy(mem, data + offset, bytes);
             
-            // Create buffer wrapper on arena
             mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
             mf_buffer_init_view(buf, mem, bytes);
             
             t->buffer = buf;
             t->byte_offset = 0;
-            
             offset += bytes;
         } else {
             t->buffer = NULL;
@@ -142,7 +100,7 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
 }
 
 static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
-    const char* ext = get_filename_ext(path);
+    const char* ext = mf_path_get_ext(path);
     if (strcmp(ext, "json") == 0) {
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(path, &ir, arena)) {
@@ -156,44 +114,9 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
     return NULL;
 }
 
-static mf_pipeline_desc* mf_loader_synthesize_pipeline(const mf_program* prog, const char* kernel_id, mf_arena* arena) {
-    u32 res_count = prog->meta.symbol_count;
-    
-    mf_pipeline_desc* pipe = MF_ARENA_PUSH(arena, mf_pipeline_desc, 1);
-    pipe->resource_count = res_count;
-    pipe->resources = MF_ARENA_PUSH(arena, mf_pipeline_resource, res_count);
-    
-    pipe->kernel_count = 1;
-    pipe->kernels = MF_ARENA_PUSH(arena, mf_pipeline_kernel, 1);
-    
-    mf_pipeline_kernel* kernel = &pipe->kernels[0];
-    kernel->id = kernel_id;
-    kernel->frequency = 1;
-    kernel->binding_count = res_count;
-    kernel->bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, res_count);
-
-    for (u32 i = 0; i < res_count; ++i) {
-        mf_bin_symbol* sym = &prog->symbols[i];
-        mf_tensor* t = &prog->tensors[sym->register_idx];
-        
-        // Resource
-        pipe->resources[i].name = sym->name;
-        pipe->resources[i].dtype = t->info.dtype;
-        pipe->resources[i].ndim = t->info.ndim;
-        memcpy(pipe->resources[i].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
-        
-        // Binding
-        kernel->bindings[i].kernel_port = sym->name;
-        kernel->bindings[i].global_resource = sym->name;
-    }
-    
-    return pipe;
-}
-
 bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     if (!engine || !path) return false;
 
-    // 1. Reset & Load Program
     mf_engine_reset(engine);
     mf_arena* arena = mf_engine_get_arena(engine);
     if (!arena) return false;
@@ -201,13 +124,37 @@ bool mf_loader_load_graph(mf_engine* engine, const char* path) {
     mf_program* prog = load_prog_from_file(arena, path);
     if (!prog) return false;
 
-    MF_LOG_INFO("Loader: Synthesizing Implicit Pipeline for %s", path);
-
-    // 2. Synthesize & Bind
-    mf_pipeline_desc* pipe = mf_loader_synthesize_pipeline(prog, "main", arena);
+    // Use a temporary pipeline descriptor to bind the single graph
+    mf_pipeline_resource* res = MF_ARENA_PUSH(arena, mf_pipeline_resource, prog->meta.symbol_count);
+    mf_pipeline_kernel* ker = MF_ARENA_PUSH(arena, mf_pipeline_kernel, 1);
     
+    ker[0].id = "main";
+    ker[0].graph_path = path;
+    ker[0].frequency = 1;
+    ker[0].binding_count = prog->meta.symbol_count;
+    ker[0].bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, ker[0].binding_count);
+
+    for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
+        mf_bin_symbol* sym = &prog->symbols[i];
+        mf_tensor* t = &prog->tensors[sym->register_idx];
+        
+        res[i].name = sym->name;
+        res[i].dtype = t->info.dtype;
+        res[i].ndim = t->info.ndim;
+        memcpy(res[i].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+        
+        ker[0].bindings[i].kernel_port = sym->name;
+        ker[0].bindings[i].global_resource = sym->name;
+    }
+
+    mf_pipeline_desc pipe = {0};
+    pipe.resource_count = prog->meta.symbol_count;
+    pipe.resources = res;
+    pipe.kernel_count = 1;
+    pipe.kernels = ker;
+
     mf_program* programs[] = { prog };
-    mf_engine_bind_pipeline(engine, pipe, programs);
+    mf_engine_bind_pipeline(engine, &pipe, programs);
 
     return true;
 }
@@ -395,7 +342,7 @@ static bool bake_range_sdf(stbtt_fontinfo* font, int start_char, int end_char,
 
 bool mf_loader_load_font(mf_engine* engine, const char* resource_name, const char* path, float font_size) {
     size_t len;
-    char* ttf_buffer = read_file_bin(path, &len);
+    char* ttf_buffer = mf_file_read_bin(path, &len);
     if (!ttf_buffer) return false;
 
     stbtt_fontinfo font;

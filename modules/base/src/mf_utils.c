@@ -62,6 +62,13 @@ char* mf_path_get_dir(const char* path, mf_arena* arena) {
     return dir;
 }
 
+const char* mf_path_get_ext(const char* path) {
+    if (!path) return "";
+    const char* dot = strrchr(path, '.');
+    if (!dot || dot == path) return "";
+    return dot + 1;
+}
+
 char* mf_path_join(const char* dir, const char* file, mf_arena* arena) {
     if (!dir || !file) return NULL;
     
@@ -101,6 +108,28 @@ char* mf_file_read(const char* path, mf_arena* arena) {
     }
     buf[len] = 0;
     fclose(f);
+    return buf;
+}
+
+void* mf_file_read_bin(const char* path, size_t* out_size) {
+    FILE* f = fopen(path, "rb");
+    if (!f) return NULL;
+    fseek(f, 0, SEEK_END);
+    long len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    if (len < 0) { fclose(f); return NULL; }
+    
+    void* buf = malloc((size_t)len);
+    if (!buf) { fclose(f); return NULL; }
+    
+    if (fread(buf, 1, (size_t)len, f) != (size_t)len) {
+        free(buf);
+        fclose(f);
+        return NULL;
+    }
+    
+    fclose(f);
+    if (out_size) *out_size = (size_t)len;
     return buf;
 }
 

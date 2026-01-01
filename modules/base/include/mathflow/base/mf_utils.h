@@ -19,11 +19,17 @@ char* mf_arena_sprintf(mf_arena* arena, const char* fmt, ...);
 // Extract directory from path (e.g. "a/b/c.json" -> "a/b")
 char* mf_path_get_dir(const char* path, mf_arena* arena);
 
+// Extract extension from path (e.g. "a.json" -> "json")
+const char* mf_path_get_ext(const char* path);
+
 // Join directory and file (handling separators)
 char* mf_path_join(const char* dir, const char* file, mf_arena* arena);
 
 // Read entire file into arena memory (null-terminated)
 char* mf_file_read(const char* path, mf_arena* arena);
+
+// Read entire file as binary (no arena, caller must free)
+void* mf_file_read_bin(const char* path, size_t* out_size);
 
 // Decodes a UTF-8 string into UTF-32 codepoints.
 // Returns the number of codepoints produced.
