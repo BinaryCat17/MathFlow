@@ -36,6 +36,48 @@
 
 ---
 
+## Upcoming Milestone
+
+### Milestone 8: Architecture Purity & Performance (Phases 36-40)
+*Goal: Transform the compiler into a meta-data driven system and unlock hardware-level optimizations.*
+
+*   **Phase 36: Unified Operation Definitions (X-Macros)**
+    *   [ ] **Single Source of Truth:** Create `mf_op_defs.h` with metadata: Opcode, Name, Category (UNARY, BINARY, etc.), and **Type Masks**.
+    *   [ ] **Signature-Based Inference:** Add shape/type propagation rules directly into the macro to automate `mf_pass_analyze.c`.
+    *   [ ] **Auto-Mapping:** Replace manual `NODE_MAP` and `PORT_MAP` in `mf_pass_lower.c` with macro-generated tables.
+*   **Phase 37: Compiler Consolidation**
+    *   [ ] **Generic Analyze Pass:** Use operation categories to handle shape inference logic.
+    *   [ ] **Macro-Driven CodeGen:** Eliminate giant switch-cases in `mf_codegen.c` by expanding opcodes directly from definitions.
+*   **Phase 38: Advanced Memory Access (Strides)**
+    *   [ ] **Stride-Aware Kernels:** Refactor `modules/ops` to respect tensor strides.
+    *   [ ] **Iterator API:** Implement a lightweight N-dimensional iterator.
+    *   [ ] **Contiguous Fast-Path:** Optimize the iterator to collapse into simple pointer increments for dense data (inline/SIMD friendly).
+*   **Phase 39: SIMD Acceleration**
+    *   [ ] **SIMD Abstraction Layer:** Create `mf_simd.h` wrapping SSE/AVX/NEON intrinsics.
+    *   [ ] **Vectorized Kernels:** Use X-Macros to automatically generate vectorized paths for `ELEMENTWISE` operations.
+*   **Phase 40: Binary Hardening & Tooling**
+    *   [ ] **Program Checksums:** Add CRC32 to `mf_program` to detect corruption.
+    *   [ ] **Reflection API:** Expose kernel metadata to the Host for automated UI generation.
+
+---
+
+## Future Milestone
+
+### Milestone 9: Intelligence & Developer Experience (Phases 41-43)
+*Goal: Move from "Correct execution" to "Optimal execution" and seamless developer workflow.*
+
+*   **Phase 41: Compiler Optimizations**
+    *   [ ] **Constant Folding:** Pre-calculate operations on constants during compilation.
+    *   [ ] **Dead Code Elimination (DCE):** Remove nodes that don't contribute to any `Output`.
+*   **Phase 42: Resource Management & Aliasing**
+    *   [ ] **Memory Aliasing:** Analyze resource life-cycles to reuse memory buffers for temporary data.
+    *   [ ] **Dependency Graph:** Build an explicit graph of kernel dependencies to optimize execution order.
+*   **Phase 43: Live Systems**
+    *   [ ] **Hot Reloading:** Implement file-watchers in the Host to recompile and swap `mf_program` without restarting the engine.
+    *   [ ] **Telemetry:** Real-time performance counters (ns per kernel, memory bandwidth).
+
+---
+
 ## Completed Phases (Archive)
 
 ### Milestone 6: Pixel Engine & Framework Maturity (Phases 19 - 30)

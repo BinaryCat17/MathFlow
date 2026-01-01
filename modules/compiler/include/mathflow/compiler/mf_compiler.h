@@ -5,6 +5,9 @@
 #include <mathflow/isa/mf_program.h>
 #include <mathflow/base/mf_memory.h>
 
+#include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/isa/mf_op_defs.h>
+
 // --- Diagnostics ---
 typedef struct {
     mf_source_loc loc;
@@ -26,70 +29,9 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-    // Data Sources/Sinks
-    MF_NODE_CONST,  // Internal constant (literal)
-    MF_NODE_INPUT,  // External runtime parameter (Host -> Graph)
-    MF_NODE_OUTPUT, // External result (Graph -> Host)
-    
-    // Arithmetic
-    MF_NODE_ADD,
-    MF_NODE_SUB,
-    MF_NODE_MUL,
-    MF_NODE_DIV,
-    
-    // Math
-    MF_NODE_MIN,
-    MF_NODE_MAX,
-    MF_NODE_ABS,
-    MF_NODE_CLAMP,
-    MF_NODE_FLOOR,
-    MF_NODE_CEIL,
-    MF_NODE_SIN,
-    MF_NODE_COS,
-    MF_NODE_ATAN2,
-    MF_NODE_SQRT,
-    MF_NODE_POW,
-    MF_NODE_MIX,
-    MF_NODE_STEP,
-    MF_NODE_SMOOTHSTEP,
-
-    // Matrix
-    MF_NODE_MATMUL,
-    MF_NODE_TRANSPOSE,
-    MF_NODE_INVERSE,
-    MF_NODE_NORMALIZE,
-    MF_NODE_DOT,
-    MF_NODE_LENGTH,
-    MF_NODE_JOIN, // Join/Pack
-
-    // Comparison
-    MF_NODE_LESS,
-    MF_NODE_GREATER,
-    MF_NODE_EQUAL,
-    MF_NODE_NEQUAL,
-    MF_NODE_LEQUAL,
-    MF_NODE_GEQUAL,
-
-    // Logic
-    MF_NODE_AND,
-    MF_NODE_OR,
-    MF_NODE_XOR,
-    MF_NODE_NOT,
-    
-    // Selection
-    MF_NODE_SELECT, // Where/Select
-
-    // Array Ops
-    MF_NODE_RANGE,
-    MF_NODE_INDEX,      // Current execution index
-    MF_NODE_GATHER,     // Random Access: Dest[i] = Src[Indices[i]]
-    MF_NODE_CUMSUM,     // Cumulative Sum
-    MF_NODE_COMPRESS,
-    MF_NODE_SLICE,   // Slice(Input, Range[Start, Count]) -> View
-    MF_NODE_RESHAPE, // Reshape(Input, ShapeTensor) -> View
-    
-    // Sub-Graph
-    MF_NODE_CALL,         // Call("path/to/graph.json")
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) MF_NODE_##suffix,
+    MF_OP_LIST
+#undef MF_OP
 
     MF_NODE_COUNT
 } mf_node_type;

@@ -13,22 +13,9 @@ typedef struct {
 } mf_node_map_entry;
 
 static const mf_node_map_entry NODE_MAP[] = {
-    {"Const", MF_NODE_CONST}, {"Input", MF_NODE_INPUT}, {"Output", MF_NODE_OUTPUT},
-    {"Add", MF_NODE_ADD}, {"Sub", MF_NODE_SUB}, {"Mul", MF_NODE_MUL}, {"Div", MF_NODE_DIV},
-    {"Min", MF_NODE_MIN}, {"Max", MF_NODE_MAX}, {"Clamp", MF_NODE_CLAMP},
-    {"Floor", MF_NODE_FLOOR}, {"Ceil", MF_NODE_CEIL},
-    {"Sin", MF_NODE_SIN}, {"Cos", MF_NODE_COS}, {"Atan2", MF_NODE_ATAN2},
-    {"Mix", MF_NODE_MIX}, {"Step", MF_NODE_STEP}, {"SmoothStep", MF_NODE_SMOOTHSTEP},
-    {"MatMul", MF_NODE_MATMUL}, {"Transpose", MF_NODE_TRANSPOSE},
-    {"Inverse", MF_NODE_INVERSE}, {"Dot", MF_NODE_DOT}, {"Length", MF_NODE_LENGTH}, {"Join", MF_NODE_JOIN},
-    {"Greater", MF_NODE_GREATER}, {"Less", MF_NODE_LESS}, {"Equal", MF_NODE_EQUAL},
-    {"GreaterEqual", MF_NODE_GEQUAL}, {"LessEqual", MF_NODE_LEQUAL}, {"NotEqual", MF_NODE_NEQUAL},
-    {"And", MF_NODE_AND}, {"Or", MF_NODE_OR}, {"Not", MF_NODE_NOT},
-    {"Select", MF_NODE_SELECT},
-    {"Range", MF_NODE_RANGE}, {"Index", MF_NODE_INDEX}, {"CumSum", MF_NODE_CUMSUM},
-    {"Filter", MF_NODE_COMPRESS}, {"Slice", MF_NODE_SLICE}, {"Reshape", MF_NODE_RESHAPE},
-    {"Gather", MF_NODE_GATHER},
-    {"Call", MF_NODE_CALL},
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) { name, MF_NODE_##suffix },
+    MF_OP_LIST
+#undef MF_OP
     {NULL, MF_NODE_UNKNOWN}
 };
 
@@ -49,65 +36,19 @@ typedef struct {
 } mf_node_port_entry;
 
 static const mf_node_port_entry PORT_MAP[] = {
-    // Binary Ops
-    {MF_NODE_ADD, "a", 0}, {MF_NODE_ADD, "b", 1},
-    {MF_NODE_SUB, "a", 0}, {MF_NODE_SUB, "b", 1},
-    {MF_NODE_MUL, "a", 0}, {MF_NODE_MUL, "b", 1},
-    {MF_NODE_DIV, "a", 0}, {MF_NODE_DIV, "b", 1},
-    {MF_NODE_MIN, "a", 0}, {MF_NODE_MIN, "b", 1},
-    {MF_NODE_MAX, "a", 0}, {MF_NODE_MAX, "b", 1},
-    {MF_NODE_POW, "base", 0}, {MF_NODE_POW, "exp", 1},
-    {MF_NODE_ATAN2, "y", 0}, {MF_NODE_ATAN2, "x", 1},
-    // Unary
-    {MF_NODE_SIN, "x", 0}, {MF_NODE_SIN, "in", 0},
-    {MF_NODE_COS, "x", 0}, {MF_NODE_COS, "in", 0},
-    {MF_NODE_ABS, "x", 0}, {MF_NODE_ABS, "in", 0},
-    {MF_NODE_SQRT, "x", 0}, {MF_NODE_SQRT, "in", 0},
-    {MF_NODE_FLOOR, "x", 0}, {MF_NODE_FLOOR, "in", 0},
-    {MF_NODE_CEIL, "x", 0}, {MF_NODE_CEIL, "in", 0},
-    {MF_NODE_NOT, "in", 0},
-    {MF_NODE_LENGTH, "x", 0}, {MF_NODE_LENGTH, "in", 0},
-    {MF_NODE_TRANSPOSE, "in", 0}, {MF_NODE_INVERSE, "in", 0}, {MF_NODE_NORMALIZE, "in", 0},
-    // Matrix
-    {MF_NODE_MATMUL, "a", 0}, {MF_NODE_MATMUL, "b", 1},
-    {MF_NODE_DOT, "a", 0}, {MF_NODE_DOT, "b", 1},
-    {MF_NODE_JOIN, "a", 0}, {MF_NODE_JOIN, "b", 1},
-    // Ternary
-    {MF_NODE_SELECT, "cond", 0}, {MF_NODE_SELECT, "true", 1}, {MF_NODE_SELECT, "false", 2},
-    {MF_NODE_MIX, "a", 0}, {MF_NODE_MIX, "b", 1}, {MF_NODE_MIX, "t", 2},
-    {MF_NODE_CLAMP, "x", 0}, {MF_NODE_CLAMP, "min", 1}, {MF_NODE_CLAMP, "max", 2},
-    {MF_NODE_SMOOTHSTEP, "x", 0}, {MF_NODE_SMOOTHSTEP, "edges", 1},
-    {MF_NODE_STEP, "edge", 0}, {MF_NODE_STEP, "x", 1},
-    // Comparison
-    {MF_NODE_GREATER, "a", 0}, {MF_NODE_GREATER, "b", 1},
-    {MF_NODE_LESS, "a", 0}, {MF_NODE_LESS, "b", 1},
-    {MF_NODE_EQUAL, "a", 0}, {MF_NODE_EQUAL, "b", 1},
-    {MF_NODE_NEQUAL, "a", 0}, {MF_NODE_NEQUAL, "b", 1},
-    {MF_NODE_LEQUAL, "a", 0}, {MF_NODE_LEQUAL, "b", 1},
-    {MF_NODE_GEQUAL, "a", 0}, {MF_NODE_GEQUAL, "b", 1},
-    // Logic
-    {MF_NODE_AND, "a", 0}, {MF_NODE_AND, "b", 1},
-    {MF_NODE_OR, "a", 0}, {MF_NODE_OR, "b", 1},
-    {MF_NODE_XOR, "a", 0}, {MF_NODE_XOR, "b", 1},
-    // Array
-    {MF_NODE_RANGE, "count", 0},
-    {MF_NODE_SLICE, "in", 0}, {MF_NODE_SLICE, "range", 1},
-    {MF_NODE_RESHAPE, "in", 0}, {MF_NODE_RESHAPE, "shape", 1},
-    {MF_NODE_CUMSUM, "in", 0},
-    {MF_NODE_COMPRESS, "in", 0}, {MF_NODE_COMPRESS, "mask", 1},
-    {MF_NODE_INDEX, "axis", 0}, 
-    {MF_NODE_GATHER, "data", 0}, {MF_NODE_GATHER, "indices", 1},
-
-    {MF_NODE_INPUT, "out", 0},
-    {MF_NODE_OUTPUT, "in", 0},
-    {MF_NODE_CONST, "out", 0},
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, p1, p2, p3) \
+    { MF_NODE_##suffix, p1, 0 }, \
+    { MF_NODE_##suffix, p2, 1 }, \
+    { MF_NODE_##suffix, p3, 2 },
+    MF_OP_LIST
+#undef MF_OP
     {MF_NODE_UNKNOWN, NULL, 0}
 };
 
 static u32 get_port_index(mf_node_type type, const char* port_name) {
     if (!port_name) return 0;
-    for (const mf_node_port_entry* e = PORT_MAP; e->port_name; ++e) {
-        if (e->type == type && strcmp(e->port_name, port_name) == 0) return e->port_index;
+    for (const mf_node_port_entry* e = PORT_MAP; e->port_name || e->type != MF_NODE_UNKNOWN; ++e) {
+        if (e->port_name && e->type == type && strcmp(e->port_name, port_name) == 0) return e->port_index;
     }
     return 0; // Default or Error? Currently default.
 }

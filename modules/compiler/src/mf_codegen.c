@@ -137,137 +137,22 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         inst->dest_idx = node->out_reg_idx;
         if (s1) inst->src1_idx = s1->out_reg_idx;
         if (s2) inst->src2_idx = s2->out_reg_idx;
+        if (s3) inst->src3_idx = s3->out_reg_idx;
 
         switch (node->type) {
-            case MF_NODE_CONST:
-                break;
-            
-            case MF_NODE_INPUT: 
-                if (s1) {
-                    inst->opcode = MF_OP_COPY;
-                    inst->src1_idx = s1->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            
-            case MF_NODE_OUTPUT:
-                inst->opcode = MF_OP_COPY;
-                inst->dest_idx = node->out_reg_idx;
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = 0;
-                instr_count++;
-                break;
-            
-            case MF_NODE_ADD: inst->opcode = MF_OP_ADD; instr_count++; break;
-            case MF_NODE_SUB: inst->opcode = MF_OP_SUB; instr_count++; break;
-            case MF_NODE_MUL: inst->opcode = MF_OP_MUL; instr_count++; break;
-            case MF_NODE_DIV: inst->opcode = MF_OP_DIV; instr_count++; break;
-            
-            case MF_NODE_MIN: inst->opcode = MF_OP_MIN; instr_count++; break;
-            case MF_NODE_MAX: inst->opcode = MF_OP_MAX; instr_count++; break;
-            case MF_NODE_ABS: inst->opcode = MF_OP_ABS; instr_count++; break;
-            case MF_NODE_SQRT: inst->opcode = MF_OP_SQRT; instr_count++; break;
-            case MF_NODE_SIN: inst->opcode = MF_OP_SIN; instr_count++; break;
-            case MF_NODE_COS: inst->opcode = MF_OP_COS; instr_count++; break;
-            
-            case MF_NODE_MATMUL: inst->opcode = MF_OP_MATMUL; instr_count++; break;
-            case MF_NODE_TRANSPOSE: inst->opcode = MF_OP_TRANSPOSE; instr_count++; break;
-            case MF_NODE_INVERSE: inst->opcode = MF_OP_INVERSE; instr_count++; break;
-            
-            case MF_NODE_FLOOR: inst->opcode = MF_OP_FLOOR; instr_count++; break;
-            case MF_NODE_CEIL: inst->opcode = MF_OP_CEIL; instr_count++; break;
-            case MF_NODE_ATAN2: inst->opcode = MF_OP_ATAN2; instr_count++; break;
-            case MF_NODE_POW: inst->opcode = MF_OP_POW; instr_count++; break;
-            
-            case MF_NODE_GREATER: inst->opcode = MF_OP_GREATER; instr_count++; break;
-            case MF_NODE_LESS: inst->opcode = MF_OP_LESS; instr_count++; break;
-            case MF_NODE_EQUAL: inst->opcode = MF_OP_EQUAL; instr_count++; break;
-            case MF_NODE_NEQUAL: inst->opcode = MF_OP_NEQUAL; instr_count++; break;
-            case MF_NODE_LEQUAL: inst->opcode = MF_OP_LEQUAL; instr_count++; break;
-            case MF_NODE_GEQUAL: inst->opcode = MF_OP_GEQUAL; instr_count++; break;
-            
-            case MF_NODE_AND: inst->opcode = MF_OP_AND; instr_count++; break;
-            case MF_NODE_OR: inst->opcode = MF_OP_OR; instr_count++; break;
-            case MF_NODE_NOT: inst->opcode = MF_OP_NOT; instr_count++; break;
-            
-            case MF_NODE_RANGE: inst->opcode = MF_OP_RANGE; instr_count++; break;
-            case MF_NODE_INDEX: 
-                inst->opcode = MF_OP_INDEX; 
-                if (!s1) inst->src1_idx = inst->dest_idx; // Read Axis from self-constant
-                instr_count++; 
-                break;
-            case MF_NODE_GATHER:
-                inst->opcode = MF_OP_GATHER;
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-                instr_count++;
-                break;
-            case MF_NODE_CUMSUM: inst->opcode = MF_OP_CUMSUM; instr_count++; break;
-            case MF_NODE_COMPRESS: 
-                inst->opcode = MF_OP_COMPRESS; 
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-                instr_count++; 
-                break;
-
-            case MF_NODE_SLICE:
-                inst->opcode = MF_OP_SLICE;
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-                instr_count++;
-                break;
-
-            case MF_NODE_RESHAPE:
-                inst->opcode = MF_OP_RESHAPE;
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-                instr_count++;
-                break;
-
-            case MF_NODE_STEP: inst->opcode = MF_OP_STEP; instr_count++; break;
-            case MF_NODE_DOT: inst->opcode = MF_OP_DOT; instr_count++; break;
-            case MF_NODE_LENGTH: inst->opcode = MF_OP_LENGTH; instr_count++; break;
-            case MF_NODE_JOIN: inst->opcode = MF_OP_JOIN; instr_count++; break;
-            
-            case MF_NODE_SMOOTHSTEP:
-                inst->opcode = MF_OP_SMOOTHSTEP;
-                inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-                inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-                instr_count++;
-                break;
-
-            case MF_NODE_MIX:
-                if (s1 && s2 && s3) {
-                    inst->opcode = MF_OP_MIX;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    inst->src3_idx = s3->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-
-            case MF_NODE_CLAMP:
-                if (s1 && s2 && s3) {
-                    inst->opcode = MF_OP_CLAMP;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx;
-                    inst->src2_idx = s2->out_reg_idx;
-                    inst->src3_idx = s3->out_reg_idx;
-                    instr_count++;
-                }
-                break;
-            
-            case MF_NODE_SELECT: 
-                if (s1 && s2 && s3) {
-                    inst->opcode = MF_OP_SELECT;
-                    inst->dest_idx = node->out_reg_idx;
-                    inst->src1_idx = s1->out_reg_idx; // Cond
-                    inst->src2_idx = s2->out_reg_idx; // True
-                    inst->src3_idx = s3->out_reg_idx; // False
-                    instr_count++;
-                }
-                break;
+#define MF_OP(suffix, name, op_val, cat, mask, out_rule, p1, p2, p3) \
+            case MF_NODE_##suffix: \
+                if (MF_NODE_##suffix == MF_NODE_INPUT) { \
+                    if (s1) { inst->opcode = MF_OP_COPY; inst->src1_idx = s1->out_reg_idx; instr_count++; } \
+                } else if (MF_NODE_##suffix == MF_NODE_OUTPUT) { \
+                    inst->opcode = MF_OP_COPY; inst->dest_idx = node->out_reg_idx; inst->src1_idx = s1 ? s1->out_reg_idx : 0; inst->src2_idx = 0; instr_count++; \
+                } else if (MF_NODE_##suffix == MF_NODE_INDEX) { \
+                    inst->opcode = MF_OP_INDEX; if (!s1) inst->src1_idx = inst->dest_idx; instr_count++; \
+                } else if (cat != MF_OP_CAT_SPECIAL) { \
+                    inst->opcode = op_val; instr_count++; \
+                } break;
+            MF_OP_LIST
+#undef MF_OP
 
             default: break;
         }
