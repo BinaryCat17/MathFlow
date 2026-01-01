@@ -1,5 +1,6 @@
 add_library(mf_engine STATIC
     src/mf_engine.c
+    src/mf_pipeline.c
 )
 add_library(MathFlow::engine ALIAS mf_engine)
 
