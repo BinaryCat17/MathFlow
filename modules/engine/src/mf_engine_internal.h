@@ -15,6 +15,11 @@ typedef struct {
     u8 flags; // Cached MF_SYMBOL_FLAG_*
 } mf_kernel_binding;
 
+typedef struct {
+    u16 src_res_idx;
+    u16 dst_res_idx;
+} mf_auto_resize_task;
+
 // Instance of a loaded kernel within the engine
 typedef struct {
     char* id;
@@ -25,16 +30,19 @@ typedef struct {
     // Cached mapping: Local Reg Index -> Global Resource Index
     mf_kernel_binding* bindings;
     u32 binding_count;
+
+    // Pre-calculated auto-resize tasks
+    mf_auto_resize_task* resize_tasks;
+    u32 resize_task_count;
 } mf_kernel_inst;
 
 // Concrete implementation of a Global Resource instance
 typedef struct {
     char* name;
     u32 name_hash; // FNV-1a
-    mf_buffer* buffer_a;
-    mf_buffer* buffer_b; // Used if persistent=true
+    mf_buffer* buffers[2]; // Double buffering: [0] and [1]
     size_t size_bytes;
-    mf_tensor desc; // Prototype
+    mf_tensor desc; // Prototype (holds info and current buffer view)
 } mf_resource_inst;
 
 // The concrete implementation of the Engine.
@@ -55,6 +63,10 @@ struct mf_engine {
     
     mf_kernel_inst* kernels;
     u32 kernel_count;
+
+    // Buffer management
+    u8 front_idx; // Index for Read (Previous frame)
+    u8 back_idx;  // Index for Write (Next frame)
 
     // Global Config (used for dispatch)
     u32 global_size[3];
