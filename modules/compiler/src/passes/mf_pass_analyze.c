@@ -157,7 +157,14 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
             case MF_SHAPE_DYNAMIC_1D:
                 out->info.ndim = 1;
-                out->info.shape[0] = 0; // Dynamic
+                if (node->type == MF_NODE_RANGE && s1 && mf_tensor_is_valid(&s1->constant)) {
+                    void* d = mf_tensor_data(&s1->constant);
+                    out->info.shape[0] = (s1->constant.info.dtype == MF_DTYPE_F32) ? (int)*((f32*)d) : *((int32_t*)d);
+                } else if (node->type == MF_NODE_INDEX) {
+                    out->info.shape[0] = 0; // Truly dynamic based on execution context
+                } else {
+                    out->info.shape[0] = 0; // Dynamic
+                }
                 break;
 
             case MF_SHAPE_SCALAR:

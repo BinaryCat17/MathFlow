@@ -79,17 +79,24 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         }
 
         if (emitted) {
-            // Task splitting based on explicit domain assignment
-            if (current_domain_node_idx == UINT32_MAX || node->domain_node_idx != current_domain_node_idx) {
+            // Task splitting based on explicit domain assignment OR Access Pattern
+            bool is_global = (meta->access_pattern == MF_ACCESS_GLOBAL);
+            bool domain_changed = (current_domain_node_idx == UINT32_MAX || node->domain_node_idx != current_domain_node_idx);
+
+            if (domain_changed || is_global) {
                 if (task_count > 0) {
                     tasks[task_count - 1].inst_count = start_instr_idx - tasks[task_count - 1].start_inst;
                 }
                 tasks[task_count].start_inst = start_instr_idx;
                 
-                // If node has no domain, it defines its own 1x1 domain or is part of a "global" domain
-                tasks[task_count].domain_reg = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+                if (is_global && s1) {
+                    tasks[task_count].domain_reg = (u32)(s1 - ir->nodes);
+                    current_domain_node_idx = UINT32_MAX; 
+                } else {
+                    tasks[task_count].domain_reg = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+                    current_domain_node_idx = node->domain_node_idx;
+                }
                 
-                current_domain_node_idx = node->domain_node_idx;
                 task_count++;
             }
         }

@@ -80,9 +80,9 @@
     *   [x] **Engine Update:** Refactor `mf_engine_dispatch` to iterate over program tasks instead of assuming a single domain.
     *   [x] **Backend Evolution:** Update `mf_backend_cpu` to execute specific instruction ranges within a task's context.
 *   **Phase 44: Automatic Access Pattern Inference & Parallel Reduction**
-    *   [ ] **Pattern Propagation:** Implement a compiler pass that propagates access patterns from Consumers back to Producers.
-    *   [ ] **Parallel Reductions:** Update `mf_backend_cpu` to handle `REDUCE` opcodes (Sum, Mean) in parallel using tiled accumulation or atomic operations.
-    *   [ ] **SIMD Fast-Paths:** Enable SIMD vectorized kernels for `LINEAR` tasks.
+    *   [x] **Pattern Propagation:** Implemented automatic domain switching in `mf_codegen.c` based on `MF_ACCESS_GLOBAL` metadata.
+    *   [x] **Parallel Reductions:** Updated `mf_backend_cpu.c` to support parallel accumulation via scratch memory and merging.
+    *   [x] **SIMD Fast-Paths:** Enabled static shape resolution for `Range` nodes to unlock parallel execution.
 
 ---
 

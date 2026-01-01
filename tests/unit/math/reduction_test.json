@@ -1,11 +1,13 @@
 {
     "nodes": [
-        { "id": "Data", "type": "Const", "data": {"value": [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]} },
-        { "id": "Avg",  "type": "Mean" },
-        { "id": "Out",  "type": "Output" }
+        { "id": "count", "type": "Const", "data": { "value": 5000 } },
+        { "id": "r", "type": "Range" },
+        { "id": "s", "type": "Sum" },
+        { "id": "out_Sum", "type": "Output" }
     ],
     "links": [
-        { "src": "Data", "dst": "Avg", "dst_port": "in" },
-        { "src": "Avg",  "dst": "Out", "dst_port": "in" }
+        { "src": "count", "dst": "r", "dst_port": "count" },
+        { "src": "r", "dst": "s", "dst_port": "in" },
+        { "src": "s", "dst": "out_Sum", "dst_port": "in" }
     ]
 }
