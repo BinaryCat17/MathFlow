@@ -1,4 +1,5 @@
 #include <mathflow/isa/mf_tensor.h>
+#include <mathflow/base/mf_log.h>
 #include <string.h>
 
 void mf_tensor_init(mf_tensor* tensor, mf_buffer* buf, const mf_type_info* info, size_t offset) {
@@ -97,9 +98,16 @@ bool mf_tensor_slice(mf_tensor* dst, const mf_tensor* src, size_t start_element,
     if (!dst || !src) return false;
     
     // Validations
-    if (!mf_tensor_is_valid(src)) return false;
+    if (!mf_tensor_is_valid(src)) {
+        MF_LOG_ERROR("Tensor Slice: Source tensor is invalid.");
+        return false;
+    }
     size_t src_count = mf_tensor_count(src);
-    if (start_element + count > src_count) return false;
+    if (start_element + count > src_count) {
+        MF_LOG_ERROR("Tensor Slice: Out of bounds. Start %zu + Count %zu > Source Count %zu", 
+            start_element, count, src_count);
+        return false;
+    }
 
     // Create Base View
     mf_tensor_view(dst, src);
@@ -126,7 +134,10 @@ bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_
     size_t new_count = 1;
     for(int i=0; i<ndim; ++i) new_count *= new_shape[i];
     
-    if (current_count != new_count) return false;
+    if (current_count != new_count) {
+        MF_LOG_ERROR("Tensor Reshape: Count mismatch. Current %zu vs New %zu", current_count, new_count);
+        return false;
+    }
     
     // Create Base View
     mf_tensor_view(dst, src);
@@ -149,7 +160,10 @@ bool mf_tensor_transpose(mf_tensor* dst, const mf_tensor* src) {
     if (!dst || !src) return false;
     
     // Only support 2D transpose for now
-    if (src->info.ndim != 2) return false;
+    if (src->info.ndim != 2) {
+        MF_LOG_ERROR("Tensor Transpose: Only 2D tensors supported, got %dD", src->info.ndim);
+        return false;
+    }
     
     mf_tensor_view(dst, src);
     

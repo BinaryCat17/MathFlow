@@ -20,12 +20,12 @@ typedef struct {
     mf_graph_ir* ir;
 } sort_ctx;
 
-static void visit_node(sort_ctx* ctx, u32 node_idx) {
-    if (ctx->visited[node_idx] == 2) return;
+static bool visit_node(sort_ctx* ctx, u32 node_idx) {
+    if (ctx->visited[node_idx] == 2) return true;
     
     // Cycle detection
     if (ctx->visited[node_idx] == 1) {
-        return; 
+        return false; 
     }
     
     ctx->visited[node_idx] = 1;
@@ -33,21 +33,28 @@ static void visit_node(sort_ctx* ctx, u32 node_idx) {
     // Visit dependencies
     for (size_t i = 0; i < ctx->ir->link_count; ++i) {
         if (ctx->ir->links[i].dst_node_idx == node_idx) {
-            visit_node(ctx, ctx->ir->links[i].src_node_idx);
+            if (!visit_node(ctx, ctx->ir->links[i].src_node_idx)) return false;
         }
     }
 
     ctx->visited[node_idx] = 2;
     ctx->sorted_nodes[ctx->count++] = &ctx->ir->nodes[node_idx];
+    return true;
 }
 
 mf_ir_node** mf_topo_sort(mf_graph_ir* ir, mf_arena* arena, size_t* out_count) {
     mf_ir_node** sorted = MF_ARENA_PUSH(arena, mf_ir_node*, ir->node_count);
     u8* visited = MF_ARENA_PUSH(arena, u8, ir->node_count);
+    if (!sorted || !visited) return NULL;
+    
     memset(visited, 0, ir->node_count);
 
     sort_ctx ctx = { .sorted_nodes = sorted, .visited = visited, .count = 0, .ir = ir };
-    for (size_t i = 0; i < ir->node_count; ++i) visit_node(&ctx, (u32)i);
+    for (size_t i = 0; i < ir->node_count; ++i) {
+        if (visited[i] == 0) {
+            if (!visit_node(&ctx, (u32)i)) return NULL;
+        }
+    }
     
     if (out_count) *out_count = ctx.count;
     return sorted;

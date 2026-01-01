@@ -1,4 +1,5 @@
 #include <mathflow/base/mf_memory.h>
+#include <mathflow/base/mf_log.h>
 #include <string.h>
 #include <stdio.h> // For debug prints if needed
 
@@ -14,6 +15,8 @@ void* mf_arena_alloc(mf_allocator* self, size_t size) {
     size_t aligned_size = ALIGN_UP(size, MF_ALIGNMENT);
     
     if (arena->pos + aligned_size > arena->size) {
+        MF_LOG_ERROR("Arena OOM: Requested %zu bytes (aligned to %zu), but only %zu/%zu left.", 
+            size, aligned_size, arena->size - arena->pos, arena->size);
         return NULL; // OOM
     }
 
@@ -106,7 +109,11 @@ void* mf_heap_alloc(mf_allocator* self, size_t size) {
         current = current->next;
     }
     
-    if (!best_fit) return NULL; // OOM
+    if (!best_fit) {
+        MF_LOG_ERROR("Heap OOM: Requested %zu bytes (aligned to %zu). Used: %zu/%zu, Count: %u", 
+            size, aligned_req, heap->used_memory, heap->size, heap->allocation_count);
+        return NULL; // OOM
+    }
     
     // Split block if it's too big
     // Min remaining size should hold a header + minimal data (e.g. 16 bytes)

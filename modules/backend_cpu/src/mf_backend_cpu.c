@@ -55,7 +55,16 @@ typedef struct {
 static void* worker_init(int thread_idx, void* user_data) {
     (void)thread_idx; (void)user_data;
     mf_backend_cpu_worker_state* state = malloc(sizeof(mf_backend_cpu_worker_state));
+    if (!state) {
+        MF_LOG_ERROR("CPU Backend: Failed to allocate worker state.");
+        return NULL;
+    }
     state->heap_mem = malloc(MF_CPU_WORKER_HEAP_SZ);
+    if (!state->heap_mem) {
+        MF_LOG_ERROR("CPU Backend: Failed to allocate worker heap (%zu bytes).", (size_t)MF_CPU_WORKER_HEAP_SZ);
+        free(state);
+        return NULL;
+    }
     state->heap_size = MF_CPU_WORKER_HEAP_SZ;
     mf_arena_init(&state->temp_arena, state->heap_mem, state->heap_size);
     mf_arena_init(&state->reg_arena, state->reg_arena_mem, sizeof(state->reg_arena_mem));
@@ -167,6 +176,12 @@ static void mf_backend_cpu_dispatch(
 
     size_t total_elements = mf_tensor_count(domain);
     if (total_elements == 0) return;
+
+    if (program->meta.tensor_count > MF_MAX_REGISTERS) {
+        MF_LOG_ERROR("CPU Backend: Program tensor count (%u) exceeds backend limit (%d).", 
+            program->meta.tensor_count, MF_MAX_REGISTERS);
+        return;
+    }
 
     mf_cpu_parallel_batch batch = {
         .program = program,

@@ -1,4 +1,5 @@
 #include <mathflow/base/mf_buffer.h>
+#include <mathflow/base/mf_log.h>
 #include <string.h>
 
 void mf_buffer_init_view(mf_buffer* buf, void* data, size_t size) {
@@ -14,7 +15,10 @@ bool mf_buffer_alloc(mf_buffer* buf, mf_allocator* alloc, size_t size) {
     if (!buf || !alloc) return false;
     
     void* mem = alloc->alloc(alloc, size);
-    if (!mem) return false;
+    if (!mem) {
+        MF_LOG_ERROR("Buffer allocation failed for size %zu", size);
+        return false;
+    }
     
     // Zero init for safety
     memset(mem, 0, size);

@@ -16,6 +16,12 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
     state->register_count = prog->meta.tensor_count;
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
     state->ownership_flags = MF_ARENA_PUSH(arena, uint8_t, state->register_count);
+    
+    if (!state->registers || !state->ownership_flags) {
+        MF_LOG_ERROR("Engine: Failed to allocate state registers for program.");
+        return;
+    }
+    
     memset(state->ownership_flags, 0, state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
@@ -268,10 +274,16 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     
     if (res->size_bytes != new_bytes) {
         mf_buffer_free(res->buffers[0]);
-        mf_buffer_alloc(res->buffers[0], alloc, new_bytes);
+        if (!mf_buffer_alloc(res->buffers[0], alloc, new_bytes)) {
+            MF_LOG_ERROR("Engine: Failed to reallocate front buffer for resource '%s' (%zu bytes)", name, new_bytes);
+            return false;
+        }
         
         mf_buffer_free(res->buffers[1]);
-        mf_buffer_alloc(res->buffers[1], alloc, new_bytes);
+        if (!mf_buffer_alloc(res->buffers[1], alloc, new_bytes)) {
+            MF_LOG_ERROR("Engine: Failed to reallocate back buffer for resource '%s' (%zu bytes)", name, new_bytes);
+            return false;
+        }
         
         res->size_bytes = new_bytes;
     }

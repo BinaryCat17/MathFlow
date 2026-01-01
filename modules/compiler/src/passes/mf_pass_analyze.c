@@ -217,25 +217,26 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
             case MF_NODE_MATMUL:
             {
-                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs"); return false; }
+                if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for MatMul"); return false; }
                 mf_tensor* a = &s1->out_shape;
                 mf_tensor* b = &s2->out_shape;
                 
-                if (a->info.ndim == 2 && b->info.ndim == 2) {
-                    if (a->info.shape[1] != b->info.shape[0]) {
-                        MF_REPORT(node, "MatMul mismatch: [%d,%d] x [%d,%d]", 
-                            a->info.shape[0], a->info.shape[1], 
-                            b->info.shape[0], b->info.shape[1]);
-                        return false;
-                    }
-                    out->info.dtype = a->info.dtype;
-                    out->info.ndim = 2;
-                    out->info.shape[0] = a->info.shape[0];
-                    out->info.shape[1] = b->info.shape[1];
-                } else {
-                    // Fallback element-wise or other logic
-                     *out = *a;
+                if (a->info.ndim != 2 || b->info.ndim != 2) {
+                    MF_REPORT(node, "MatMul requires 2D matrices, got %dD and %dD", a->info.ndim, b->info.ndim);
+                    return false;
                 }
+
+                if (a->info.shape[1] != b->info.shape[0]) {
+                    MF_REPORT(node, "MatMul mismatch: [%d,%d] x [%d,%d]", 
+                        a->info.shape[0], a->info.shape[1], 
+                        b->info.shape[0], b->info.shape[1]);
+                    return false;
+                }
+                
+                out->info.dtype = a->info.dtype;
+                out->info.ndim = 2;
+                out->info.shape[0] = a->info.shape[0];
+                out->info.shape[1] = b->info.shape[1];
             } break;
 
             case MF_NODE_TRANSPOSE:

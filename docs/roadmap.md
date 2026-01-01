@@ -14,7 +14,27 @@
 
 ---
 
+## Active Milestone
 
+### Milestone 7: System Hardening & Reliability (Phases 31-35)
+*Goal: Eliminate silent failures, fix critical compiler bugs, and ensure memory safety across all modules.*
+
+*   **Phase 31: Compiler Integrity**
+    *   [ ] **Fix Topological Sort:** Implement proper cycle detection and reporting in `mf_topo_sort`.
+    *   [ ] **Strict Shape Analysis:** Remove risky fallbacks in `MatMul` and other ops; ensure all type mismatches are logged.
+*   **Phase 32: Memory Safety & OOM Handling**
+    *   [ ] **Explicit OOM Checks:** Add return value validation for all `MF_ARENA_PUSH` and `mf_buffer_alloc` calls.
+    *   [ ] **Allocator Diagnostics:** Ensure `mf_arena_alloc` and `mf_heap_alloc` log errors on failure.
+    *   [ ] **Alignment Audit:** Ensure all internal buffers (especially for workers) are properly aligned for SIMD.
+*   **Phase 33: Runtime Observability**
+    *   [ ] **Tensor Op Logs:** Add `MF_LOG_ERROR` to `Slice`, `Reshape`, and `Transpose` when bounds or shapes are invalid.
+    *   [ ] **Backend Robustness:** Validate program limits (e.g., Max Registers) and check worker initialization.
+*   **Phase 34: Refactoring for Safety**
+    *   [ ] **Atomic Error Reporting:** Standardize how runtime errors are propagated from background threads to the main engine.
+*   **Phase 35: Integration Testing**
+    *   [ ] **Negative Tests:** Create a test suite for "invalid" graphs (cycles, type mismatches, OOM) to verify diagnostic output.
+
+---
 
 ## Completed Phases (Archive)
 
