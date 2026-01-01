@@ -58,6 +58,10 @@ typedef struct {
     // Parallel Reduction Support
     f32* reduction_scratch; // [num_threads * num_registers]
     int num_threads;
+
+    // Active Register Tracking
+    u16 active_regs[MF_MAX_REGISTERS];
+    u32 active_reg_count;
 } mf_cpu_parallel_batch;
 
 // --- Worker Lifecycle ---
@@ -123,7 +127,8 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
     mf_state* main_state = batch->main_state;
     int tid = state->thread_idx;
     
-    for (size_t i = 0; i < worker_ctx->register_count; ++i) {
+    for (size_t k = 0; k < batch->active_reg_count; ++k) {
+        u16 i = batch->active_regs[k];
         mf_tensor* main_t = &main_state->registers[i];
         mf_tensor* worker_t = &worker_ctx->registers[i];
 
@@ -239,13 +244,41 @@ static void mf_backend_cpu_dispatch(
         .total_elements = total_elements,
         .ndim = domain->info.ndim,
         .num_threads = num_threads,
-        .reduction_scratch = NULL
+        .reduction_scratch = NULL,
+        .active_reg_count = 0
     };
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
 
     // 1. Analyze Tensors & Detect Reductions
     bool has_reductions = false;
+    u8 reg_used[MF_MAX_REGISTERS] = {0};
+
+    // Mark registers used in the current instruction range
+    for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
+        const mf_instruction* inst = &program->code[i];
+        reg_used[inst->dest_idx] = 1;
+        reg_used[inst->src1_idx] = 1;
+        reg_used[inst->src2_idx] = 1;
+        reg_used[inst->src3_idx] = 1;
+
+        if (inst->opcode == MF_OP_SUM || inst->opcode == MF_OP_MEAN) {
+            has_reductions = true; // Temporary flag, refined below
+        }
+    }
+
+    // Always include the domain register as it's needed for context/metadata
+    for (u32 i = 0; i < program->meta.task_count; ++i) {
+        if (program->tasks[i].start_inst == start_inst) {
+            reg_used[program->tasks[i].domain_reg] = 1;
+            break;
+        }
+    }
+
     for (u32 i = 0; i < program->meta.tensor_count; ++i) {
+        if (!reg_used[i]) continue;
+        
+        batch.active_regs[batch.active_reg_count++] = (u16)i;
+
         mf_tensor* main_t = &main_state->registers[i];
         batch.roles[i] = MF_TENSOR_ROLE_UNIFORM;
         batch.channels[i] = 1;
@@ -264,8 +297,8 @@ static void mf_backend_cpu_dispatch(
         }
     }
 
-    // Secondary pass for reductions: if an instruction is SUM/MEAN and its output is a scalar,
-    // and we are parallelizing over its input domain, mark output as REDUCTION.
+    // Refine reductions: only mark as REDUCTION if it's a SUM/MEAN over a SPATIAL input
+    has_reductions = false;
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         if (inst->opcode == MF_OP_SUM || inst->opcode == MF_OP_MEAN) {
