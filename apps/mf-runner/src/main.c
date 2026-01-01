@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <mathflow/host/mf_manifest_loader.h>
 #include <mathflow/host/mf_host_headless.h>
 #include <mathflow/host/mf_host_desc.h>
 #include <mathflow/base/mf_log.h>

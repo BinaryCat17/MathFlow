@@ -1,4 +1,4 @@
-#include <mathflow/host/mf_manifest_loader.h>
+#include "mf_manifest_loader.h"
 #include <mathflow/base/mf_log.h>
 #include <mathflow/base/mf_json.h>
 #include <mathflow/base/mf_memory.h>

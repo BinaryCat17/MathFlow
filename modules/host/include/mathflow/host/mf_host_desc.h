@@ -92,4 +92,16 @@ void mf_host_app_handle_resize(mf_host_app* app, int width, int height);
  */
 void mf_host_app_cleanup(mf_host_app* app);
 
+/**
+ * @brief Loads an application manifest (.mfapp) and populates the host descriptor.
+ * 
+ * This function parses the JSON manifest, resolving relative paths (e.g. for the graph entry)
+ * against the manifest's location.
+ * 
+ * @param mfapp_path Path to the .mfapp file.
+ * @param out_desc Pointer to the descriptor to populate.
+ * @return int 0 on success, non-zero on error.
+ */
+int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc);
+
 #endif // MF_HOST_DESC_H
