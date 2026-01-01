@@ -1,0 +1,9 @@
+{
+    "nodes": [
+        { "id": "u_Time", "type": "Input", "data": { "shape": [1], "dtype": "f32" } },
+        { "id": "Output", "type": "Output" }
+    ],
+    "links": [
+        { "src": "u_Time", "dst": "Output", "dst_port": "in" }
+    ]
+}

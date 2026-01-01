@@ -1,0 +1,9 @@
+{
+    "nodes": [
+        { "id": "Input2D", "type": "Input", "data": { "shape": [10, 10], "dtype": "f32" } },
+        { "id": "Output", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Input2D", "dst": "Output", "dst_port": "in" }
+    ]
+}

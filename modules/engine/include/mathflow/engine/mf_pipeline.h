@@ -4,12 +4,16 @@
 #include <mathflow/base/mf_types.h>
 #include <mathflow/isa/mf_tensor.h>
 
+// Resource Flags
+#define MF_RESOURCE_FLAG_READONLY (1 << 0) // Cannot be bound to an Output port
+
 // Description of a Global Resource (Blackboard Buffer)
 typedef struct {
     const char* name;
     mf_dtype dtype;
     int32_t shape[MF_MAX_DIMS];
     uint8_t ndim;
+    uint8_t flags;
 } mf_pipeline_resource;
 
 // Mapping between a Kernel's internal Symbol and a Global Resource

@@ -112,9 +112,27 @@ static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* k
                 const char* res_name = ker->bindings[b].global_resource;
                 for (u32 r = 0; r < pipe->resource_count; ++r) {
                     if (strcmp(res_name, pipe->resources[r].name) == 0) {
-                        node->out_shape.info.dtype = pipe->resources[r].dtype;
-                        node->out_shape.info.ndim = pipe->resources[r].ndim;
-                        memcpy(node->out_shape.info.shape, pipe->resources[r].shape, sizeof(int32_t)*MF_MAX_DIMS);
+                        mf_pipeline_resource* pr = &pipe->resources[r];
+                        
+                        // Validate compatibility before patching
+                        mf_type_info res_info;
+                        mf_type_info_init_contiguous(&res_info, pr->dtype, pr->shape, pr->ndim);
+                        
+                        bool is_out = (node->type == MF_NODE_OUTPUT);
+                        const mf_type_info* port_info = is_out ? &node->out_shape.info : &node->constant.info;
+
+                        if (!mf_shape_is_compatible(port_info, &res_info, is_out)) {
+                            char s_port[64], s_res[64];
+                            mf_shape_format(port_info, s_port, sizeof(s_port));
+                            mf_shape_format(&res_info, s_res, sizeof(s_res));
+                            MF_LOG_ERROR("Loader: Incompatible manifest resource '%s' for graph port '%s'.", pr->name, node->id);
+                            MF_LOG_ERROR("  Graph Port: %s (DType: %d, %s)", s_port, port_info->dtype, is_out ? "Output" : "Input");
+                            MF_LOG_ERROR("  Manifest:   %s (DType: %d)", s_res, pr->dtype);
+                        }
+
+                        node->out_shape.info.dtype = pr->dtype;
+                        node->out_shape.info.ndim = pr->ndim;
+                        memcpy(node->out_shape.info.shape, pr->shape, sizeof(int32_t)*MF_MAX_DIMS);
                         mf_shape_calc_strides(&node->out_shape.info);
                         node->constant = node->out_shape;
                         break;
@@ -181,6 +199,7 @@ static void _synthesize_raw_pipeline(mf_arena* arena, mf_pipeline_desc* out_pipe
             res[res_idx].name = sym->name;
             res[res_idx].dtype = t->info.dtype;
             res[res_idx].ndim = t->info.ndim;
+            res[res_idx].flags = (sym->flags & MF_SYMBOL_FLAG_INPUT) ? MF_RESOURCE_FLAG_READONLY : 0;
             memcpy(res[res_idx].shape, t->info.shape, sizeof(int32_t) * MF_MAX_DIMS);
 
             pk->bindings[pk->binding_count].kernel_port = sym->name;

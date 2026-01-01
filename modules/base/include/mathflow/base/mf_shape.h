@@ -25,4 +25,9 @@ void mf_shape_format(const mf_type_info* info, char* buf, size_t size);
  */
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count);
 
+/**
+ * Validates if a resource shape can be bound to a kernel port.
+ */
+bool mf_shape_is_compatible(const mf_type_info* port, const mf_type_info* res, bool is_output);
+
 #endif // MF_SHAPE_H

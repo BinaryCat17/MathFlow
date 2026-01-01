@@ -115,6 +115,7 @@ void mf_host_app_set_time(mf_host_app* app, float current_time) {
     if (app->resources.time) {
         f32* d = (f32*)mf_tensor_data(app->resources.time);
         if (d) *d = current_time;
+        mf_engine_sync_resource(app->engine, "u_Time");
     }
 }
 
@@ -130,13 +131,22 @@ void mf_host_app_set_mouse(mf_host_app* app, float x, float y, bool lmb, bool rm
             d[2] = lmb ? 1.0f : 0.0f;
             d[3] = rmb ? 1.0f : 0.0f;
         }
+        mf_engine_sync_resource(app->engine, "u_Mouse");
     }
 
     // Individual mouse coords if available (optional)
     mf_tensor* t_mx = mf_engine_map_resource(app->engine, "u_MouseX");
-    if (t_mx) { f32* d = mf_tensor_data(t_mx); if (d) *d = x; }
+    if (t_mx) { 
+        f32* d = mf_tensor_data(t_mx); 
+        if (d) *d = x; 
+        mf_engine_sync_resource(app->engine, "u_MouseX");
+    }
     mf_tensor* t_my = mf_engine_map_resource(app->engine, "u_MouseY");
-    if (t_my) { f32* d = mf_tensor_data(t_my); if (d) *d = y; }
+    if (t_my) { 
+        f32* d = mf_tensor_data(t_my); 
+        if (d) *d = y; 
+        mf_engine_sync_resource(app->engine, "u_MouseY");
+    }
 }
 
 void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
@@ -155,15 +165,28 @@ void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
             d[0] = (f32)width;
             d[1] = (f32)height;
         }
+        mf_engine_sync_resource(app->engine, "u_Resolution");
     }
 
     // Update individual resolution uniforms if they exist
     mf_tensor* t_rx = mf_engine_map_resource(app->engine, "u_ResX");
-    if (t_rx) { f32* d = mf_tensor_data(t_rx); if (d) *d = (f32)width; }
+    if (t_rx) { 
+        f32* d = mf_tensor_data(t_rx); 
+        if (d) *d = (f32)width; 
+        mf_engine_sync_resource(app->engine, "u_ResX");
+    }
     mf_tensor* t_ry = mf_engine_map_resource(app->engine, "u_ResY");
-    if (t_ry) { f32* d = mf_tensor_data(t_ry); if (d) *d = (f32)height; }
+    if (t_ry) { 
+        f32* d = mf_tensor_data(t_ry); 
+        if (d) *d = (f32)height; 
+        mf_engine_sync_resource(app->engine, "u_ResY");
+    }
     mf_tensor* t_aspect = mf_engine_map_resource(app->engine, "u_Aspect");
-    if (t_aspect) { f32* d = mf_tensor_data(t_aspect); if (d) *d = (f32)width / (f32)height; }
+    if (t_aspect) { 
+        f32* d = mf_tensor_data(t_aspect); 
+        if (d) *d = (f32)width / (f32)height; 
+        mf_engine_sync_resource(app->engine, "u_Aspect");
+    }
 }
 
 mf_engine_error mf_host_app_step(mf_host_app* app) {

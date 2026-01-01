@@ -131,6 +131,11 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
                 const mf_json_value* dtype = mf_json_get_field(res, "dtype");
                 if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = mf_dtype_from_str(dtype->as.s);
                 
+                const mf_json_value* readonly = mf_json_get_field(res, "readonly");
+                if (readonly && readonly->type == MF_JSON_VAL_BOOL && readonly->as.b) {
+                    pr->flags |= MF_RESOURCE_FLAG_READONLY;
+                }
+
                 const mf_json_value* shape = mf_json_get_field(res, "shape");
                 if (shape && shape->type == MF_JSON_VAL_ARRAY) {
                     pr->ndim = (uint8_t)shape->as.array.count;
@@ -140,6 +145,36 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
                         if (dim->type == MF_JSON_VAL_NUMBER) pr->shape[d] = (int)dim->as.n;
                     }
                 }
+            }
+        }
+
+        // --- Host-Compiler Schema Sync: Inject System Resources ---
+        struct { const char* name; mf_dtype dtype; int ndim; int32_t shape[2]; bool readonly; } sys_res[] = {
+            { "u_Time",       MF_DTYPE_F32, 1, {1},    true },
+            { "u_Resolution", MF_DTYPE_F32, 1, {2},    true },
+            { "u_Mouse",      MF_DTYPE_F32, 1, {4},    true },
+            { "u_ResX",       MF_DTYPE_F32, 1, {1},    true },
+            { "u_ResY",       MF_DTYPE_F32, 1, {1},    true },
+            { "u_Aspect",     MF_DTYPE_F32, 1, {1},    true }
+        };
+
+        for (int s = 0; s < 6; ++s) {
+            bool found = false;
+            for (u32 r = 0; r < out_desc->pipeline.resource_count; ++r) {
+                if (strcmp(out_desc->pipeline.resources[r].name, sys_res[s].name) == 0) {
+                    found = true;
+                    break;
+                }
+            }
+            if (!found) {
+                out_desc->pipeline.resource_count++;
+                out_desc->pipeline.resources = realloc(out_desc->pipeline.resources, out_desc->pipeline.resource_count * sizeof(mf_pipeline_resource));
+                mf_pipeline_resource* pr = &out_desc->pipeline.resources[out_desc->pipeline.resource_count - 1];
+                pr->name = strdup(sys_res[s].name);
+                pr->dtype = sys_res[s].dtype;
+                pr->ndim = (uint8_t)sys_res[s].ndim;
+                pr->flags = sys_res[s].readonly ? MF_RESOURCE_FLAG_READONLY : 0;
+                memcpy(pr->shape, sys_res[s].shape, sizeof(int32_t) * pr->ndim);
             }
         }
 

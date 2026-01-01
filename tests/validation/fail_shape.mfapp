@@ -1,0 +1,17 @@
+{
+    "window": { "title": "Fail Test", "width": 100, "height": 100 },
+    "pipeline": {
+        "resources": [
+            { "name": "State1D", "dtype": "F32", "shape": [100] }
+        ],
+        "kernels": [
+            {
+                "id": "main",
+                "entry": "dummy_transpose.json",
+                "bindings": [
+                    { "port": "Input2D", "resource": "State1D" }
+                ]
+            }
+        ]
+    }
+}

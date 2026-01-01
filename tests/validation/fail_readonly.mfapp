@@ -1,0 +1,17 @@
+{
+    "window": { "title": "ReadOnly Test", "width": 100, "height": 100 },
+    "pipeline": {
+        "resources": [
+            { "name": "StateRO", "dtype": "F32", "shape": [1], "readonly": true }
+        ],
+        "kernels": [
+            {
+                "id": "main",
+                "entry": "dummy_out.json",
+                "bindings": [
+                    { "port": "StateRO", "resource": "StateRO" }
+                ]
+            }
+        ]
+    }
+}

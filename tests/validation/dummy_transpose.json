@@ -1,0 +1,11 @@
+{
+    "nodes": [
+        { "id": "Input2D", "type": "Input", "data": { "shape": [10, 10], "dtype": "f32" } },
+        { "id": "Trans",   "type": "Transpose" },
+        { "id": "Output",  "type": "Output" }
+    ],
+    "links": [
+        { "src": "Input2D", "dst": "Trans", "dst_port": "a" },
+        { "src": "Trans",   "dst": "Output", "dst_port": "in" }
+    ]
+}

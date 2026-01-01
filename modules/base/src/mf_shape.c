@@ -84,3 +84,30 @@ i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
     
     return 0; // Default to broadcast/constant
 }
+
+bool mf_shape_is_compatible(const mf_type_info* port, const mf_type_info* res, bool is_output) {
+    if (port->dtype != res->dtype) return false;
+
+    // Output ports must match exactly (for static dimensions)
+    if (is_output) {
+        if (port->ndim != res->ndim) return false;
+        for (int i = 0; i < port->ndim; ++i) {
+            if (port->shape[i] > 0 && res->shape[i] > 0 && port->shape[i] != res->shape[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    // Input ports can accept broadcasted resources
+    mf_type_info tmp;
+    if (!mf_shape_broadcast(port, res, &tmp)) return false;
+
+    // Result of broadcast must be equal to port (port can be larger or equal to res)
+    if (tmp.ndim != port->ndim) return false;
+    for (int i = 0; i < tmp.ndim; ++i) {
+        if (tmp.shape[i] != port->shape[i]) return false;
+    }
+
+    return true;
+}

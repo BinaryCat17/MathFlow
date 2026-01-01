@@ -51,6 +51,7 @@ typedef struct {
     mf_buffer*  buffers[2];   // [0] Front, [1] Back
     size_t      size_bytes;
     mf_tensor   desc;         // Metadata and current view
+    u8          flags;        // MF_RESOURCE_FLAG_*
 } mf_resource_inst;
 
 /**

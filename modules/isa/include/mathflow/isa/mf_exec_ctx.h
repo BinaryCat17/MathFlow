@@ -95,4 +95,24 @@ static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor
     return true;
 }
 
+/**
+ * @brief Allocates temporary memory from the thread-local scratchpad.
+ * This memory is only valid during the current instruction execution or tile processing.
+ */
+static inline void* mf_exec_ctx_scratch_alloc(mf_exec_ctx* ctx, size_t size) {
+    if (!ctx->allocator) return NULL;
+    return ctx->allocator->alloc(ctx->allocator, size);
+}
+
+/**
+ * @brief Creates a temporary tensor on the scratchpad.
+ */
+static inline mf_tensor* mf_exec_ctx_scratch_tensor(mf_exec_ctx* ctx, const mf_type_info* info) {
+    if (!ctx->allocator) return NULL;
+    mf_tensor* t = (mf_tensor*)ctx->allocator->alloc(ctx->allocator, sizeof(mf_tensor));
+    if (!t) return NULL;
+    if (!mf_tensor_alloc(t, ctx->allocator, info)) return NULL;
+    return t;
+}
+
 #endif // MF_EXEC_CTX_H

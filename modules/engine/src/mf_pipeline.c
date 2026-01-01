@@ -2,6 +2,7 @@
 #include "mf_engine_internal.h"
 #include <mathflow/base/mf_log.h>
 #include <mathflow/base/mf_utils.h>
+#include <mathflow/base/mf_shape.h>
 #include <string.h>
 
 // --- Helpers ---
@@ -42,6 +43,7 @@ static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
         
         res->name = mf_arena_strdup(&engine->arena, desc->name);
         res->name_hash = mf_fnv1a_hash(res->name);
+        res->flags = desc->flags;
         
         memset(&res->desc, 0, sizeof(mf_tensor));
         mf_type_info_init_contiguous(&res->desc.info, desc->dtype, desc->shape, desc->ndim);
@@ -114,6 +116,29 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
             }
 
             mf_bin_symbol* sym = &ker->program->symbols[sym_idx];
+            mf_resource_inst* res = &engine->resources[res_idx];
+
+            // --- Validation ---
+            bool is_out = (sym->flags & MF_SYMBOL_FLAG_OUTPUT) != 0;
+            mf_tensor* port_tensor = &ker->program->tensors[sym->register_idx];
+
+            if (!mf_shape_is_compatible(&port_tensor->info, &res->desc.info, is_out)) {
+                char s_port[64], s_res[64];
+                mf_shape_format(&port_tensor->info, s_port, sizeof(s_port));
+                mf_shape_format(&res->desc.info, s_res, sizeof(s_res));
+                
+                MF_LOG_ERROR("Kernel '%s': Binding failure for port '%s'. Incompatible shapes or types.", ker->id, pb->kernel_port);
+                MF_LOG_ERROR("  Port:     %s (DType: %d, %s)", s_port, port_tensor->info.dtype, is_out ? "Output" : "Input");
+                MF_LOG_ERROR("  Resource: %s (DType: %d)", s_res, res->desc.info.dtype);
+                continue;
+            }
+
+            if (is_out && (res->flags & MF_RESOURCE_FLAG_READONLY)) {
+                MF_LOG_ERROR("Kernel '%s': Binding failure. Port '%s' is Output, but Resource '%s' is Read-Only.", 
+                    ker->id, pb->kernel_port, res->name);
+                continue;
+            }
+
             mf_kernel_binding* kb = &ker->bindings[actual_bindings++];
             kb->local_reg = (u16)sym->register_idx;
             kb->global_res = (u16)res_idx;
