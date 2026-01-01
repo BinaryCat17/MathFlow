@@ -22,7 +22,8 @@ typedef struct {
 
 // Instance of a loaded kernel within the engine
 typedef struct {
-    char* id;
+    const char* id;
+    u32 id_hash;
     mf_program* program;
     mf_state state; // Local registers for this kernel
     uint32_t frequency;
@@ -38,7 +39,7 @@ typedef struct {
 
 // Concrete implementation of a Global Resource instance
 typedef struct {
-    char* name;
+    const char* name;
     u32 name_hash; // FNV-1a
     mf_buffer* buffers[2]; // Double buffering: [0] and [1]
     size_t size_bytes;
@@ -46,30 +47,23 @@ typedef struct {
 } mf_resource_inst;
 
 // The concrete implementation of the Engine.
-// Combines Static Resources (Code) and Execution State (Data).
 struct mf_engine {
-    // Static Resources
     mf_arena arena;
     void* arena_buffer;
     mf_backend backend;
 
-    // Execution State (Single Source of Truth)
     mf_heap heap;
     void* heap_buffer;
     
-    // --- Pipeline Mode ---
     mf_resource_inst* resources;
     u32 resource_count;
     
     mf_kernel_inst* kernels;
     u32 kernel_count;
 
-    // Buffer management
-    u8 front_idx; // Index for Read (Previous frame)
-    u8 back_idx;  // Index for Write (Next frame)
+    u8 front_idx;
+    u8 back_idx;
 
-    // Global Config (used for dispatch)
-    u32 global_size[3];
     uint64_t frame_index;
 };
 
