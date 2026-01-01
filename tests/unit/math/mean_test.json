@@ -5,7 +5,7 @@
         { "id": "Output", "type": "Output" }
     ],
     "links": [
-        { "src": "Input", "dst": "Mean", "dst_port": "in" },
+        { "src": "Input", "dst": "Mean" },
         { "src": "Mean",  "dst": "Output", "dst_port": "in" }
     ]
 }

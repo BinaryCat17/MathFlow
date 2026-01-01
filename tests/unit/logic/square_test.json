@@ -1,0 +1,12 @@
+{
+    "imports": ["../../../assets/lib/math"],
+    "nodes": [
+        { "id": "val", "type": "Input", "data": {"shape": [4], "dtype": "f32"} },
+        { "id": "sq", "type": "Square" },
+        { "id": "res", "type": "Output" }
+    ],
+    "links": [
+        { "src": "val", "dst": "sq", "dst_port": "in" },
+        { "src": "sq", "src_port": "out", "dst": "res", "dst_port": "in" }
+    ]
+}

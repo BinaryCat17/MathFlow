@@ -71,40 +71,6 @@ static void op_clamp(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
-static void op_mix(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    mf_tensor* t = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-    MF_CHECK_INPUT(ctx, b);
-    MF_CHECK_INPUT(ctx, t);
-    
-    if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, t)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    size_t sz_dst = mf_tensor_count(dst);
-    
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
-    mf_tensor_iter it_b = mf_tensor_iter_begin(b);
-    mf_tensor_iter it_t = mf_tensor_iter_begin(t);
-    
-    for(size_t i=0; i<sz_dst; ++i) {
-        f32 va = *((f32*)it_a.ptr);
-        f32 vb = *((f32*)it_b.ptr);
-        f32 vt = *((f32*)it_t.ptr);
-        *((f32*)it_dst.ptr) = va + vt * (vb - va);
-        
-        mf_tensor_iter_next(&it_a); 
-        mf_tensor_iter_next(&it_b); 
-        mf_tensor_iter_next(&it_t); 
-        mf_tensor_iter_next(&it_dst);
-    }
-}
-
 // --- Reduction ---
 
 static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
@@ -127,30 +93,6 @@ static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum;
 }
 
-static void op_mean(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, src);
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    size_t count = mf_tensor_count(src);
-    if (count == 0) {
-        *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = 0;
-        return;
-    }
-    
-    f32 sum = 0;
-    mf_tensor_iter it = mf_tensor_iter_begin(src);
-    for (size_t i = 0; i < count; ++i) {
-        sum += *((f32*)it.ptr);
-        mf_tensor_iter_next(&it);
-    }
-    
-    *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum / (f32)count;
-}
-
 void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_ADD] = op_add;
     table[MF_OP_SUB] = op_sub;
@@ -166,9 +108,7 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_MAX] = op_max;
     table[MF_OP_FMA] = op_fma;
     table[MF_OP_CLAMP] = op_clamp;
-    table[MF_OP_MIX] = op_mix;
     table[MF_OP_POW] = op_pow;
     table[MF_OP_ATAN2] = op_atan2;
     table[MF_OP_SUM] = op_sum;
-    table[MF_OP_MEAN] = op_mean;
 }

@@ -15,6 +15,7 @@ MF_KERNEL_COMPARE(gequal, >=)
 // --- Logic ---
 MF_KERNEL_LOGIC(and, &&)
 MF_KERNEL_LOGIC(or, ||)
+MF_KERNEL_LOGIC(xor, !=)
 
 MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v)
 
@@ -68,6 +69,7 @@ void mf_ops_register_logic(mf_op_func* table) {
     table[MF_OP_GEQUAL] = op_gequal;
     table[MF_OP_AND] = op_and;
     table[MF_OP_OR] = op_or;
+    table[MF_OP_XOR] = op_xor;
     table[MF_OP_NOT] = op_not;
     table[MF_OP_SELECT] = op_select;
 }

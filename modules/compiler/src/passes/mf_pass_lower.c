@@ -242,8 +242,43 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
 
         dst->type = get_node_type(src->type);
         if (dst->type == MF_NODE_UNKNOWN) {
-            mf_compiler_diag_report(diag, dst->loc, "Unknown node type '%s'", src->type);
-            return false;
+            // Explicit Import System: Search for <type>.json in imports
+            bool found = false;
+            
+            // 1. Search in local imports
+            for (size_t k = 0; k < ast->import_count; ++k) {
+                const char* import_path = ast->imports[k];
+                char* full_path;
+                if (base_path) {
+                    char* dir = mf_path_get_dir(base_path, arena);
+                    full_path = mf_path_join(dir, import_path, arena);
+                } else {
+                    full_path = (char*)import_path;
+                }
+                
+                char* file_path = mf_arena_sprintf(arena, "%s/%s.json", full_path, src->type);
+                if (mf_file_exists(file_path)) {
+                    dst->type = MF_NODE_CALL;
+                    dst->sub_graph_path = file_path;
+                    found = true;
+                    break;
+                }
+            }
+            
+            // 2. Search in Global Prelude (assets/lib)
+            if (!found) {
+                char* file_path = mf_arena_sprintf(arena, "assets/lib/%s.json", src->type);
+                if (mf_file_exists(file_path)) {
+                    dst->type = MF_NODE_CALL;
+                    dst->sub_graph_path = file_path;
+                    found = true;
+                }
+            }
+
+            if (!found) {
+                mf_compiler_diag_report(diag, dst->loc, "Unknown node type '%s' (not a built-in and not found in imports)", src->type);
+                return false;
+            }
         }
 
         if (!parse_node_attributes(dst, src->data, base_path, arena, diag)) return false;
@@ -266,7 +301,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         }
         mf_ir_node* src_node = &out_ir->nodes[l_dst->src_node_idx];
         if (src_node->type == MF_NODE_CALL) {
-            l_dst->src_port_name = mf_arena_strdup(arena, l_src->src_port);
+            l_dst->src_port_name = l_src->src_port ? mf_arena_strdup(arena, l_src->src_port) : "default";
         } else {
             l_dst->src_port = get_port_index(src_node->type, l_src->src_port);
         }
@@ -279,7 +314,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         }
         mf_ir_node* dst_node = &out_ir->nodes[l_dst->dst_node_idx];
         if (dst_node->type == MF_NODE_CALL) {
-            l_dst->dst_port_name = mf_arena_strdup(arena, l_src->dst_port);
+            l_dst->dst_port_name = l_src->dst_port ? mf_arena_strdup(arena, l_src->dst_port) : "default";
         } else {
             l_dst->dst_port = get_port_index(dst_node->type, l_src->dst_port);
         }

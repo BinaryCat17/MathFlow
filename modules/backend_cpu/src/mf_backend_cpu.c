@@ -260,7 +260,7 @@ static void mf_backend_cpu_dispatch(
         reg_used[inst->src2_idx] = 1;
         reg_used[inst->src3_idx] = 1;
 
-        if (inst->opcode == MF_OP_SUM || inst->opcode == MF_OP_MEAN) {
+        if (inst->opcode == MF_OP_SUM) {
             has_reductions = true; // Temporary flag, refined below
         }
     }
@@ -296,11 +296,11 @@ static void mf_backend_cpu_dispatch(
         }
     }
 
-    // Refine reductions: only mark as REDUCTION if it's a SUM/MEAN over a SPATIAL input
+    // Refine reductions: only mark as REDUCTION if it's a SUM over a SPATIAL input
     has_reductions = false;
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
-        if (inst->opcode == MF_OP_SUM || inst->opcode == MF_OP_MEAN) {
+        if (inst->opcode == MF_OP_SUM) {
             if (batch.roles[inst->src1_idx] == MF_TENSOR_ROLE_SPATIAL) {
                 batch.roles[inst->dest_idx] = MF_TENSOR_ROLE_REDUCTION;
                 has_reductions = true;
@@ -351,19 +351,6 @@ static void mf_backend_cpu_dispatch(
                 }
                 
                 mf_tensor* main_t = &main_state->registers[reg_idx];
-                // For MEAN, we need to divide by total count later. 
-                // But wait, op_mean already divides by count in the worker.
-                // If we sum partial means, we get (S1/N + S2/N + ...) = (S1+S2+...)/N = S_total / N.
-                // This only works if all batches are the same size!
-                // If batches are different (e.g. the last one), we need a different approach for MEAN.
-                
-                // Correction for MEAN: workers should only SUM, and then we divide once at the end.
-                // But wait, the opcode is MF_OP_MEAN. We can't easily change what it does without
-                // knowing if it's running in parallel or not.
-                
-                // For now, let's assume workers for MEAN also just SUM, and we handle it here.
-                // Or better: MEAN is SUM followed by DIV. If the compiler does this, we are golden.
-                
                 *((f32*)main_t->buffer->data + main_t->byte_offset / sizeof(f32)) = final_val;
             }
         }

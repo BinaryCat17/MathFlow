@@ -326,6 +326,11 @@ const mf_json_value* mf_json_get_field(const mf_json_value* obj, const char* key
     return NULL;
 }
 
+const char* mf_json_get_string(const mf_json_value* val) {
+    if (val && val->type == MF_JSON_VAL_STRING) return val->as.s;
+    return NULL;
+}
+
 mf_json_value* mf_json_parse(const char* json_str, mf_arena* arena) {
     mf_parser p;
     lex_init(&p.lexer, json_str);
@@ -370,19 +375,27 @@ mf_ast_graph* mf_json_parse_graph(const char* json_str, mf_arena* arena) {
             mf_ast_link* link = &graph->links[i];
             link->loc = l_val->loc;
             
-            const mf_json_value* src_val = mf_json_get_field(l_val, "src");
-            link->src = (src_val && src_val->type == MF_JSON_VAL_STRING) ? src_val->as.s : "unknown";
+            link->src = mf_json_get_string(mf_json_get_field(l_val, "src"));
+            if (!link->src) link->src = "unknown";
             
-            const mf_json_value* dst_val = mf_json_get_field(l_val, "dst");
-            link->dst = (dst_val && dst_val->type == MF_JSON_VAL_STRING) ? dst_val->as.s : "unknown";
+            link->dst = mf_json_get_string(mf_json_get_field(l_val, "dst"));
+            if (!link->dst) link->dst = "unknown";
             
-            const mf_json_value* src_p_val = mf_json_get_field(l_val, "src_port");
-            link->src_port = (src_p_val && src_p_val->type == MF_JSON_VAL_STRING) ? src_p_val->as.s : "unknown";
-            
-            const mf_json_value* dst_p_val = mf_json_get_field(l_val, "dst_port");
-            link->dst_port = (dst_p_val && dst_p_val->type == MF_JSON_VAL_STRING) ? dst_p_val->as.s : "unknown";
+            link->src_port = mf_json_get_string(mf_json_get_field(l_val, "src_port"));
+            link->dst_port = mf_json_get_string(mf_json_get_field(l_val, "dst_port"));
+        }
+    }
+
+    const mf_json_value* imports_val = mf_json_get_field(root_val, "imports");
+    if (imports_val && imports_val->type == MF_JSON_VAL_ARRAY) {
+        graph->import_count = imports_val->as.array.count;
+        graph->imports = MF_ARENA_PUSH(arena, const char*, graph->import_count);
+        for (size_t i = 0; i < graph->import_count; ++i) {
+            const mf_json_value* imp = &imports_val->as.array.items[i];
+            graph->imports[i] = (imp->type == MF_JSON_VAL_STRING) ? imp->as.s : "";
         }
     }
     
     return graph;
 }
+            

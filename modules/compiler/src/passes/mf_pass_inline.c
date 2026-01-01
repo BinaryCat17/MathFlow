@@ -70,6 +70,11 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
             const char** child_raw_ids = MF_ARENA_PUSH(arena, const char*, child_ir.node_count);
             for (size_t k = 0; k < child_ir.node_count; ++k) child_raw_ids[k] = child_ir.nodes[k].id;
 
+            u32 input_count = 0;
+            u32 output_count = 0;
+            const char* last_input_raw_id = NULL;
+            const char* last_output_raw_id = NULL;
+
             for (size_t k = 0; k < child_ir.node_count; ++k) {
                 mf_ir_node* c_node = &child_ir.nodes[k];
                 const char* raw_id = child_raw_ids[k];
@@ -83,6 +88,9 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                     mf_map_put(&global_map, new_id, current_idx);
                     mf_map_put(&port_map, mf_arena_strdup(arena, port_key), current_idx); 
                     
+                    input_count++;
+                    last_input_raw_id = raw_id;
+
                     APPEND_NODE(*c_node);
                     current_idx++;
                 }
@@ -104,6 +112,9 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                         char* provider_id = mf_arena_sprintf(arena, "%s::%s", node->id, provider_raw_id);
                         
                         mf_map_put_ptr(&port_map, mf_arena_strdup(arena, port_key), provider_id);
+                        
+                        output_count++;
+                        last_output_raw_id = raw_id;
                     }
                 }
                 else {
@@ -111,6 +122,30 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                     mf_map_put(&global_map, new_id, current_idx);
                     APPEND_NODE(*c_node);
                     current_idx++;
+                }
+            }
+
+            // Register default ports if unambiguous
+            if (input_count == 1) {
+                char port_key[128];
+                snprintf(port_key, 128, "%s:i:default", node->id);
+                u32 input_idx;
+                char last_input_id[256];
+                snprintf(last_input_id, 256, "%s::%s", node->id, last_input_raw_id);
+                if (mf_map_get(&global_map, last_input_id, &input_idx)) {
+                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), input_idx);
+                    MF_LOG_DEBUG("Inline: Registered default input for '%s' -> %s", node->id, last_input_raw_id);
+                }
+            }
+            if (output_count == 1) {
+                char port_key[128];
+                snprintf(port_key, 128, "%s:o:default", node->id);
+                void* provider_id = NULL;
+                char port_search[128];
+                snprintf(port_search, 128, "%s:o:%s", node->id, last_output_raw_id);
+                if (mf_map_get_ptr(&port_map, port_search, &provider_id)) {
+                    mf_map_put_ptr(&port_map, mf_arena_strdup(arena, port_key), provider_id);
+                    MF_LOG_DEBUG("Inline: Registered default output for '%s' -> %s", node->id, last_output_raw_id);
                 }
             }
 
@@ -154,9 +189,13 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
             void* resolved_ptr = NULL;
             if (mf_map_get_ptr(&port_map, key, &resolved_ptr)) {
                 const char* provider_id = (const char*)resolved_ptr;
-                if (!mf_map_get(&global_map, provider_id, &final_src_idx)) drop_link = true;
+                if (!mf_map_get(&global_map, provider_id, &final_src_idx)) {
+                    MF_LOG_DEBUG("Inline: Could not find provider '%s' in global_map", provider_id);
+                    drop_link = true;
+                }
                 l.src_port = 0; 
             } else {
+                MF_LOG_DEBUG("Inline: Could not find port key '%s' in port_map", key);
                 drop_link = true;
             }
         } else {
@@ -166,7 +205,10 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
         if (dst_node->type == MF_NODE_CALL) {
             char key[128];
             snprintf(key, 128, "%s:i:%s", dst_node->id, l.dst_port_name ? l.dst_port_name : "unknown");
-            if (!mf_map_get(&port_map, key, &final_dst_idx)) drop_link = true;
+            if (!mf_map_get(&port_map, key, &final_dst_idx)) {
+                MF_LOG_DEBUG("Inline: Could not find port key '%s' in port_map", key);
+                drop_link = true;
+            }
             else l.dst_port = 0;
         } else {
             mf_map_get(&global_map, dst_node->id, &final_dst_idx);

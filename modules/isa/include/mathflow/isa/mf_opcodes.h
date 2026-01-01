@@ -27,9 +27,7 @@ typedef enum {
     MF_OP_MAX = 11,
     MF_OP_ABS = 12,
     MF_OP_CLAMP = 13,
-    MF_OP_MIX = 14,
     MF_OP_STEP = 15,
-    MF_OP_SMOOTHSTEP = 16,
     
     MF_OP_FLOOR = 20,
     MF_OP_CEIL = 21,
@@ -39,16 +37,12 @@ typedef enum {
     MF_OP_SQRT = 25,
     MF_OP_POW = 26,
     MF_OP_SUM = 27,   // Sum(Input) -> Scalar
-    MF_OP_MEAN = 28,  // Mean(Input) -> Scalar
     MF_OP_FMA = 29,   // Fused Multiply-Add: (src1 * src2) + src3
 
     // Linear Algebra
     MF_OP_MATMUL = 40,
     MF_OP_TRANSPOSE = 41,
     MF_OP_INVERSE = 42,
-    MF_OP_NORMALIZE = 43,
-    MF_OP_DOT = 44,
-    MF_OP_LENGTH = 45,
     MF_OP_JOIN = 46, // Join two tensors into last dim: [..., 2]
 
     // Comparison

@@ -12,10 +12,10 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         if (sorted[i]->out_reg_idx > max_reg) max_reg = sorted[i]->out_reg_idx;
     }
 
-    // 0b. Count extra tensors needed for lowering (e.g. MEAN decomposition)
+    // 0b. Count extra tensors needed for lowering (e.g. SIZE decomposition)
     u32 extra_tensor_count = 0;
     for (size_t i = 0; i < ir->node_count; ++i) {
-        if (ir->nodes[i].type == MF_NODE_MEAN) extra_tensor_count++;
+        if (ir->nodes[i].type == MF_NODE_SIZE) extra_tensor_count++;
     }
 
     prog->meta.tensor_count = (u32)max_reg + 1 + extra_tensor_count; 
@@ -78,22 +78,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         uint32_t start_instr_idx = (uint32_t)instr_count;
         bool emitted = false;
 
-        if (node->type == MF_NODE_MEAN && s1) {
-            // Lower MEAN to SUM + DIV
-            mf_instruction* sum_inst = &instrs[instr_count++];
-            sum_inst->opcode = MF_OP_SUM;
-            sum_inst->dest_idx = reg_idx;
-            sum_inst->src1_idx = s1->out_reg_idx;
-            sum_inst->src2_idx = 0;
-            sum_inst->src3_idx = 0;
-
-            // Create COUNT constant
-            u32 count_reg = (u32)max_reg + 1 + current_extra_idx++;
-            mf_tensor* count_t = &prog->tensors[count_reg];
-            count_t->info.dtype = MF_DTYPE_F32;
-            count_t->info.ndim = 0;
-            count_t->info.shape[0] = 1;
-            mf_shape_calc_strides(&count_t->info);
+        if (node->type == MF_NODE_SIZE && s1) {
+            // Lower SIZE to a Constant tensor containing the element count
+            t_desc->info.dtype = MF_DTYPE_F32;
+            t_desc->info.ndim = 0;
+            t_desc->info.shape[0] = 1;
+            mf_shape_calc_strides(&t_desc->info);
 
             size_t count_val = mf_tensor_count(&s1->out_shape);
             f32* count_data = MF_ARENA_PUSH(arena, f32, 1);
@@ -101,17 +91,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
             mf_buffer* count_buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
             mf_buffer_init_view(count_buf, count_data, sizeof(f32));
-            count_t->buffer = count_buf;
-            count_t->byte_offset = 0;
+            t_desc->buffer = count_buf;
+            t_desc->byte_offset = 0;
 
-            mf_instruction* div_inst = &instrs[instr_count++];
-            div_inst->opcode = MF_OP_DIV;
-            div_inst->dest_idx = reg_idx;
-            div_inst->src1_idx = reg_idx;
-            div_inst->src2_idx = (u16)count_reg;
-            div_inst->src3_idx = 0;
-
-            emitted = true;
+            // We don't emit any instruction, it's just a constant register now
+            emitted = false; 
         } else {
             mf_instruction* inst = &instrs[instr_count];
             inst->dest_idx = reg_idx;

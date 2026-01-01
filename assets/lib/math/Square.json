@@ -1,0 +1,12 @@
+{
+    "nodes": [
+        { "id": "in", "type": "Input", "data": {"shape": [-1], "dtype": "f32"} },
+        { "id": "res", "type": "Mul" },
+        { "id": "out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "in", "dst": "res", "dst_port": "a" },
+        { "src": "in", "dst": "res", "dst_port": "b" },
+        { "src": "res", "dst": "out", "dst_port": "in" }
+    ]
+}

@@ -1,0 +1,16 @@
+{
+    "nodes": [
+        { "id": "in", "type": "Input" },
+        { "id": "sum", "type": "Sum" },
+        { "id": "count", "type": "Size" },
+        { "id": "avg", "type": "Div" },
+        { "id": "out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "in", "dst": "sum", "dst_port": "in" },
+        { "src": "in", "dst": "count", "dst_port": "in" },
+        { "src": "sum", "dst": "avg", "dst_port": "a" },
+        { "src": "count", "dst": "avg", "dst_port": "b" },
+        { "src": "avg", "dst": "out", "dst_port": "in" }
+    ]
+}

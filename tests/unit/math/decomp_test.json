@@ -1,0 +1,33 @@
+{
+    "nodes": [
+        { "id": "v1", "type": "Const", "data": {"value": [1, 2, 3], "dtype": "f32"} },
+        { "id": "v2", "type": "Const", "data": {"value": [4, 5, 6], "dtype": "f32"} },
+        { "id": "t",  "type": "Const", "data": {"value": 0.5} },
+        
+        { "id": "d", "type": "Dot" },
+        { "id": "l", "type": "Length" },
+        { "id": "n", "type": "Normalize" },
+        { "id": "m", "type": "Mix" },
+        
+        { "id": "out_dot", "type": "Output" },
+        { "id": "out_len", "type": "Output" },
+        { "id": "out_norm", "type": "Output" },
+        { "id": "out_mix", "type": "Output" }
+    ],
+    "links": [
+        { "src": "v1", "dst": "d", "dst_port": "a" },
+        { "src": "v2", "dst": "d", "dst_port": "b" },
+        { "src": "d",  "dst": "out_dot", "dst_port": "in" },
+        
+        { "src": "v1", "dst": "l", "dst_port": "in" },
+        { "src": "l",  "dst": "out_len", "dst_port": "in" },
+        
+        { "src": "v1", "dst": "n", "dst_port": "in" },
+        { "src": "n",  "dst": "out_norm", "dst_port": "in" },
+        
+        { "src": "v1", "dst": "m", "dst_port": "a" },
+        { "src": "v2", "dst": "m", "dst_port": "b" },
+        { "src": "t",  "dst": "m", "dst_port": "t" },
+        { "src": "m",  "dst": "out_mix", "dst_port": "in" }
+    ]
+}

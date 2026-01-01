@@ -1,0 +1,44 @@
+{
+    "nodes": [
+        { "id": "edge0", "type": "Input" },
+        { "id": "edge1", "type": "Input" },
+        { "id": "x", "type": "Input" },
+        
+        { "id": "sub1", "type": "Sub" },
+        { "id": "sub2", "type": "Sub" },
+        { "id": "div",  "type": "Div" },
+        { "id": "zero", "type": "Const", "data": {"value": 0.0} },
+        { "id": "one",  "type": "Const", "data": {"value": 1.0} },
+        { "id": "t",    "type": "Clamp" },
+        
+        { "id": "t2",   "type": "Mul" },
+        { "id": "three", "type": "Const", "data": {"value": 3.0} },
+        { "id": "two",   "type": "Const", "data": {"value": 2.0} },
+        { "id": "two_t", "type": "Mul" },
+        { "id": "term",  "type": "Sub" },
+        { "id": "res",   "type": "Mul" },
+        
+        { "id": "out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "x",     "dst": "sub1", "dst_port": "a" },
+        { "src": "edge0", "dst": "sub1", "dst_port": "b" },
+        { "src": "edge1", "dst": "sub2", "dst_port": "a" },
+        { "src": "edge0", "dst": "sub2", "dst_port": "b" },
+        { "src": "sub1",  "dst": "div",  "dst_port": "a" },
+        { "src": "sub2",  "dst": "div",  "dst_port": "b" },
+        { "src": "div",   "dst": "t",    "dst_port": "x" },
+        { "src": "zero",  "dst": "t",    "dst_port": "min" },
+        { "src": "one",   "dst": "t",    "dst_port": "max" },
+        
+        { "src": "t",     "dst": "t2",   "dst_port": "a" },
+        { "src": "t",     "dst": "t2",   "dst_port": "b" },
+        { "src": "two",   "dst": "two_t", "dst_port": "a" },
+        { "src": "t",     "dst": "two_t", "dst_port": "b" },
+        { "src": "three", "dst": "term", "dst_port": "a" },
+        { "src": "two_t", "dst": "term", "dst_port": "b" },
+        { "src": "t2",    "dst": "res",  "dst_port": "a" },
+        { "src": "term",  "dst": "res",  "dst_port": "b" },
+        { "src": "res",   "dst": "out",  "dst_port": "in" }
+    ]
+}

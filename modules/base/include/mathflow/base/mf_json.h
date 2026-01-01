@@ -60,6 +60,8 @@ typedef struct {
     size_t node_count;
     mf_ast_link* links;
     size_t link_count;
+    const char** imports;
+    size_t import_count;
     const char* source_path;
 } mf_ast_graph;
 

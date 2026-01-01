@@ -25,6 +25,9 @@ const char* mf_path_get_ext(const char* path);
 // Join directory and file (handling separators)
 char* mf_path_join(const char* dir, const char* file, mf_arena* arena);
 
+// Check if file exists
+bool mf_file_exists(const char* path);
+
 // Read entire file into arena memory (null-terminated)
 char* mf_file_read(const char* path, mf_arena* arena);
 

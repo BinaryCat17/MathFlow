@@ -6,74 +6,6 @@
 #include <string.h>
 #include <math.h>
 
-// Dot(a, b) -> Sum(a*b) along last axis
-static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-    MF_CHECK_INPUT(ctx, b);
-    
-    size_t sz_a = mf_tensor_count(a);
-    size_t sz_b = mf_tensor_count(b);
-    if (sz_a != sz_b) return; 
-
-    int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
-    dst->info.dtype = MF_DTYPE_F32;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    f32* D = (f32*)mf_tensor_data(dst);
-    size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
-    size_t batch = sz_a / dim;
-    
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
-    mf_tensor_iter it_b = mf_tensor_iter_begin(b);
-
-    for (size_t i = 0; i < batch; ++i) {
-        float sum = 0.0f;
-        for (size_t k = 0; k < dim; ++k) {
-            sum += (*((f32*)it_a.ptr)) * (*((f32*)it_b.ptr));
-            mf_tensor_iter_next(&it_a);
-            mf_tensor_iter_next(&it_b);
-        }
-        D[i] = sum;
-    }
-}
-
-// Length(a) -> Sqrt(Dot(a, a))
-static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-
-    int out_ndim = (a->info.ndim > 0) ? a->info.ndim - 1 : 0;
-    dst->info.dtype = MF_DTYPE_F32;
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, (uint8_t)out_ndim)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    f32* D = (f32*)mf_tensor_data(dst);
-    size_t sz_a = mf_tensor_count(a);
-    size_t dim = (a->info.ndim <= 1) ? sz_a : (size_t)a->info.shape[a->info.ndim-1];
-    size_t batch = sz_a / dim;
-    
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a);
-
-    for (size_t i = 0; i < batch; ++i) {
-        float sum = 0.0f;
-        for (size_t k = 0; k < dim; ++k) {
-            float val = *((f32*)it_a.ptr);
-            sum += val * val;
-            mf_tensor_iter_next(&it_a);
-        }
-        D[i] = sqrtf(sum);
-    }
-}
-
 static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
@@ -231,10 +163,13 @@ static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 void mf_ops_register_matrix(mf_op_func* table) {
-    table[MF_OP_DOT] = op_dot;
-    table[MF_OP_LENGTH] = op_length;
+
     table[MF_OP_MATMUL] = op_matmul; 
+
     table[MF_OP_TRANSPOSE] = op_transpose; 
+
     table[MF_OP_INVERSE] = op_inverse;
+
     table[MF_OP_JOIN] = op_join;
+
 }

@@ -1,0 +1,13 @@
+{
+    "nodes": [
+        { "id": "in", "type": "Input" },
+        { "id": "l", "type": "Length" },
+        { "id": "res", "type": "Div" },
+        { "id": "out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "in", "dst": "res", "dst_port": "a" },
+        { "src": "l", "dst": "res", "dst_port": "b" },
+        { "src": "res", "dst": "out", "dst_port": "in" }
+    ]
+}

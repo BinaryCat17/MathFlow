@@ -89,6 +89,16 @@ char* mf_path_join(const char* dir, const char* file, mf_arena* arena) {
     }
 }
 
+bool mf_file_exists(const char* path) {
+    if (!path) return false;
+    FILE* f = fopen(path, "rb");
+    if (f) {
+        fclose(f);
+        return true;
+    }
+    return false;
+}
+
 char* mf_file_read(const char* path, mf_arena* arena) {
     FILE* f = fopen(path, "rb");
     if (!f) return NULL;
