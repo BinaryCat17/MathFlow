@@ -7,35 +7,48 @@
 
 ---
 
-## Active Development
+## Current Focus: Architectural Hardening & Performance
 
-### Milestone 13: Pure Logic Architecture (In Progress)
+### Phase 1: Backend Refactoring (High Priority)
+**Goal:** Eliminate the "Smart Backend" anti-pattern. Make the execution engine a "dumb" and fast interpreter of an explicit Execution Plan.
 
-**Goal:** Achieve complete Inversion of Control (IoC) and graph purity by unifying all external data sources under the `Input` node.
+- [x] **Remove Instruction Baking:** Удаление структуры `mf_cpu_baked_instr`. Воркер работает напрямую с `mf_instruction`, что упрощает отладку и убирает лишние аллокации.
+- [ ] **Execution Plan (Register Plan):** Диспетчер готовит массив `mf_cpu_reg_plan` (Buffer, Generator, Scratch) заранее. Воркер лишь следует плану.
+- [ ] **Builtin ID System:** Замена строк (`host.index`) на перечисления (Builtin IDs) в `mf_program`. Бэкенд перестает парсить строки.
+- [ ] **Zero-Guess Dispatch:** Бэкенд полностью доверяет страйдам компилятора. Если компилятор ошибся — бэкенд падает, а не пытается "исправить" ситуацию.
+- [ ] **Kernel Signature Update:** Обновление `mf_op_func` для работы с сырыми инструкциями.
 
-#### Phase 7: Pure Logic & Shape-Driven Compilation
-- [x] **ISA & Base Cleanup:** Полное удаление `MF_OP_INDEX`, `MF_NODE_INDEX` и перечисления `mf_identity`. Система переходит на чистый `STEP_N` (strides).
-- [x] **Stride Inference Engine:** Переработка `mf_pass_analyze`. Реализация правил автоматического бродкастинга: сопоставление размерностей входа и домена для вычисления оптимальных страйдов.
-- [x] **Heterogeneous Tasks:** Поддержка графов с несколькими выходами разных форм. Компилятор автоматически разбивает граф на задачи.
-- [ ] **Context-Aware Subgraphs:** Обеспечение проброса геометрии домена внутрь подграфов через узлы `Call`.
-- [x] **Explicit Task Geometry API:** Изменение API компилятора. `mf_compile` теперь требует явного описания "Контракта Ядра".
-- [x] **Virtual Resource Providers:** Расширение `.mfapp`. Входы привязываются к ресурсам с провайдерами (например, `host.index`).
-- [x] **Loader Orchestration:** `mf_loader` собирает геометрию задач из манифеста и передает её компилятору.
-- [x] **Generator Backend:** Реализация в `mf_backend_cpu` генерации данных для виртуальных ресурсов (индексов) без аллокации буфера.
+### Phase 2: Compiler Hardening (Medium Priority)
+**Goal:** Ensure correctness and reliability of the compilation pipeline.
 
-#### Phase 8: Architectural Hardening & Stability
-- [x] **Strict DType Propagation:** Исправлен баг, при котором бродкастинг форм перезаписывал целевой тип операции (например, в Select).
-- [x] **Host Policy Isolation:** Хост больше не форсирует разрешение `out_Color` для не-пиксельных графов.
-- [ ] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для строгой валидации.
-- [ ] **In-place Metadata:** Внедрение флага `MF_OP_FLAG_INPLACE_SAFE` для возвращения эффективной аллокации регистров без риска порчи данных в батчах.
-- [ ] **String-less IR Ports:** Переход на атомарные ID или хеши для портов и узлов внутри компилятора для повышения надежности инлайнера.
-- [ ] **Index Buffer Pooling:** Оптимизация бэкенда — переиспользование буферов для виртуальных ресурсов вместо постоянных аллокаций.
-- [ ] **Stride Model Expansion:** Исследование перехода от `i8` линейных страйдов к полной поддержке N-D тензорных шагов для честного бродкастинга.
+- [ ] **String-less IR Ports:** Переход на атомарные ID или хеши для портов и узлов внутри компилятора.
+- [ ] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для предотвращения ошибок вывода типов.
+- [ ] **In-place Metadata:** Безопасное использование флага `MF_OP_FLAG_INPLACE_SAFE` для экономии памяти в регистрах.
+- [x] **Strict DType Propagation:** Исправлен баг перезаписи типа при бродкастинге.
+- [x] **Host Policy Isolation:** Хост больше не форсирует разрешение для не-пиксельных графов.
+
+### Phase 3: Logic Expansion & Optimization (Continuous)
+**Goal:** Scale the engine features and improve throughput.
+
+- [ ] **Context-Aware Subgraphs:** Проброс геометрии домена внутрь подграфов через узлы `Call`.
+- [ ] **Stride Model Expansion:** Поддержка N-D тензорных шагов для честного бродкастинга (выход за пределы `i8` страйдов).
+- [ ] **Index Buffer Pooling:** Переиспользование буферов для виртуальных ресурсов.
+- [x] **Stride Inference Engine:** Реализация правил автоматического бродкастинга.
+- [x] **Heterogeneous Tasks:** Поддержка графов с несколькими выходами разных форм.
+- [x] **Explicit Task Geometry API:** Требование явного описания контракта ядра.
+
+---
 
 ## Archive (Detailed Task History)
 
 <details>
 <summary>Expand for full history of completed tasks</summary>
+
+### Milestone 13: Pure Logic Architecture (Initial Work)
+- [x] **ISA & Base Cleanup:** Удаление `MF_OP_INDEX` и переход на чистый `STEP_N`.
+- [x] **Virtual Resource Providers:** Входы привязываются к ресурсам с провайдерами.
+- [x] **Loader Orchestration:** `mf_loader` собирает геометрию задач.
+- [x] **Generator Backend:** Начальная реализация генерации индексов в бэкенде.
 
 ### Milestone 12: Intelligence & Performance
 - [x] **Auto-Transient Detection:** Темпоральный анализ графа для экономии памяти.
@@ -60,25 +73,13 @@
 - [x] **Safe Gather & NaN Protection:** Защита от NaN/Inf и OOB в Gather.
 - [x] **Explicit Reduction ISA:** Разделение ADD и REDUCE_SUM.
 
-### Milestone 10: Standard Library & ISA Consolidation
-- [x] Explicit Import System
-- [x] Default Ports mapping
-- [x] ISA Category grouping
-- [x] XOR and SIZE primitives
-
-### Milestone 9: Advanced Compilation
-- [x] Instruction Fusion (FMA)
-- [x] MEAN decomposition
-- [x] Liveness-based Register Allocation (Buffer Aliasing)
-- [x] Multi-domain Task System
-
-### Milestone 8: Compiler Consolidation
-- [x] X-Macros metadata
-- [x] Automated shape/type propagation
-
-### Milestones 1-7: Foundation
+### Foundation & Earlier
 - [x] Core VM (SoA model)
 - [x] Manifest-driven Pipeline (.mfapp)
 - [x] SDF Rendering engine
 - [x] Cross-platform Host
+- [x] Instruction Fusion (FMA)
+- [x] MEAN decomposition
+- [x] Liveness-based Register Allocation (Buffer Aliasing)
+- [x] Multi-domain Task System
 </details>

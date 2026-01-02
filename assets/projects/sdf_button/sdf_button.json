@@ -9,8 +9,8 @@
         { "id": "u_ResY", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
         { "id": "u_MouseX", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
         { "id": "u_MouseY", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
-        { "id": "u_FragX", "type": "Index", "data": {"axis": 1, "dtype": "f32"} },
-        { "id": "u_FragY", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
+        { "id": "u_FragX", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.1"} },
+        { "id": "u_FragY", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.0"} },
         { "id": "out_Color", "type": "Output" },
         
         { "id": "x_norm", "type": "Div" },

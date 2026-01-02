@@ -8,5 +8,33 @@
         "height": 600,
         "resizable": true,
         "vsync": true
+    },
+    "pipeline": {
+        "resources": [
+            { "name": "out_Color", "dtype": "F32", "shape": [600, 800, 4] },
+            { "name": "u_Aspect", "dtype": "F32", "shape": [] },
+            { "name": "u_ResX", "dtype": "F32", "shape": [] },
+            { "name": "u_ResY", "dtype": "F32", "shape": [] },
+            { "name": "u_MouseX", "dtype": "F32", "shape": [] },
+            { "name": "u_MouseY", "dtype": "F32", "shape": [] },
+            { "name": "u_FragX", "dtype": "F32", "shape": [480000], "provider": "host.index.1" },
+            { "name": "u_FragY", "dtype": "F32", "shape": [480000], "provider": "host.index.0" }
+        ],
+        "kernels": [
+            {
+                "id": "main",
+                "entry": "sdf_button.json",
+                "bindings": [
+                    { "port": "out_Color", "resource": "out_Color" },
+                    { "port": "u_Aspect", "resource": "u_Aspect" },
+                    { "port": "u_ResX", "resource": "u_ResX" },
+                    { "port": "u_ResY", "resource": "u_ResY" },
+                    { "port": "u_MouseX", "resource": "u_MouseX" },
+                    { "port": "u_MouseY", "resource": "u_MouseY" },
+                    { "port": "u_FragX", "resource": "u_FragX" },
+                    { "port": "u_FragY", "resource": "u_FragY" }
+                ]
+            }
+        ]
     }
 }

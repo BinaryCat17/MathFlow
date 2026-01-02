@@ -240,11 +240,14 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         mf_shape_calc_strides(&out->info);
 
         // Inferred Linear Strides (For VM execution)
+        u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+        size_t task_dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
+
         size_t dom_count = mf_tensor_count(out);
-        node->strides[0] = (i8)mf_shape_calc_linear_stride(dom_count, dom_count);
-        node->strides[1] = s1 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), dom_count) : 0;
-        node->strides[2] = s2 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), dom_count) : 0;
-        node->strides[3] = s3 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), dom_count) : 0;
+        node->strides[0] = (task_dom_count > 1) ? (i8)mf_shape_calc_linear_stride(dom_count, task_dom_count) : 0;
+        node->strides[1] = s1 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), task_dom_count) : 0;
+        node->strides[2] = s2 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), task_dom_count) : 0;
+        node->strides[3] = s3 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), task_dom_count) : 0;
 
         char s_shape[64];
         mf_shape_format(&out->info, s_shape, sizeof(s_shape));

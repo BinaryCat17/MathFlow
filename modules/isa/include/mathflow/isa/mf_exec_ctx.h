@@ -39,7 +39,7 @@ static inline const char* mf_exec_error_to_str(mf_exec_error err) {
 struct mf_exec_ctx {
     // View of Registers (Can point to persistent state or local thread-local tensors)
     mf_tensor* registers;
-    size_t register_count;
+    u32 register_count;
 
     // Optional allocator for temporary allocations during execution
     mf_allocator* allocator; 
@@ -63,23 +63,9 @@ struct mf_exec_ctx {
     void* user_data;
 };
 
-/**
- * @brief Pre-resolved instruction for fast CPU execution.
- * Contains direct pointers to tensors instead of register indices.
- */
-typedef struct mf_cpu_baked_instr {
-    void* op_func;              // Pointer to the kernel function
-    const mf_instruction* raw;  // Original instruction metadata
-    mf_tensor* d;
-    mf_tensor* s1;
-    mf_tensor* s2;
-    mf_tensor* s3;
-    mf_tensor* s4;
-} mf_cpu_baked_instr;
-
 // --- Execution Context API (Inlined) ---
 
-static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size_t reg_count, mf_allocator* allocator) {
+static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, u32 reg_count, mf_allocator* allocator) {
     memset(ctx, 0, sizeof(mf_exec_ctx));
     ctx->registers = registers;
     ctx->register_count = reg_count;

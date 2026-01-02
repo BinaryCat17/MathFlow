@@ -7,7 +7,7 @@
 
         { "id": "out_Color", "type": "Output" },
 
-        { "id": "frag_coord", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
+        { "id": "frag_coord", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.0"} },
 
         { "id": "abs_dist", "type": "Abs" },
         { "id": "circle_pos_x", "type": "Add" },

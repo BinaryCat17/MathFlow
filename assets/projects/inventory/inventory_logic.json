@@ -17,7 +17,9 @@
         { "id": "idx_1", "type": "Const", "data": {"value": 1} },
         { "id": "idx_2", "type": "Const", "data": {"value": 2} },
 
-        { "id": "my_idx", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
+        { "id": "threshold", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "my_idx", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.0"} },
+        { "id": "calc_total", "type": "Mul" },
 
         { "id": "uv_x", "type": "Div" },
         { "id": "uv_y", "type": "Div" },

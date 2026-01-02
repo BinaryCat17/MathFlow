@@ -154,7 +154,12 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
         case MF_NODE_OUTPUT: {
             const mf_json_value* v_shape = mf_json_get_field(data, "shape");
             const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
+            const mf_json_value* v_provider = mf_json_get_field(data, "provider");
             
+            if (v_provider && v_provider->type == MF_JSON_VAL_STRING) {
+                dst->provider = mf_arena_strdup(arena, v_provider->as.s);
+            }
+
             if (dst->type == MF_NODE_INPUT && (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY)) {
                 mf_compiler_diag_report(diag, dst->loc, "Input node '%s': missing or invalid 'shape'", dst->id);
                 return false;

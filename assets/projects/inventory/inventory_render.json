@@ -10,9 +10,9 @@
         { "id": "c_3", "type": "Const", "data": {"value": 3.0} },
         { "id": "c_0_5", "type": "Const", "data": {"value": 0.5} },
 
-        { "id": "px_x", "type": "Index", "data": {"axis": 1, "dtype": "f32"} },
-        { "id": "px_y", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
-        { "id": "ch_idx", "type": "Index", "data": {"axis": 2, "dtype": "f32"} },
+        { "id": "px_x", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.1"} },
+        { "id": "px_y", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.0"} },
+        { "id": "ch_idx", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.2"} },
 
         { "id": "uv_x", "type": "Div" },
         { "id": "uv_y", "type": "Div" },

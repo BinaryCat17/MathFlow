@@ -5,7 +5,6 @@
 #include <string.h>
 
 typedef struct mf_tensor mf_tensor;
-typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
 
 // --- Comparison ---
 MF_KERNEL_COMPARE(less, <)
@@ -23,11 +22,11 @@ MF_KERNEL_LOGIC(xor, !=)
 MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v, u8, u8)
 
 // --- Selection ---
-static void op_select(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* cond = bi->s1;
-    mf_tensor* true_val = bi->s2;
-    mf_tensor* false_val = bi->s3;
+static void op_select(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* cond = &ctx->registers[inst->src1_idx];
+    mf_tensor* true_val = &ctx->registers[inst->src2_idx];
+    mf_tensor* false_val = &ctx->registers[inst->src3_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, cond);
@@ -43,15 +42,16 @@ static void op_select(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 
     mf_tensor_iter it_c = mf_tensor_iter_begin(cond);
     mf_tensor_iter it_t = mf_tensor_iter_begin(true_val);
+    mf_tensor_iter_begin(false_val); // Wait, false_val was missing in the original code's iterator start? No, it's there below.
     mf_tensor_iter it_f = mf_tensor_iter_begin(false_val);
     mf_tensor_iter it_d = mf_tensor_iter_begin(dst);
 
     bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
 
-    i32 st0 = MF_GET_STRIDE_D(bi);
-    i32 st1 = MF_GET_STRIDE_S1(bi);
-    i32 st2 = MF_GET_STRIDE_S2(bi);
-    i32 st3 = MF_GET_STRIDE_S3(bi);
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
+    i32 st2 = MF_GET_STRIDE_S2(inst);
+    i32 st3 = MF_GET_STRIDE_S3(inst);
 
     for(size_t i=0; i<sz_dst; ++i) {
         bool condition = false;

@@ -6,7 +6,7 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 12       // Removed Identity (Shape-Driven ISA)
+#define MF_BINARY_VERSION 13       // Added Builtin IDs for symbols
 
 #define MF_MAX_SYMBOL_NAME 64
 
@@ -22,7 +22,8 @@ typedef struct {
     uint32_t register_idx;
     uint32_t related_name_hash; // Hash of the Input symbol that drives this Output's shape (0 if none)
     uint8_t flags;       // MF_SYMBOL_FLAG_*
-    uint8_t reserved[3]; // Padding/Alignment
+    uint16_t builtin_id; // mf_builtin_id
+    uint8_t builtin_axis; // For indexed providers like host.index.N
 } mf_bin_symbol;
 
 // A single execution unit within a program (e.g. for a specific Output shape)

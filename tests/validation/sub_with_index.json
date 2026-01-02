@@ -1,7 +1,7 @@
 {
     "nodes": [
         { "id": "In", "type": "Input", "data": { "shape": [1], "dtype": "f32" } },
-        { "id": "Idx", "type": "Index", "data": { "axis": 0, "dtype": "f32" } },
+        { "id": "Idx", "type": "Input", "data": { "shape": [], "dtype": "f32", "provider": "host.index.0" } },
         { "id": "Out", "type": "Output" }
     ],
     "links": [

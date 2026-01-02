@@ -6,11 +6,10 @@
 #include <string.h>
 
 typedef struct mf_tensor mf_tensor;
-typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
 
-static void op_copy(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src = bi->s1;
+static void op_copy(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src = &ctx->registers[inst->src1_idx];
     if (!dst || !src) return;
 
     bool dst_allocated = (dst->buffer != NULL);
@@ -55,10 +54,10 @@ static void op_copy(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 // Slice(Input, Range) -> View. Range is [Start, Count]
-static void op_slice(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src = bi->s1;
-    mf_tensor* range = bi->s2;
+static void op_slice(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src = &ctx->registers[inst->src1_idx];
+    mf_tensor* range = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
@@ -75,10 +74,10 @@ static void op_slice(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 // Reshape(Input, ShapeTensor) -> View
-static void op_reshape(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src = bi->s1;
-    mf_tensor* shape_t = bi->s2;
+static void op_reshape(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src = &ctx->registers[inst->src1_idx];
+    mf_tensor* shape_t = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);

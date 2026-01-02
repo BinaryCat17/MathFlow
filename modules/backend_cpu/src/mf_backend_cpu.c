@@ -22,6 +22,27 @@
 
 // --- Internal Structures ---
 
+typedef enum {
+    MF_SRC_BUFFER,    // Data is in a global buffer (Resource or Constant)
+    MF_SRC_GENERATOR, // Data needs to be generated (Builtin like host.index)
+    MF_SRC_SCRATCH    // Temporary buffer (Scratchpad)
+} mf_reg_source_type;
+
+typedef struct {
+    mf_reg_source_type type;
+    
+    // For BUFFER
+    mf_buffer* buffer;
+    size_t base_offset;
+    i8 stride;
+
+    // For GENERATOR
+    mf_builtin_id builtin_id;
+    u8 builtin_axis;
+      
+    mf_type_info info;     
+} mf_cpu_reg_plan;
+
 typedef struct {
     mf_thread_pool* pool;
     mf_op_func op_table[MF_OP_LIMIT];
@@ -48,8 +69,7 @@ typedef struct {
     size_t total_elements;
     u8 ndim;
     u32 domain_shape[MF_MAX_DIMS];
-    i32 strides[MF_MAX_REGISTERS];
-    const char* providers[MF_MAX_REGISTERS];
+    mf_cpu_reg_plan plans[MF_MAX_REGISTERS];
 
     // Parallel Reduction Support
     f32* reduction_scratch; // [num_threads * num_registers]
@@ -113,343 +133,246 @@ static const char* _dtype_to_str(mf_dtype type) {
 }
 
 static const char* find_reg_name(const mf_program* prog, u32 reg_idx) {
-
     if (!prog || !prog->symbols) return "temp";
-
     for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
-
         if (prog->symbols[i].register_idx == reg_idx) return prog->symbols[i].name;
-
     }
-
     return "temp";
-
 }
-
-
 
 static void format_tensor_debug(char* buf, const mf_tensor* t, int reg_idx, const mf_program* prog) {
-
     if (!t) {
-
         sprintf(buf, "Reg %-2d (NULL)", reg_idx);
-
         return;
-
     }
-
     
-
     const char* name = find_reg_name(prog, reg_idx);
-
     char shape_str[64] = {0};
-
     int pos = 0;
-
     if (t->info.ndim == 0) {
-
         strcpy(shape_str, "Scalar");
-
     } else {
-
         for (int i = 0; i < t->info.ndim; ++i) {
-
             pos += sprintf(shape_str + pos, "%d%s", t->info.shape[i], (i < t->info.ndim - 1) ? "," : "");
-
         }
-
     }
-
-
 
     char tag[128];
-
     sprintf(tag, "Reg %-2d (%s)", reg_idx, name);
 
-
-
     if (!t->buffer || !t->buffer->data) {
-
-        sprintf(buf, "%-20s : <Unallocated> [%s] Shape: [%s]", tag, _dtype_to_str(t->info.dtype), shape_str);
-
+        sprintf(buf, "% -20s : <Unallocated> [%s] Shape: [%s]", tag, _dtype_to_str(t->info.dtype), shape_str);
         return;
-
     }
-
-
 
     if (t->info.ndim == 0 || (t->info.ndim == 1 && t->info.shape[0] == 1)) {
-
         void* d = (u8*)t->buffer->data + t->byte_offset;
-
         float val = 0;
-
         if (t->info.dtype == MF_DTYPE_F32) val = *(f32*)d;
-
         else if (t->info.dtype == MF_DTYPE_I32) val = (f32)*(int32_t*)d;
-
         else if (t->info.dtype == MF_DTYPE_U8) val = (f32)*(u8*)d;
-
-        sprintf(buf, "%-20s : Value: %-10.3f (%s)", tag, val, _dtype_to_str(t->info.dtype));
-
+        sprintf(buf, "% -20s : Value: %-10.3f (%s)", tag, val, _dtype_to_str(t->info.dtype));
     } else {
-
-        sprintf(buf, "%-20s : Tensor[%-10s] (%s) Ptr: %p", tag, shape_str, _dtype_to_str(t->info.dtype), (void*)((u8*)t->buffer->data + t->byte_offset));
-
+        sprintf(buf, "% -20s : Tensor[%-10s] (%s) Ptr: %p", tag, shape_str, _dtype_to_str(t->info.dtype), (void*)((u8*)t->buffer->data + t->byte_offset));
     }
-
 }
 
-
-
-static void report_crash(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, const mf_cpu_baked_instr* baked, uint32_t baked_idx) {
-
-    const mf_cpu_baked_instr* bi = &baked[baked_idx];
-
-    const mf_instruction* inst = bi->raw;
-
-    uint32_t inst_idx = batch->start_inst + baked_idx;
-
-
+static void report_crash(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, u32 inst_idx) {
+    const mf_instruction* inst = &batch->program->code[inst_idx];
 
     char coords[128] = {0};
-
     int pos = 0;
-
     
-
     // Calculate exact coordinates of the failing element
-
     u32 exact_linear = ctx->linear_offset + ctx->error_idx;
-
     u32 temp_idx = exact_linear;
-
     u32 exact_coords[MF_MAX_DIMS];
-
     for (int i = ctx->ndim - 1; i >= 0; --i) {
-
         exact_coords[i] = temp_idx % ctx->domain_shape[i];
-
         temp_idx /= ctx->domain_shape[i];
-
     }
-
-
 
     for (int d = 0; d < ctx->ndim; ++d) {
-
         pos += sprintf(coords + pos, "%u%s", exact_coords[d], (d < ctx->ndim - 1) ? ", " : "");
-
     }
 
-
-
     char s1_info[128], s2_info[128], s3_info[128], s4_info[128], d_info[128];
-
-    format_tensor_debug(d_info,  bi->d,  inst->dest_idx, batch->program);
-
-    format_tensor_debug(s1_info, bi->s1, inst->src1_idx, batch->program);
-
-    format_tensor_debug(s2_info, bi->s2, inst->src2_idx, batch->program);
-
-    format_tensor_debug(s3_info, bi->s3, inst->src3_idx, batch->program);
-
-    format_tensor_debug(s4_info, bi->s4, inst->src4_idx, batch->program);
-
-
+    u32 reg_count = batch->program->meta.tensor_count;
+    format_tensor_debug(d_info,  &ctx->registers[inst->dest_idx], inst->dest_idx, batch->program);
+    format_tensor_debug(s1_info, (inst->src1_idx < reg_count) ? &ctx->registers[inst->src1_idx] : NULL, inst->src1_idx, batch->program);
+    format_tensor_debug(s2_info, (inst->src2_idx < reg_count) ? &ctx->registers[inst->src2_idx] : NULL, inst->src2_idx, batch->program);
+    format_tensor_debug(s3_info, (inst->src3_idx < reg_count) ? &ctx->registers[inst->src3_idx] : NULL, inst->src3_idx, batch->program);
+    format_tensor_debug(s4_info, (inst->src4_idx < reg_count) ? &ctx->registers[inst->src4_idx] : NULL, inst->src4_idx, batch->program);
 
     MF_LOG_FATAL("\n"
-
                  "================================================================================\n"
-
                  "                             KERNEL CRASH REPORT\n"
-
                  "================================================================================\n"
-
                  "  FAILED INSTRUCTION:\n"
-
                  "  #%u Opcode: %s [%d]\n"
-
                  "\n"
-
                  "  OPERANDS:\n"
-
                  "  Dest: %s\n"
-
                  "  Src1: %s\n"
-
                  "  Src2: %s\n"
-
                  "  Src3: %s\n"
-
                  "  Src4: %s\n"
-
                  "\n"
-
                  "  EXECUTION CONTEXT:\n"
-
                  "  Domain Coord : [%s]\n"
-
                  "  Linear Index : %u (Batch Offset: %u)\n"
-
                  "  Error Type   : %s\n"
-
                  "================================================================================\n",
-
                  inst_idx, mf_opcode_to_str(inst->opcode), inst->opcode, 
-
                  d_info, s1_info, s2_info, s3_info, s4_info,
-
                  coords, exact_linear, ctx->error_idx,
-
                  mf_exec_error_to_str(ctx->error));
-
 }
 
-static f32 get_val(mf_tensor* t) {
-    if (!t || !t->buffer || !t->buffer->data) return 0;
-    void* d = (u8*)t->buffer->data + t->byte_offset;
-    if (t->info.dtype == MF_DTYPE_F32) return *(f32*)d;
-    if (t->info.dtype == MF_DTYPE_I32) return (f32)*(int32_t*)d;
-    if (t->info.dtype == MF_DTYPE_U8) return (f32)*(u8*)d;
-    return 0;
-}
-
-static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, const mf_cpu_baked_instr* baked, u32 count) {
+static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, u32 count) {
     for (uint32_t i = 0; i < count; ++i) {
         // Stop if local error OR global error detected by another thread
         if (ctx->error != MF_ERROR_NONE) break;
         if (batch->main_state && mf_atomic_load((mf_atomic_i32*)&batch->main_state->error_code) != 0) break;
         if (ctx->global_error_ptr && mf_atomic_load(ctx->global_error_ptr) != 0) break;
 
-        const mf_cpu_baked_instr* bi = &baked[i];
-        if (bi->op_func) {
-            ((mf_op_func)bi->op_func)(ctx, bi);
+        u32 inst_idx = batch->start_inst + i;
+        const mf_instruction* inst = &batch->program->code[inst_idx];
+        mf_op_func op = batch->op_table[inst->opcode];
+        if (op) {
+            op(ctx, inst);
             
             if (ctx->error != MF_ERROR_NONE) {
-                report_crash(ctx, batch, baked, i);
+                report_crash(ctx, batch, inst_idx);
                 break;
             }
         }
     }
 }
 
+static void mf_generate_index_chunk(f32* out, u32 count, u32 job_offset, u8 axis, bool is_vector, u8 domain_ndim, const u32* domain_shape) {
+    u32 current_coords[MF_MAX_DIMS];
+    u32 temp_idx = job_offset;
+    for (int i = domain_ndim - 1; i >= 0; --i) {
+        current_coords[i] = temp_idx % domain_shape[i];
+        temp_idx /= domain_shape[i];
+    }
+
+    u32 vec_size = is_vector ? domain_ndim : 1;
+
+    for (u32 e = 0; e < count; ++e) {
+        if (is_vector) {
+            for (u32 d = 0; d < domain_ndim; ++d) {
+                out[e * domain_ndim + d] = (f32)current_coords[d];
+            }
+        } else {
+            out[e] = (axis < domain_ndim) ? (f32)current_coords[axis] : 0.0f;
+        }
+        
+        // Advance coords
+        for (int d = (int)domain_ndim - 1; d >= 0; --d) {
+            current_coords[d]++;
+            if (current_coords[d] < domain_shape[d] || d == 0) break;
+            current_coords[d] = 0;
+        }
+    }
+}
+
 static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, size_t start_idx, size_t count) {
-    mf_exec_ctx* worker_ctx = &state->ctx;
-    mf_state* main_state = batch->main_state;
+    mf_exec_ctx* ctx = &state->ctx;
     int tid = state->thread_idx;
     
     for (size_t k = 0; k < batch->active_reg_count; ++k) {
         u16 i = batch->active_regs[k];
-        mf_tensor* main_t = &main_state->registers[i];
-        mf_tensor* worker_t = &worker_ctx->registers[i];
+        const mf_cpu_reg_plan* plan = &batch->plans[i];
+        mf_tensor* t = &ctx->registers[i];
 
-        // Start with a full copy
-        *worker_t = *main_t;
+        t->info = plan->info;
 
-        i32 stride = batch->strides[i];
-        const char* provider = batch->providers[i];
-        if (provider && strncmp(provider, "host.index", 10) == 0) {
-            // Generate Indices
-            size_t elements = count;
-            size_t ndim = main_t->info.ndim;
-            
-            // Check for explicit axis (e.g. host.index.1)
-            int axis = -1;
-            if (strlen(provider) > 11 && provider[10] == '.') {
-                axis = atoi(provider + 11);
-            }
-
-            if (ndim == 0) ndim = 1; 
-            
-            size_t bytes = elements * ndim * sizeof(f32);
-            void* mem = mf_exec_ctx_scratch_alloc(worker_ctx, bytes);
-            if (mem) {
-                f32* fmem = (f32*)mem;
-                u32 current_coords[MF_MAX_DIMS];
-                memcpy(current_coords, worker_ctx->tile_offset, sizeof(u32) * MF_MAX_DIMS);
-                
-                for (size_t e = 0; e < elements; ++e) {
-                    for (size_t d = 0; d < ndim; ++d) {
-                        int target_axis = (axis >= 0) ? axis : (int)d;
-                        if (target_axis < batch->ndim) {
-                            fmem[e * ndim + d] = (f32)current_coords[target_axis];
-                        } else {
-                            fmem[e * ndim + d] = 0.0f;
-                        }
-                    }
-                    for (int d = batch->ndim - 1; d >= 0; --d) {
-                        current_coords[d]++;
-                        if (current_coords[d] < (int)batch->domain_shape[d] || d == 0) break;
-                        current_coords[d] = 0;
-                    }
-                }
-
-                mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
-                mf_buffer_init_view(scratch_buf, mem, bytes);
-                worker_t->buffer = scratch_buf;
-                worker_t->byte_offset = 0;
+        switch (plan->type) {
+            case MF_SRC_BUFFER: {
+                t->buffer = plan->buffer;
+                size_t dtype_sz = mf_dtype_size(t->info.dtype);
+                t->byte_offset = plan->base_offset + (start_idx * (size_t)plan->stride * dtype_sz);
                 
                 // Adjust metadata for the flat window view
-                worker_t->info.ndim = (uint8_t)((ndim > 1) ? 2 : 1);
-                worker_t->info.shape[0] = (int32_t)count;
-                worker_t->info.shape[1] = (int32_t)ndim;
-                mf_shape_calc_strides(&worker_t->info);
-            }
-        } else if (main_t->buffer) {
-            size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
-            worker_t->byte_offset = main_t->byte_offset + (start_idx * (size_t)stride * dtype_sz);
-            
-            if (stride > 1) {
-                MF_LOG_TRACE("  Prep Reg %u: External (Buffer: %p, Size: %zu, Stride: %d, Offset: %zu)", 
-                    i, (void*)main_t->buffer->data, main_t->buffer->size_bytes, stride, worker_t->byte_offset);
-            }
-            
-            // Adjust metadata for the flat window view
-            worker_t->info.ndim = (stride > 1) ? 2 : 1;
-            worker_t->info.shape[0] = (int32_t)count;
-            worker_t->info.strides[0] = stride;
-            if (stride > 1) {
-                worker_t->info.shape[1] = stride;
-                worker_t->info.strides[1] = 1;
-            } else if (stride == 0) {
-                worker_t->info.strides[0] = 0;
-            }
-        } else {
-            // This is a temporary register (scratchpad). Allocate memory in worker's arena.
-            size_t elements = count * (stride > 0 ? (size_t)stride : 1); 
-            size_t dt_size = mf_dtype_size(main_t->info.dtype);
-            if (dt_size == 0) dt_size = 4; // Fallback to float size if unknown
-            size_t bytes = elements * dt_size;
-            
-            void* mem = mf_exec_ctx_scratch_alloc(worker_ctx, bytes);
-            if (mem) {
-                mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
-                mf_buffer_init_view(scratch_buf, mem, bytes);
-                worker_t->buffer = scratch_buf;
-                worker_t->byte_offset = 0;
-                
-                worker_t->info.ndim = (stride > 1) ? 2 : 1;
-                worker_t->info.shape[0] = (int32_t)count;
-                worker_t->info.strides[0] = stride;
-                if (stride > 1) {
-                    worker_t->info.shape[1] = stride;
-                    worker_t->info.strides[1] = 1;
-                } else if (stride == 0) {
-                    worker_t->info.strides[0] = 0;
+                t->info.ndim = (plan->stride > 1) ? 2 : 1;
+                t->info.shape[0] = (int32_t)count;
+                t->info.strides[0] = plan->stride;
+                if (plan->stride > 1) {
+                    t->info.shape[1] = plan->stride;
+                    t->info.strides[1] = 1;
+                } else if (plan->stride == 0) {
+                    t->info.strides[0] = 0;
                 }
-                
-                if (stride > 1) {
-                    MF_LOG_TRACE("  Prep Reg %u: Scratchpad (Size: %zu, Stride: %d)", i, bytes, stride);
+            } break;
+
+            case MF_SRC_GENERATOR: {
+                if (plan->builtin_id == MF_BUILTIN_INDEX) {
+                    bool is_vector = (t->info.ndim > 0 && t->info.shape[t->info.ndim-1] > 1 && t->info.ndim > 1);
+                    // Special case: if ndim=1 and shape[0] > 1, it might be a vector of indices if it's the only dim.
+                    // But usually host.index.N is a scalar stream (stride 1).
+                    // If it's just "host.index", it's a vector stream.
+                    
+                    // The compiler should have set the shape correctly. 
+                    // If it's a vector, shape[1] will be domain_ndim.
+                    is_vector = (t->info.ndim == 2); 
+                    
+                    size_t vec_size = is_vector ? batch->ndim : 1;
+                    size_t bytes = count * vec_size * sizeof(f32);
+                    void* mem = mf_exec_ctx_scratch_alloc(ctx, bytes);
+                    if (mem) {
+                        mf_generate_index_chunk((f32*)mem, (u32)count, (u32)start_idx, plan->builtin_axis, is_vector, batch->ndim, batch->domain_shape);
+                        
+                        mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
+                        mf_buffer_init_view(scratch_buf, mem, bytes);
+                        t->buffer = scratch_buf;
+                        t->byte_offset = 0;
+                        
+                        t->info.ndim = (uint8_t)(is_vector ? 2 : 1);
+                        t->info.shape[0] = (int32_t)count;
+                        t->info.strides[0] = plan->stride;
+                        if (is_vector) {
+                            t->info.shape[1] = (int32_t)batch->ndim;
+                            t->info.strides[1] = 1;
+                        }
+                    }
+                } else {
+                    // host.time, resolution, etc. are currently treated as constants by the engine
+                    // but here we could handle them as streams if needed.
+                    // For now, if they are MF_SRC_GENERATOR, they should have been handled by engine binding.
+                    // If we reach here, it's a fallback or not implemented.
+                    MF_LOG_WARN("CPU Backend: Builtin %d not fully implemented in worker.", plan->builtin_id);
                 }
-            } else {
-                MF_LOG_FATAL("CPU Backend: Out of scratchpad memory for register %u", i);
-            }
+            } break;
+
+            case MF_SRC_SCRATCH: {
+                size_t elements = count * (plan->stride > 0 ? (size_t)plan->stride : 1); 
+                size_t dt_size = mf_dtype_size(t->info.dtype);
+                size_t bytes = elements * dt_size;
+                
+                void* mem = mf_exec_ctx_scratch_alloc(ctx, bytes);
+                if (mem) {
+                    mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
+                    mf_buffer_init_view(scratch_buf, mem, bytes);
+                    t->buffer = scratch_buf;
+                    t->byte_offset = 0;
+                    
+                    t->info.ndim = (plan->stride > 1) ? 2 : 1;
+                    t->info.shape[0] = (int32_t)count;
+                    t->info.strides[0] = plan->stride;
+                    if (plan->stride > 1) {
+                        t->info.shape[1] = plan->stride;
+                        t->info.strides[1] = 1;
+                    } else if (plan->stride == 0) {
+                        t->info.strides[0] = 0;
+                    }
+                }
+            } break;
         }
-        
-        // Reductions still need special handling for the buffer
-        if (!provider && batch->reduction_scratch && stride == -1) {
-            // Redirect output to thread-local scratch space
+
+        // Reductions still need special handling
+        if (batch->reduction_scratch && plan->stride == -1) {
             mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
             scratch_buf->data = &batch->reduction_scratch[tid * MF_MAX_REGISTERS + i];
             scratch_buf->size_bytes = sizeof(f32);
@@ -457,8 +380,8 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
             scratch_buf->flags = 0;
             scratch_buf->ref_count = 1;
             
-            worker_t->buffer = scratch_buf;
-            worker_t->byte_offset = 0;
+            t->buffer = scratch_buf;
+            t->byte_offset = 0;
         }
     }
 }
@@ -504,20 +427,7 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
 
     prepare_registers(state, batch, start_idx, count);
 
-    // --- BAKING STAGE ---
-    mf_cpu_baked_instr* baked = MF_ARENA_PUSH(&state->reg_arena, mf_cpu_baked_instr, batch->inst_count);
-    for (u32 i = 0; i < batch->inst_count; ++i) {
-        const mf_instruction* inst = &batch->program->code[batch->start_inst + i];
-        baked[i].raw = inst;
-        baked[i].op_func = (void*)batch->op_table[inst->opcode];
-        baked[i].d  = &state->ctx.registers[inst->dest_idx];
-        baked[i].s1 = (inst->src1_idx < reg_count) ? &state->ctx.registers[inst->src1_idx] : NULL;
-        baked[i].s2 = (inst->src2_idx < reg_count) ? &state->ctx.registers[inst->src2_idx] : NULL;
-        baked[i].s3 = (inst->src3_idx < reg_count) ? &state->ctx.registers[inst->src3_idx] : NULL;
-        baked[i].s4 = (inst->src4_idx < reg_count) ? &state->ctx.registers[inst->src4_idx] : NULL;
-    }
-
-    mf_cpu_exec(&state->ctx, batch, baked, batch->inst_count);
+    mf_cpu_exec(&state->ctx, batch, batch->inst_count);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
         mf_atomic_store(&batch->main_state->error_code, (int32_t)state->ctx.error);
@@ -541,7 +451,6 @@ static void mf_backend_cpu_dispatch(
     if (!domain) return;
 
     size_t total_elements = mf_tensor_count(domain);
-    MF_LOG_INFO("CPU Dispatch: Total elements in domain: %zu", total_elements);
     if (total_elements == 0) {
         MF_LOG_WARN("CPU Backend: Dispatch ignored. Domain has 0 elements.");
         return;
@@ -569,22 +478,10 @@ static void mf_backend_cpu_dispatch(
     };
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
 
-    // 1. Analyze Tensors & Detect Reductions
+    // 1. Build Execution Plan
     u8 reg_processed[MF_MAX_REGISTERS] = {0};
-    memset(batch.strides, 0, sizeof(batch.strides));
-    memset(batch.providers, 0, sizeof(batch.providers));
     bool has_reductions = false;
 
-    // Pre-populate providers from symbols (to avoid aliasing issues in state)
-    for (u32 s = 0; s < program->meta.symbol_count; ++s) {
-        const mf_bin_symbol* sym = &program->symbols[s];
-        if (sym->register_idx < MF_MAX_REGISTERS && sym->provider[0] != '\0') {
-            batch.providers[sym->register_idx] = sym->provider;
-            MF_LOG_DEBUG("  Registry: Reg %u has provider '%s' (from symbol '%s')", sym->register_idx, sym->provider, sym->name);
-        }
-    }
-
-    // Initialize strides from instruction metadata
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         
@@ -595,50 +492,50 @@ static void mf_backend_cpu_dispatch(
             uint16_t reg_idx = regs[r];
             if (reg_idx >= program->meta.tensor_count) continue;
 
-            // NOOP instructions (Constants/Inputs) should not set strides if possible.
-            bool is_noop = (inst->opcode == MF_OP_NOOP);
-
             if (!reg_processed[reg_idx]) {
-                batch.strides[reg_idx] = reg_strides[r];
+                mf_cpu_reg_plan* plan = &batch.plans[reg_idx];
+                mf_tensor* main_t = &main_state->registers[reg_idx];
+                plan->info = main_t->info;
+                plan->stride = reg_strides[r];
+                
+                if (plan->stride == -1) has_reductions = true;
+
+                // Check for Builtin ID from symbols
+                mf_bin_symbol* sym = NULL;
+                for (u32 s = 0; s < program->meta.symbol_count; ++s) {
+                    if (program->symbols[s].register_idx == reg_idx) {
+                        sym = &program->symbols[s];
+                        break;
+                    }
+                }
+
+                if (sym && sym->builtin_id != MF_BUILTIN_NONE) {
+                    plan->type = MF_SRC_GENERATOR;
+                    plan->builtin_id = (mf_builtin_id)sym->builtin_id;
+                    plan->builtin_axis = sym->builtin_axis;
+                } else if (main_t->buffer) {
+                    plan->type = MF_SRC_BUFFER;
+                    plan->buffer = main_t->buffer;
+                    plan->base_offset = main_t->byte_offset;
+                } else {
+                    plan->type = MF_SRC_SCRATCH;
+                }
+
+                // Safety check: if total elements in register is less than the execution domain,
+                // it MUST be a broadcast (stride 0) or we will crash.
+                if (mf_tensor_count(main_t) < total_elements && plan->stride > 0) {
+                    plan->stride = 0;
+                }
+
                 batch.active_regs[batch.active_reg_count++] = reg_idx;
                 reg_processed[reg_idx] = 1;
-            } else if (!is_noop) {
-                // If we already have a stride, but this is a real computation,
-                // prefer the stride from the computation.
-                // Special case: if we have 0 vs 1, we need to decide.
-                // In a batch, if ANY instruction says it's spatial (1), it probably is.
-                // EXCEPT if the computational instruction explicitly says 0.
-                if (reg_strides[r] == 0) {
-                    batch.strides[reg_idx] = 0;
-                } else if (batch.strides[reg_idx] == 0 && reg_strides[r] > 0) {
-                    batch.strides[reg_idx] = reg_strides[r];
+            } else if (inst->opcode != MF_OP_NOOP) {
+                // If register already processed, update stride if the current one is more "spatial"
+                // This handles cases where a register is used as both constant and spatial in different ops
+                // (though compiler should ideally handle this)
+                if (reg_strides[r] != 0 && batch.plans[reg_idx].stride == 0) {
+                    batch.plans[reg_idx].stride = reg_strides[r];
                 }
-            }
-        }
-
-        // Special case: Constants/Inputs should NEVER have stride 1 in a large domain 
-        // if they were inferred as stride 0 in their computational use.
-        // Actually, the priority logic above already handles this IF the computational
-        // instruction comes first. But it doesn't. 
-        // Let's force stride 0 for everything that isn't the domain itself or a provider.
-    }
-
-    // Post-process: ensure providers and domain-matching registers have stride 1
-    for (size_t k = 0; k < batch.active_reg_count; ++k) {
-        u16 reg_idx = batch.active_regs[k];
-        if (batch.providers[reg_idx]) {
-            batch.strides[reg_idx] = 1;
-            continue;
-        }
-
-        // Failsafe: if tensor is smaller than domain, it MUST be broadcasted (stride 0)
-        // to avoid immediate OOB when workers try to slice it.
-        mf_tensor* main_t = &main_state->registers[reg_idx];
-        if (main_t->buffer && mf_tensor_count(main_t) < total_elements) {
-            if (batch.strides[reg_idx] != 0) {
-                MF_LOG_DEBUG("  Failsafe: Reg %u forced to Stride 0 (Size %zu < Domain %zu)", 
-                    reg_idx, mf_tensor_count(main_t), total_elements);
-                batch.strides[reg_idx] = 0;
             }
         }
     }
@@ -648,17 +545,8 @@ static void mf_backend_cpu_dispatch(
         batch.reduction_scratch = calloc(num_threads * MF_MAX_REGISTERS, sizeof(f32));
     }
 
-    for (size_t k = 0; k < batch.active_reg_count; ++k) {
-        u16 reg_idx = batch.active_regs[k];
-        MF_LOG_DEBUG("  Batch Reg %u: Stride %d (Provider: %s)", 
-            reg_idx, batch.strides[reg_idx], batch.providers[reg_idx] ? batch.providers[reg_idx] : "NONE");
-    }
-
     // 3. Dispatch Jobs
     u32 total_jobs = (u32)((total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
-
-    MF_LOG_DEBUG("CPU Dispatch: elements=%zu, jobs=%u, threads=%d, reductions=%s", 
-        total_elements, total_jobs, num_threads, has_reductions ? "YES" : "NO");
 
     if (total_elements <= MF_CPU_INLINE_THRESHOLD || total_jobs == 1) {
         mf_backend_cpu_worker_state local_worker;
@@ -685,7 +573,7 @@ static void mf_backend_cpu_dispatch(
     // 4. Merge Reductions
     if (has_reductions && batch.reduction_scratch) {
         for (u32 reg_idx = 0; reg_idx < program->meta.tensor_count; ++reg_idx) {
-            if (batch.strides[reg_idx] == -1) {
+            if (reg_processed[reg_idx] && batch.plans[reg_idx].stride == -1) {
                 f32 final_val = 0;
                 for (int t = 0; t < num_threads; ++t) {
                     final_val += batch.reduction_scratch[t * MF_MAX_REGISTERS + reg_idx];

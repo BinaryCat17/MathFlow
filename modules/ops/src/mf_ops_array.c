@@ -7,14 +7,11 @@
 #include <mathflow/base/mf_log.h>
 
 typedef struct mf_tensor mf_tensor;
-typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
-
-// ... (op_range, op_cumsum, _check_mask_ptr, op_compress remain the same)
 
 // --- Op: CumSum (Prefix Sum) ---
-static void op_cumsum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src = bi->s1;
+static void op_cumsum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
@@ -28,8 +25,8 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_f32 it_src = mf_accessor_f32_begin(src);
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
 
-    i32 st0 = MF_GET_STRIDE_D(bi);
-    i32 st1 = MF_GET_STRIDE_S1(bi);
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
 
     f32 sum = 0.0f;
     for (size_t i = 0; i < count; ++i) {
@@ -45,10 +42,10 @@ static inline bool _check_mask(const mf_accessor_u8* it) {
 }
 
 // --- Op: Compress (Filter) ---
-static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* data = bi->s1;
-    mf_tensor* mask = bi->s2;
+static void op_compress(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* data = &ctx->registers[inst->src1_idx];
+    mf_tensor* mask = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, data);
@@ -60,7 +57,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     
     size_t true_count = 0;
     mf_accessor_u8 it_count = mf_accessor_u8_begin(mask);
-    i32 st2 = MF_GET_STRIDE_S2(bi);
+    i32 st2 = MF_GET_STRIDE_S2(inst);
 
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_count)) true_count++;
@@ -79,7 +76,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_u8 it_mask = mf_accessor_u8_begin(mask);
     u8* dst_raw = (u8*)mf_tensor_data(dst); 
 
-    i32 st1 = MF_GET_STRIDE_S1(bi);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_mask)) {
@@ -92,10 +89,10 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 // --- Op: Gather (Random Access) ---
-static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src_data = bi->s1;
-    mf_tensor* src_indices = bi->s2;
+static void op_gather(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src_data = &ctx->registers[inst->src1_idx];
+    mf_tensor* src_indices = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src_data);
@@ -120,8 +117,8 @@ static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 
     // Raw pointer for destination (Generic copy)
     u8* dst_ptr = (u8*)mf_tensor_data(dst);
-    i32 st_dst = MF_GET_STRIDE_D(bi);
-    i32 st_idx = MF_GET_STRIDE_S2(bi);
+    i32 st_dst = MF_GET_STRIDE_D(inst);
+    i32 st_idx = MF_GET_STRIDE_S2(inst);
 
     for (size_t i = 0; i < out_count; ++i) {
         int idx = -1;
@@ -150,11 +147,7 @@ static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 void mf_ops_array_register(mf_op_func* table) {
-
     table[MF_OP_GATHER] = op_gather;
-
     table[MF_OP_CUMSUM] = op_cumsum;
-
     table[MF_OP_COMPRESS] = op_compress;
-
 }

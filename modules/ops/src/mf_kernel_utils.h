@@ -7,6 +7,7 @@
 #include <math.h>
 #include <mathflow/isa/mf_accessor.h>
 #include <string.h>
+#include <mathflow/isa/mf_exec_ctx.h>
 
 // --- Helper: Shape Resolution (Inline) ---
 
@@ -62,20 +63,20 @@ static inline f32 mf_utils_get_scalar_f32(const mf_tensor* t) {
 
 // --- Stride Inference ---
 
-#define MF_GET_STRIDE_D(bi)  ((bi)->raw->strides[0])
-#define MF_GET_STRIDE_S1(bi) ((bi)->raw->strides[1])
-#define MF_GET_STRIDE_S2(bi) ((bi)->raw->strides[2])
-#define MF_GET_STRIDE_S3(bi) ((bi)->raw->strides[3])
+#define MF_GET_STRIDE_D(inst)  ((inst)->strides[0])
+#define MF_GET_STRIDE_S1(inst) ((inst)->strides[1])
+#define MF_GET_STRIDE_S2(inst) ((inst)->strides[2])
+#define MF_GET_STRIDE_S3(inst) ((inst)->strides[3])
 
 // --- Macros: Optimized Kernel Definitions ---
 
 #define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
 
 #define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
-    mf_tensor* dst = bi->d; \
-    mf_tensor* a = bi->s1; \
-    mf_tensor* b = bi->s2; \
+static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
+    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
+    mf_tensor* b = &ctx->registers[inst->src2_idx]; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     MF_CHECK_INPUT(ctx, b); \
@@ -83,9 +84,9 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_dst = mf_tensor_count(dst); \
-    i32 st0 = MF_GET_STRIDE_D(bi); \
-    i32 st1 = MF_GET_STRIDE_S1(bi); \
-    i32 st2 = MF_GET_STRIDE_S2(bi); \
+    i32 st0 = MF_GET_STRIDE_D(inst); \
+    i32 st1 = MF_GET_STRIDE_S1(inst); \
+    i32 st2 = MF_GET_STRIDE_S2(inst); \
     if (st0 == 1 && st1 == 1 && st2 == 1 && dst->byte_offset == 0 && a->byte_offset == 0 && b->byte_offset == 0) { \
         TYPE_OUT* d_ptr = (TYPE_OUT*)dst->buffer->data; \
         TYPE_IN* a_ptr = (TYPE_IN*)a->buffer->data; \
@@ -110,11 +111,11 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
 }
 
 #define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
-    mf_tensor* dst = bi->d; \
-    mf_tensor* a = bi->s1; \
-    mf_tensor* b = bi->s2; \
-    mf_tensor* c = bi->s3; \
+static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
+    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
+    mf_tensor* b = &ctx->registers[inst->src2_idx]; \
+    mf_tensor* c = &ctx->registers[inst->src3_idx]; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     MF_CHECK_INPUT(ctx, b); \
@@ -123,10 +124,10 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
     if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, c)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_dst = mf_tensor_count(dst); \
-    i32 st0 = MF_GET_STRIDE_D(bi); \
-    i32 st1 = MF_GET_STRIDE_S1(bi); \
-    i32 st2 = MF_GET_STRIDE_S2(bi); \
-    i32 st3 = MF_GET_STRIDE_S3(bi); \
+    i32 st0 = MF_GET_STRIDE_D(inst); \
+    i32 st1 = MF_GET_STRIDE_S1(inst); \
+    i32 st2 = MF_GET_STRIDE_S2(inst); \
+    i32 st3 = MF_GET_STRIDE_S3(inst); \
     if (st0 == 1 && st1 == 1 && st2 == 1 && st3 == 1 && dst->byte_offset == 0 && a->byte_offset == 0 && b->byte_offset == 0 && c->byte_offset == 0) { \
         TYPE_OUT* d_ptr = (TYPE_OUT*)dst->buffer->data; \
         TYPE_A* a_ptr = (TYPE_A*)a->buffer->data; \
@@ -155,17 +156,17 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
 }
 
 #define MF_KERNEL_UNARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
-    mf_tensor* dst = bi->d; \
-    mf_tensor* a = bi->s1; \
+static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
+    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \
     if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_dst = mf_tensor_count(dst); \
-    i32 st0 = MF_GET_STRIDE_D(bi); \
-    i32 st1 = MF_GET_STRIDE_S1(bi); \
+    i32 st0 = MF_GET_STRIDE_D(inst); \
+    i32 st1 = MF_GET_STRIDE_S1(inst); \
     if (st0 == 1 && st1 == 1 && dst->byte_offset == 0 && a->byte_offset == 0) { \
         TYPE_OUT* d_ptr = (TYPE_OUT*)dst->buffer->data; \
         TYPE_IN* a_ptr = (TYPE_IN*)a->buffer->data; \

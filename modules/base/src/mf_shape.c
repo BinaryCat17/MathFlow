@@ -104,19 +104,19 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
 
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
     if (dom_count <= 1) {
-        // If domain is scalar, we only want 1 element. 
-        // If operand has more than 1 element, we must use stride 0 to stay at index 0.
         return (op_count == 1 || op_count == 0) ? 1 : 0;
     }
     
-    // Exact match or special case for empty constants
-    if (op_count == dom_count || op_count == 0) return 1;
+    if (op_count == 0) return 1;
+
+    // Support for vector streams: op_count is multiple of dom_count
+    if (op_count >= dom_count && (op_count % dom_count) == 0) {
+        return (i32)(op_count / dom_count);
+    }
     
     // Scalar / Broadcast
     if (op_count == 1) return 0;
     
-    // Mismatched sizes cannot be iterated linearly with a single constant stride.
-    // In current VM architecture, we fallback to Stride 0 (broadcasting).
     return 0; 
 }
 

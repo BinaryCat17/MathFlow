@@ -100,5 +100,15 @@ typedef enum {
     MF_ACCESS_RW = 2
 } mf_access_mode;
 
+// --- Builtin Identifiers ---
+typedef enum {
+    MF_BUILTIN_NONE = 0,
+    MF_BUILTIN_INDEX,       // host.index (spatial index)
+    MF_BUILTIN_TIME,        // host.time
+    MF_BUILTIN_RESOLUTION,  // host.resolution
+    MF_BUILTIN_MOUSE,       // host.mouse
+    MF_BUILTIN_COUNT
+} mf_builtin_id;
+
 #endif // MF_TYPES_H
 

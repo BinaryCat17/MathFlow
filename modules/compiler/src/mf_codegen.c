@@ -4,6 +4,36 @@
 #include <mathflow/base/mf_shape.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdlib.h>
+
+static void parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
+    if (!provider || provider[0] == '\0') {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+        return;
+    }
+
+    if (strncmp(provider, "host.index", 10) == 0) {
+        *out_builtin_id = MF_BUILTIN_INDEX;
+        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
+            *out_builtin_axis = (u8)atoi(provider + 11);
+        } else {
+            *out_builtin_axis = 0;
+        }
+    } else if (strcmp(provider, "host.time") == 0) {
+        *out_builtin_id = MF_BUILTIN_TIME;
+        *out_builtin_axis = 0;
+    } else if (strcmp(provider, "host.resolution") == 0) {
+        *out_builtin_id = MF_BUILTIN_RESOLUTION;
+        *out_builtin_axis = 0;
+    } else if (strcmp(provider, "host.mouse") == 0) {
+        *out_builtin_id = MF_BUILTIN_MOUSE;
+        *out_builtin_axis = 0;
+    } else {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+    }
+}
 
 bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, size_t sorted_count, mf_arena* arena) {
     // 0. Find max register index allocated by liveness pass
@@ -54,8 +84,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             if (node->provider) {
                 strncpy(sym->provider, node->provider, MF_MAX_SYMBOL_NAME - 1);
                 sym->provider[MF_MAX_SYMBOL_NAME - 1] = '\0';
+                parse_provider(node->provider, &sym->builtin_id, &sym->builtin_axis);
             } else {
                 sym->provider[0] = '\0';
+                sym->builtin_id = MF_BUILTIN_NONE;
+                sym->builtin_axis = 0;
             }
             sym->flags = (node->type == MF_NODE_INPUT) ? MF_SYMBOL_FLAG_INPUT : 
                          (node->type == MF_NODE_OUTPUT) ? MF_SYMBOL_FLAG_OUTPUT : 0;

@@ -8,7 +8,6 @@
 
 // Forward decls for clean types
 typedef struct mf_tensor mf_tensor;
-typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
 
 // --- Arithmetic ---
 MF_KERNEL_BINARY(add, +)
@@ -38,10 +37,10 @@ MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmax
 
 MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc), f32, f32)
 
-static void op_smoothstep(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* e = bi->s1; // Edges [2] or Scalar
-    mf_tensor* x = bi->s2;
+static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* e = &ctx->registers[inst->src1_idx]; // Edges [2] or Scalar
+    mf_tensor* x = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, e);
@@ -60,19 +59,20 @@ static void op_smoothstep(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     f32 e0 = 0.0f;
     f32 e1 = 1.0f;
     
-    if (mf_tensor_count(e) >= 2) {
+    size_t e_count = mf_tensor_count(e);
+    if (e_count >= 2) {
         e0 = mf_accessor_f32_get(&it_e);
         mf_accessor_f32_advance(&it_e, 1);
         e1 = mf_accessor_f32_get(&it_e);
-    } else if (mf_tensor_count(e) == 1) {
+    } else if (e_count == 1) {
         e1 = mf_accessor_f32_get(&it_e);
     }
 
     f32 span = e1 - e0;
     if (fabsf(span) < 1e-6f) span = 1e-6f;
 
-    i32 st0 = MF_GET_STRIDE_D(bi);
-    i32 st2 = MF_GET_STRIDE_S2(bi);
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st2 = MF_GET_STRIDE_S2(inst);
 
     for (size_t i = 0; i < sz; ++i) {
         f32 val = mf_accessor_f32_get(&it_x);
@@ -108,10 +108,10 @@ static inline f32 _vec_len_sq(mf_accessor_f32* it_a, size_t len) {
     return sum;
 }
 
-static void op_dot(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
-    mf_tensor* b = bi->s2;
+static void op_dot(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
+    mf_tensor* b = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -132,7 +132,7 @@ static void op_dot(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
     mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
     mf_accessor_f32 it_b = mf_accessor_f32_begin(b);
-    i32 st0 = MF_GET_STRIDE_D(bi);
+    i32 st0 = MF_GET_STRIDE_D(inst);
 
     for (size_t i = 0; i < out_count; ++i) {
         mf_accessor_f32_set(&it_dst, MF_SAFE_F32(_vec_dot(&it_a, &it_b, vec_len)));
@@ -140,9 +140,9 @@ static void op_dot(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     }
 }
 
-static void op_length(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
+static void op_length(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -160,7 +160,7 @@ static void op_length(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     size_t out_count = mf_tensor_count(dst);
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
     mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
-    i32 st0 = MF_GET_STRIDE_D(bi);
+    i32 st0 = MF_GET_STRIDE_D(inst);
 
     for (size_t i = 0; i < out_count; ++i) {
         mf_accessor_f32_set(&it_dst, MF_SAFE_F32(sqrtf(_vec_len_sq(&it_a, vec_len))));
@@ -168,9 +168,9 @@ static void op_length(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     }
 }
 
-static void op_normalize(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
+static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -200,9 +200,9 @@ static void op_normalize(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 
 // --- Reduction ---
 
-static void op_reduce_sum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* src = bi->s1;
+static void op_reduce_sum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* src = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
@@ -212,7 +212,7 @@ static void op_reduce_sum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     f32 sum = 0;
     
     mf_accessor_f32 it = mf_accessor_f32_begin(src);
-    i32 st1 = MF_GET_STRIDE_S1(bi);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for (size_t i = 0; i < count; ++i) {
         sum += mf_accessor_f32_get(&it);

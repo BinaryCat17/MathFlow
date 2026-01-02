@@ -7,12 +7,11 @@
 #include <math.h>
 
 typedef struct mf_tensor mf_tensor;
-typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
 
-static void op_matmul(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
-    mf_tensor* b = bi->s2;
+static void op_matmul(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
+    mf_tensor* b = &ctx->registers[inst->src2_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -66,9 +65,9 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 // Zero-Copy Transpose
-static void op_transpose(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
+static void op_transpose(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -79,9 +78,9 @@ static void op_transpose(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     }
 }
 
-static void op_inverse(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
+static void op_inverse(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -127,12 +126,12 @@ static void op_inverse(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 // Join(a, b, [c, d]) -> [..., N] where ... is the common shape
-static void op_join(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* a = bi->s1;
-    mf_tensor* b = bi->s2;
-    mf_tensor* c = bi->s3;
-    mf_tensor* d = bi->s4;
+static void op_join(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
+    mf_tensor* b = &ctx->registers[inst->src2_idx];
+    mf_tensor* c = (inst->src3_idx < ctx->register_count) ? &ctx->registers[inst->src3_idx] : NULL;
+    mf_tensor* d = (inst->src4_idx < ctx->register_count) ? &ctx->registers[inst->src4_idx] : NULL;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);

@@ -1,6 +1,6 @@
 {
     "nodes": [
-        { "id": "Idx", "type": "Index", "data": { "axis": 0, "dtype": "i32" } },
+        { "id": "Idx", "type": "Input", "data": { "shape": [], "dtype": "i32", "provider": "host.index.0" } },
         { "id": "Out", "type": "Output" }
     ],
     "links": [
