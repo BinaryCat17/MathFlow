@@ -29,7 +29,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, access_rule, p1, p2, p3) MF_NODE_##suffix,
+#define MF_OP(suffix, name, opcode, cat, mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4) MF_NODE_##suffix,
     MF_OP_LIST
 #undef MF_OP
 
@@ -44,7 +44,7 @@ typedef struct {
     mf_out_rule out_rule;
     mf_shape_rule shape_rule;
     mf_access_pattern access_pattern;
-    const char* ports[3];
+    const char* ports[4];
 } mf_op_metadata;
 
 extern const mf_op_metadata MF_OP_METADATA[MF_NODE_COUNT];

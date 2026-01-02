@@ -199,4 +199,11 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
     init_kernels(engine, pipe, programs);
     resolve_bindings(engine, pipe);
     apply_initial_data(engine);
+
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        mf_resource_inst* res = &engine->resources[i];
+        char s_shape[64];
+        mf_shape_format(&res->desc.info, s_shape, sizeof(s_shape));
+        MF_LOG_INFO("Engine: Resource '%s' ready. Shape: %s, Size: %zu bytes", res->name, s_shape, res->size_bytes);
+    }
 }

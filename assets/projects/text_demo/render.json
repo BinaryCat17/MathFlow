@@ -1,6 +1,6 @@
 {
     "nodes": [
-        { "id": "out", "type": "Output" },
+        { "id": "out", "type": "Output", "data": {"shape": [600, 800, 4], "dtype": "f32"} },
         { "id": "font", "type": "Input", "data": {"shape": [262144], "dtype": "f32"} },
         { "id": "font_info", "type": "Input", "data": {"shape": [9600], "dtype": "f32"} },
         { "id": "time", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
@@ -9,7 +9,14 @@
         { "id": "pos", "type": "Const", "data": {"value": [50.0, 100.0]} },
         { "id": "size", "type": "Const", "data": {"value": 48.0} },
         
-        { "id": "draw_text", "type": "Call", "data": {"path": "../../lib/text/render_text.json"} }
+        { "id": "draw_text", "type": "Call", "data": {"path": "../../lib/text/render_text.json"} },
+        
+        { "id": "chan", "type": "Index", "data": {"axis": 2} },
+        { "id": "c3", "type": "Const", "data": {"value": 3.0} },
+        { "id": "is_alpha_chan", "type": "Equal" },
+        
+        { "id": "one", "type": "Const", "data": {"value": 1.0} },
+        { "id": "final_color", "type": "Select" }
     ],
     "links": [
         { "src": "pos", "dst": "draw_text", "dst_port": "pos" },
@@ -18,6 +25,13 @@
         { "src": "font_info", "dst": "draw_text", "dst_port": "fontinfo" },
         { "src": "size", "dst": "draw_text", "dst_port": "fontsize" },
         
-        { "src": "draw_text", "src_port": "alpha", "dst": "out", "dst_port": "in" }
+        { "src": "chan", "dst": "is_alpha_chan", "dst_port": "a" },
+        { "src": "c3", "dst": "is_alpha_chan", "dst_port": "b" },
+        
+        { "src": "is_alpha_chan", "dst": "final_color", "dst_port": "cond" },
+        { "src": "one", "dst": "final_color", "dst_port": "true" },
+        { "src": "draw_text", "src_port": "alpha", "dst": "final_color", "dst_port": "false" },
+        
+        { "src": "final_color", "dst": "out", "dst_port": "in" }
     ]
 }

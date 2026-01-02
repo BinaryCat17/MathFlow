@@ -8,6 +8,7 @@
 
 int main(int argc, char** argv) {
     mf_host_init_logger();
+    mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
 
     if (argc < 2) {
         printf("Usage: mf-window <app.mfapp> [--log-interval <seconds>]\n");

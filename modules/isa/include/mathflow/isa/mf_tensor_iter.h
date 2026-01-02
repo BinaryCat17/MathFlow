@@ -40,12 +40,14 @@ static inline mf_tensor_iter mf_tensor_iter_begin(const mf_tensor* t) {
 }
 
 #define _MF_ITER_CHECK_BOUNDS(it, msg_suffix) \
-    if ((it)->ptr > (it)->limit || ((it)->ptr < (it)->start && (it)->tensor->info.ndim > 0)) { \
+    if ((uint8_t*)(it)->ptr > (uint8_t*)(it)->limit || ((uint8_t*)(it)->ptr < (uint8_t*)(it)->start && (it)->tensor->info.ndim > 0)) { \
         MF_LOG_FATAL("Tensor iterator out of bounds " msg_suffix "! Ptr: %p, Range: [%p, %p]", \
                      (it)->ptr, (it)->start, (it)->limit); \
     }
 
 static inline void mf_tensor_iter_next(mf_tensor_iter* it) {
+    if (it->tensor->info.ndim == 0) return; // Scalars never advance
+
     if (it->is_contiguous) {
         it->ptr = (uint8_t*)it->ptr + it->element_size;
     } else {
@@ -70,6 +72,8 @@ check_bounds:
 }
 
 static inline void mf_tensor_iter_advance(mf_tensor_iter* it, i32 step) {
+    if (it->tensor->info.ndim == 0) return; // Scalars never advance
+    
     if (step == 1) {
         mf_tensor_iter_next(it);
         return;

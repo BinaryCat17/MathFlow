@@ -30,7 +30,7 @@ MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
 
 MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, fmaf(va, vb, vc))
 
-MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, (va < vb ? vb : (va > vc ? vc : va)))
+MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, fminf(fmaxf(va, vb), vc))
 
 // --- Reduction ---
 

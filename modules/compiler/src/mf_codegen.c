@@ -62,6 +62,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
         mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
         mf_ir_node* s3 = find_input_source(ir, node_idx, 2); 
+        mf_ir_node* s4 = find_input_source(ir, node_idx, 3);
 
         if (node->type == MF_NODE_CONST) {
             t_desc->buffer = node->constant.buffer;
@@ -95,15 +96,31 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src1_idx = s1 ? s1->out_reg_idx : 0;
             inst->src2_idx = s2 ? s2->out_reg_idx : 0;
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
+            inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
             // Calculate Strides relative to domain
             u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
             size_t dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
             
-            inst->strides[0] = mf_shape_calc_linear_stride(mf_tensor_count(&node->out_shape), dom_count);
-            inst->strides[1] = s1 ? mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), dom_count) : 0;
-            inst->strides[2] = s2 ? mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), dom_count) : 0;
-            inst->strides[3] = s3 ? mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), dom_count) : 0;
+            size_t n_out = mf_tensor_count(&node->out_shape);
+            if (meta->category != MF_OP_CAT_REDUCTION && meta->category != MF_OP_CAT_SPECIAL) {
+                n_out *= dom_count;
+            }
+            inst->strides[0] = mf_shape_calc_linear_stride(n_out, dom_count);
+
+            mf_ir_node* srcs[] = { s1, s2, s3, s4 };
+            for (int s = 0; s < 4; ++s) {
+                if (srcs[s]) {
+                    size_t n_src = mf_tensor_count(&srcs[s]->out_shape);
+                    if (MF_OP_METADATA[srcs[s]->type].category != MF_OP_CAT_REDUCTION && 
+                        MF_OP_METADATA[srcs[s]->type].category != MF_OP_CAT_SPECIAL) {
+                        n_src *= dom_count;
+                    }
+                    inst->strides[s + 1] = mf_shape_calc_linear_stride(n_src, dom_count);
+                } else {
+                    inst->strides[s + 1] = 0;
+                }
+            }
 
             if (meta->category == MF_OP_CAT_SPECIAL) {
                 if (node->type == MF_NODE_INPUT && s1) {

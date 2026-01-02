@@ -123,39 +123,50 @@ static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
-// Join(a, b) -> [..., 2] where ... is the common shape
+// Join(a, b, [c, d]) -> [..., N] where ... is the common shape
 static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    mf_tensor* c = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
+    mf_tensor* d = mf_exec_ctx_map_tensor(ctx, inst->src4_idx, MF_ACCESS_READ);
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
     MF_CHECK_INPUT(ctx, b);
 
-    size_t sz_a = mf_tensor_count(a);
-    size_t sz_b = mf_tensor_count(b);
-    if (sz_a != sz_b) return; 
-    
-    // Setup Output Shape
-    int32_t out_shape[MF_MAX_DIMS];
-    for (int i=0; i<a->info.ndim; ++i) out_shape[i] = a->info.shape[i];
-    out_shape[a->info.ndim] = 2;
-    uint8_t out_ndim = a->info.ndim + 1;
+    int components = dst->info.shape[dst->info.ndim - 1];
+    if (components >= 3) MF_CHECK_INPUT(ctx, c);
+    if (components >= 4) MF_CHECK_INPUT(ctx, d);
 
-    dst->info.dtype = a->info.dtype; 
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, out_shape, out_ndim)) return;
+    if (!mf_exec_ctx_resize_tensor(ctx, dst, dst->info.shape, dst->info.ndim)) return;
     MF_CHECK_DST_DATA(ctx, dst);
     
+    size_t sz_a = mf_tensor_count(a);
     mf_tensor_iter it_a = mf_tensor_iter_begin(a);
     mf_tensor_iter it_b = mf_tensor_iter_begin(b);
+    mf_tensor_iter it_c = (components >= 3) ? mf_tensor_iter_begin(c) : (mf_tensor_iter){0};
+    mf_tensor_iter it_d = (components >= 4) ? mf_tensor_iter_begin(d) : (mf_tensor_iter){0};
     mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
     
     for (size_t i = 0; i < sz_a; ++i) {
         *((f32*)it_dst.ptr) = *((f32*)it_a.ptr);
         mf_tensor_iter_next(&it_dst);
+        
         *((f32*)it_dst.ptr) = *((f32*)it_b.ptr);
         mf_tensor_iter_next(&it_dst);
+
+        if (components >= 3) {
+            *((f32*)it_dst.ptr) = *((f32*)it_c.ptr);
+            mf_tensor_iter_next(&it_dst);
+            mf_tensor_iter_next(&it_c);
+        }
+        
+        if (components >= 4) {
+            *((f32*)it_dst.ptr) = *((f32*)it_d.ptr);
+            mf_tensor_iter_next(&it_dst);
+            mf_tensor_iter_next(&it_d);
+        }
 
         mf_tensor_iter_next(&it_a);
         mf_tensor_iter_next(&it_b);

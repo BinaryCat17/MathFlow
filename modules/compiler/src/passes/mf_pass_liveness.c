@@ -45,7 +45,9 @@ bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_com
         }
 
         // Special handling for persistent nodes (Inputs, Constants, Outputs)
-        bool persistent = (node->type == MF_NODE_INPUT || node->type == MF_NODE_CONST || node->type == MF_NODE_OUTPUT);
+        // AND for nodes that change shape (to avoid buffer overflow in aliased registers)
+        bool change_shape = (node->type == MF_NODE_JOIN || node->type == MF_NODE_RESHAPE || node->type == MF_NODE_SLICE);
+        bool persistent = (node->type == MF_NODE_INPUT || node->type == MF_NODE_CONST || node->type == MF_NODE_OUTPUT || change_shape);
 
         if (persistent) {
             node->out_reg_idx = next_reg++;

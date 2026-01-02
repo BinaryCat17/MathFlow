@@ -24,16 +24,16 @@ static inline bool _mf_should_log_error(mf_exec_ctx* ctx) {
     return true;
 }
 
-// Validates Input Tensor: Must be completely valid (Struct + Buffer + Data)
+// Validates Input Tensor: Must be completely valid (Struct + Buffer + Data + non-zero size)
 #define MF_CHECK_INPUT(CTX, T) \
     do { \
-        if (!(T) || !(T)->buffer || !(T)->buffer->data) { \
+        if (!(T) || !(T)->buffer || !(T)->buffer->data || (T)->buffer->size_bytes == 0) { \
             if (_mf_should_log_error(CTX)) { \
                 int reg_idx = -1; \
                 if ((T) >= (CTX)->registers && (T) < (CTX)->registers + (CTX)->register_count) { \
                     reg_idx = (int)((T) - (CTX)->registers); \
                 } \
-                MF_LOG_ERROR("Runtime Error: Invalid INPUT tensor access (Reg: %d, Unallocated or Null). Op execution aborted.", reg_idx); \
+                MF_LOG_ERROR("Runtime Error: Invalid INPUT tensor access (Reg: %d, Unallocated, Null or Zero Size). Op execution aborted.", reg_idx); \
             } \
             (CTX)->error = MF_ERROR_RUNTIME; \
             return; \
@@ -55,9 +55,13 @@ static inline bool _mf_should_log_error(mf_exec_ctx* ctx) {
 // Validates Destination Data: Must be called AFTER allocation/resize
 #define MF_CHECK_DST_DATA(CTX, T) \
     do { \
-        if (!(T) || !(T)->buffer || !(T)->buffer->data) { \
+        if (!(T) || !(T)->buffer || !(T)->buffer->data || (T)->buffer->size_bytes == 0) { \
             if (_mf_should_log_error(CTX)) { \
-                MF_LOG_ERROR("Runtime Error: Invalid DST tensor data (Allocation failed?). Op execution aborted."); \
+                int reg_idx = -1; \
+                if ((T) >= (CTX)->registers && (T) < (CTX)->registers + (CTX)->register_count) { \
+                    reg_idx = (int)((T) - (CTX)->registers); \
+                } \
+                MF_LOG_ERROR("Runtime Error: Invalid DST tensor data (Reg: %d, Allocation failed or size is 0). Op execution aborted.", reg_idx); \
             } \
             (CTX)->error = MF_ERROR_OOM; \
             return; \

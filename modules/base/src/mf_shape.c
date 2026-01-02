@@ -78,19 +78,27 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
     if (dom_count <= 1) return (op_count > 0) ? 1 : 0;
     
-    if (op_count == dom_count) return 1;
+    if (op_count == dom_count || op_count == 0) return 1;
     if (op_count == 1) return 0;
-    if (op_count > dom_count && (op_count % dom_count == 0)) return (i32)(op_count / dom_count);
     
-    return 0; // Default to broadcast/constant
+    if (op_count > dom_count && (op_count % dom_count == 0)) {
+        size_t stride = op_count / dom_count;
+        if (stride <= 16) return (i32)stride; 
+    }
+    
+    return 0; 
 }
 
 bool mf_shape_is_compatible(const mf_type_info* port, const mf_type_info* res, bool is_output) {
-    if (port->dtype != res->dtype) return false;
+    if (port->dtype != res->dtype && port->dtype != MF_DTYPE_UNKNOWN) return false;
+
+    // If port has no shape defined, it's compatible with anything (it will adopt the resource shape)
+    if (port->ndim == 0) return true;
 
     // Output ports must match exactly (for static dimensions)
+    // or be a prefix of the resource shape (e.g. [H, W] -> [H, W, 4])
     if (is_output) {
-        if (port->ndim != res->ndim) return false;
+        if (res->ndim < port->ndim) return false;
         for (int i = 0; i < port->ndim; ++i) {
             if (port->shape[i] > 0 && res->shape[i] > 0 && port->shape[i] != res->shape[i]) {
                 return false;

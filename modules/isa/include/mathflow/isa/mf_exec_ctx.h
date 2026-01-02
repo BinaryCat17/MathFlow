@@ -85,8 +85,16 @@ static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_ac
 static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
     if (!tensor) return false;
     
+    int32_t resolved_shape[MF_MAX_DIMS];
+    if (new_ndim > 0) {
+        for (int i = 0; i < new_ndim; ++i) resolved_shape[i] = new_shape[i];
+        if (resolved_shape[0] <= 0 && ctx->batch_size > 0) {
+            resolved_shape[0] = (int32_t)ctx->batch_size;
+        }
+    }
+
     mf_type_info info;
-    mf_type_info_init_contiguous(&info, tensor->info.dtype, new_shape, new_ndim);
+    mf_type_info_init_contiguous(&info, tensor->info.dtype, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
 
     if (!mf_tensor_resize(tensor, ctx->allocator, &info)) {
         ctx->error = MF_ERROR_OOM;

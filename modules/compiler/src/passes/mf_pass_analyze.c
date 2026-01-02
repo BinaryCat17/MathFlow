@@ -125,7 +125,12 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             case MF_SHAPE_JOIN:
                 if (!s1 || !s2) return false;
                 out->info = s1->out_shape.info;
-                out->info.shape[out->info.ndim++] = 2;
+                {
+                    int components = 2;
+                    if (s3) components++;
+                    if (find_input_source(ir, (u32)(node - ir->nodes), 3)) components++;
+                    out->info.shape[out->info.ndim++] = components;
+                }
                 break;
 
             case MF_SHAPE_GATHER:

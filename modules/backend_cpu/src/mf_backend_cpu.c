@@ -16,8 +16,8 @@
 
 #define MF_CPU_JOB_SIZE         4096         // Elements per job (Linear)
 #define MF_CPU_INLINE_THRESHOLD 1024         // If total elements < this, run inline
-#define MF_CPU_WORKER_HEAP_SZ   (16*1024*1024) // 16MB per worker
-#define MF_CPU_REG_ARENA_SZ     (64*1024)    // 64KB for registers metadata
+#define MF_CPU_WORKER_HEAP_SZ   (64*1024*1024) // 64MB per worker
+#define MF_CPU_REG_ARENA_SZ     (128*1024)    // 128KB for registers metadata
 #define MF_MAX_REGISTERS        512          // Max tensors per program
 
 // --- Internal Structures ---
@@ -114,15 +114,24 @@ static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t 
                  "             KERNEL CRASH REPORT\n"
                  "==================================================\n"
                  "  Instruction : #%u (Opcode: %s [%d])\n"
-                 "  Registers   : D:%u, S1:%u, S2:%u, S3:%u\n"
+                 "  Registers   : D:%u, S1:%u, S2:%u, S3:%u, S4:%u\n"
                  "  Domain Coord: [%s]\n"
                  "  Linear Index: %u\n"
                  "  Error Type  : %s\n"
                  "==================================================",
                  inst_idx, mf_opcode_to_str(inst->opcode), inst->opcode, 
-                 inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx,
+                 inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx,
                  coords, ctx->linear_offset,
                  mf_exec_error_to_str(ctx->error));
+}
+
+static f32 get_val(mf_tensor* t) {
+    if (!t || !t->buffer || !t->buffer->data) return 0;
+    void* d = (u8*)t->buffer->data + t->byte_offset;
+    if (t->info.dtype == MF_DTYPE_F32) return *(f32*)d;
+    if (t->info.dtype == MF_DTYPE_I32) return (f32)*(int32_t*)d;
+    if (t->info.dtype == MF_DTYPE_U8) return (f32)*(u8*)d;
+    return 0;
 }
 
 static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table, const mf_cpu_parallel_batch* batch) {
@@ -136,6 +145,23 @@ static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_o
         if (ctx->global_error_ptr && mf_atomic_load(ctx->global_error_ptr) != 0) break;
 
         const mf_instruction* inst = &code[i];
+        
+        if (ctx->linear_offset == 0) {
+            f32 v_s1 = 0, v_s2 = 0, v_s3 = 0, v_s4 = 0;
+            mf_tensor* t1 = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+            mf_tensor* t2 = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+            mf_tensor* t3 = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
+            mf_tensor* t4 = mf_exec_ctx_map_tensor(ctx, inst->src4_idx, MF_ACCESS_READ);
+            if (t1) v_s1 = get_val(t1);
+            if (t2) v_s2 = get_val(t2);
+            if (t3) v_s3 = get_val(t3);
+            if (t4) v_s4 = get_val(t4);
+            MF_LOG_DEBUG("Exec #%u: %s (D:%u, S1:%u[%.2f], S2:%u[%.2f], S3:%u[%.2f], S4:%u[%.2f]) Strides: [%d, %d, %d, %d, %d]", 
+                i, mf_opcode_to_str(inst->opcode), inst->dest_idx, 
+                inst->src1_idx, v_s1, inst->src2_idx, v_s2, inst->src3_idx, v_s3, inst->src4_idx, v_s4,
+                inst->strides[0], inst->strides[1], inst->strides[2], inst->strides[3], inst->strides[4]);
+        }
+
         mf_op_func op = op_table[inst->opcode];
         if (op) {
             op(ctx, inst);
@@ -162,11 +188,34 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         *worker_t = *main_t;
 
         i32 stride = batch->strides[i];
-        if (mf_tensor_is_valid(main_t)) {
+        if (main_t->buffer) {
             size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
             worker_t->byte_offset = main_t->byte_offset + (start_idx * (size_t)stride * dtype_sz);
+            
+            if (i == 57 || stride > 1) {
+                MF_LOG_TRACE("  Prep Reg %u: External (Buffer: %p, Size: %zu, Stride: %d, Offset: %zu)", 
+                    i, (void*)main_t->buffer->data, main_t->buffer->size_bytes, stride, worker_t->byte_offset);
+            }
         } else {
-            worker_t->byte_offset = 0;
+            // This is a temporary register (scratchpad). Allocate memory in worker's arena.
+            size_t elements = count * (stride > 0 ? (size_t)stride : 1); 
+            size_t dt_size = mf_dtype_size(main_t->info.dtype);
+            if (dt_size == 0) dt_size = 4; // Fallback to float size if unknown
+            size_t bytes = elements * dt_size;
+            
+            void* mem = mf_exec_ctx_scratch_alloc(worker_ctx, bytes);
+            if (mem) {
+                mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
+                mf_buffer_init_view(scratch_buf, mem, bytes);
+                worker_t->buffer = scratch_buf;
+                worker_t->byte_offset = 0;
+                
+                if (stride > 1) {
+                    MF_LOG_TRACE("  Prep Reg %u: Scratchpad (Size: %zu, Stride: %d)", i, bytes, stride);
+                }
+            } else {
+                MF_LOG_FATAL("CPU Backend: Out of scratchpad memory for register %u", i);
+            }
         }
         
         // Adjust metadata for the flat window view
@@ -258,7 +307,10 @@ static void mf_backend_cpu_dispatch(
     if (!domain) return;
 
     size_t total_elements = mf_tensor_count(domain);
-    if (total_elements == 0) return;
+    if (total_elements == 0) {
+        MF_LOG_WARN("CPU Backend: Dispatch ignored. Domain has 0 elements.");
+        return;
+    }
 
     if (program->meta.tensor_count > MF_MAX_REGISTERS) {
         MF_LOG_ERROR("CPU Backend: Program tensor count (%u) exceeds backend limit (%d).", 
@@ -283,41 +335,32 @@ static void mf_backend_cpu_dispatch(
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
 
     // 1. Analyze Tensors & Detect Reductions
-    bool has_reductions = false;
-    u8 reg_used[MF_MAX_REGISTERS] = {0};
+    u8 reg_processed[MF_MAX_REGISTERS] = {0};
+    memset(batch.strides, 0, sizeof(batch.strides));
 
-    // Mark registers used in the current instruction range
+    // Initialize strides from instructions in the current range
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
-        reg_used[inst->dest_idx] = 1;
-        reg_used[inst->src1_idx] = 1;
-        reg_used[inst->src2_idx] = 1;
-        reg_used[inst->src3_idx] = 1;
-
-        if (inst->opcode == MF_OP_SUM) {
-            has_reductions = true; // Temporary flag, refined below
-        }
-    }
-
-    // Always include the domain register as it's needed for context/metadata
-    for (u32 i = 0; i < program->meta.task_count; ++i) {
-        if (program->tasks[i].start_inst == start_inst) {
-            reg_used[program->tasks[i].domain_reg] = 1;
-            break;
-        }
-    }
-
-    for (u32 i = 0; i < program->meta.tensor_count; ++i) {
-        if (!reg_used[i]) continue;
         
-        batch.active_regs[batch.active_reg_count++] = (u16)i;
-
-        mf_tensor* main_t = &main_state->registers[i];
-        batch.strides[i] = mf_shape_calc_linear_stride(mf_tensor_count(main_t), total_elements);
+        uint16_t regs[] = { inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx };
+        for (int r = 0; r < 5; ++r) {
+            uint16_t reg_idx = regs[r];
+            if (!reg_processed[reg_idx]) {
+                batch.strides[reg_idx] = inst->strides[r];
+                batch.active_regs[batch.active_reg_count++] = reg_idx;
+                reg_processed[reg_idx] = 1;
+            } else {
+                // If register is used multiple times, ensure we take the non-zero stride 
+                // (e.g. if used as both uniform and spatial)
+                if (inst->strides[r] > batch.strides[reg_idx]) {
+                    batch.strides[reg_idx] = inst->strides[r];
+                }
+            }
+        }
     }
 
     // Refine reductions: only mark as REDUCTION (-1) if it's a SUM over a SPATIAL input
-    has_reductions = false;
+    bool has_reductions = false;
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         if (inst->opcode == MF_OP_SUM) {

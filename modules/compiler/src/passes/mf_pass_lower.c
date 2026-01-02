@@ -19,7 +19,7 @@ static mf_node_type get_node_type(const char* type_str) {
 static u32 get_port_index(mf_node_type type, const char* port_name) {
     if (!port_name || type >= MF_NODE_COUNT) return 0;
     const mf_op_metadata* meta = &MF_OP_METADATA[type];
-    for (u32 i = 0; i < 3; ++i) {
+    for (u32 i = 0; i < 4; ++i) {
         if (meta->ports[i] && strcmp(meta->ports[i], port_name) == 0) return i;
     }
     return 0;

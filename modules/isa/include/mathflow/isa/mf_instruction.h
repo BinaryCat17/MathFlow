@@ -15,12 +15,12 @@ typedef struct {
     u16 src1_idx;
     u16 src2_idx;
     u16 src3_idx;
-    u16 padding;
+    u16 src4_idx;
 
-    // Element-strides for [Dest, Src1, Src2, Src3]
+    // Element-strides for [Dest, Src1, Src2, Src3, Src4]
     // Determines pointer advancement per domain element.
     // 0 = Constant/Broadcast, 1 = Sequential, C = Channels
-    i32 strides[4]; 
+    i32 strides[5]; 
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

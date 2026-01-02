@@ -1,0 +1,35 @@
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_Time'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_Resolution'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_Mouse'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_ResX'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_ResY'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'u_Aspect'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:179] Manifest: Injected system resource 'out_Color'[0m
+21:55:29 [36m[DEBUG][0m [mf_manifest_loader.c:182] Manifest: Total resources after injection: 9[0m
+21:55:29 [32m[INFO ][0m [mf_engine.c:90] Creating Engine...[0m
+21:55:29 [32m[INFO ][0m [mf_loader.c:242] Loader: Loading Pipeline with 1 kernels[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_inline.c:148] Inline: Registered default output for 'draw_text' -> alpha[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_inline.c:148] Inline: Registered default output for 'draw_text::atlasu' -> out[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_inline.c:148] Inline: Registered default output for 'draw_text::atlasv' -> out[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_inline.c:148] Inline: Registered default output for 'draw_text::mask' -> out[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_fuse.c:41] Fusing MUL (draw_text::yoff_base) and ADD (draw_text::yoff_screen) into FMA[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_fuse.c:41] Fusing MUL (draw_text::atlasu::m1) and ADD (draw_text::atlasu::res) into FMA[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_fuse.c:41] Fusing MUL (draw_text::atlasv::m1) and ADD (draw_text::atlasv::res) into FMA[0m
+21:55:29 [36m[DEBUG][0m [mf_pass_fuse.c:41] Fusing MUL (draw_text::rowoff) and ADD (draw_text::flatidx) into FMA[0m
+21:55:29 [32m[INFO ][0m [mf_pass_liveness.c:78] Liveness: Allocated 57 registers for 117 nodes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:196] Binding Pipeline: 9 resources, 1 kernels[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'MyFont' ready. Shape: [262144], Size: 1048576 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'MyFont_Info' ready. Shape: [9600], Size: 38400 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_Time' ready. Shape: [], Size: 4 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_Resolution' ready. Shape: [2], Size: 8 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_Mouse' ready. Shape: [4], Size: 16 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_ResX' ready. Shape: [], Size: 4 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_ResY' ready. Shape: [], Size: 4 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'u_Aspect' ready. Shape: [], Size: 4 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_pipeline.c:207] Engine: Resource 'out_Color' ready. Shape: [1,1,4], Size: 16 bytes[0m
+21:55:29 [32m[INFO ][0m [mf_loader.c:504] Loader: Loaded Font /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf. Atlas: 512x512, Glyphs: 174[0m
+21:55:29 [32m[INFO ][0m [mf_host_headless.c:24] Running for 1 frames...
+[0m
+21:55:29 [90m[TRACE][0m [mf_engine.c:181] Dispatching Pipeline frame 0[0m
+21:55:29 [90m[TRACE][0m [mf_engine.c:218]   Executing Kernel: render[0m
+21:55:29 [36m[DEBUG][0m [mf_backend_cpu.c:355] CPU Dispatch: elements=1920000, jobs=469, threads=1, reductions=NO[0m

@@ -212,6 +212,9 @@ void mf_engine_dispatch(mf_engine* engine) {
             t->buffer = (bind->flags & MF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
             t->byte_offset = 0;
             t->info = res->desc.info; // Sync metadata
+
+            MF_LOG_TRACE("  Binding: Reg %u -> Resource '%s' (Buffer: %p, Size: %zu)", 
+                bind->local_reg, res->name, (void*)t->buffer->data, t->buffer->size_bytes);
         }
         
         // 3. Execution (Frequency Loop)

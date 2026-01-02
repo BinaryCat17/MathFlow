@@ -165,6 +165,9 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
         } else {
             MF_LOG_ERROR("Gather out of bounds! Index %d (Data Size: %zu)", idx, data_count);
             ctx->error = MF_ERROR_OUT_OF_BOUNDS;
+            if (ctx->global_error_ptr) {
+                mf_atomic_store(ctx->global_error_ptr, (int32_t)MF_ERROR_OUT_OF_BOUNDS);
+            }
             break;
         }
         mf_tensor_iter_next(&it_idx);
