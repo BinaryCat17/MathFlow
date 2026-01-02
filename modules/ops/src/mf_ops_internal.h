@@ -7,16 +7,9 @@
 #include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_exec_ctx.h>
 
-void mf_ops_register_math(mf_op_func* table);
-void mf_ops_register_logic(mf_op_func* table);
-void mf_ops_register_matrix(mf_op_func* table);
-void mf_ops_register_state(mf_op_func* table);
-
-// Aggregate registrars (internal use only)
-void mf_ops_core_register(mf_op_func* table);
-void mf_ops_array_register(mf_op_func* table);
-
-// --- Validation Macros ---
+/**
+ * Internal helpers for MathFlow kernels.
+ */
 
 static inline bool _mf_should_log_error(mf_exec_ctx* ctx) {
     if (ctx->error != MF_ERROR_NONE) return false;

@@ -68,10 +68,9 @@ typedef struct mf_program {
     
     mf_instruction* code;
     
-    // Array of tensor descriptors initialized from file.
-    // NOTE: 'data' pointers here point to the Program's Constant Data Block.
-    // When VM loads this, it clones these tensors into its own memory pool.
-    mf_tensor* tensors; 
+    // Array of descriptors and initial constant data
+    mf_type_info* tensor_infos;
+    void** tensor_data;
     
     uint8_t* builtin_ids;  // Array of mf_builtin_id per tensor
     uint8_t* builtin_axes; // Array of builtin axis per tensor

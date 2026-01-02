@@ -7,32 +7,28 @@
 #include <math.h>
 
 // --- Arithmetic ---
-MF_KERNEL_BINARY(add, +)
-MF_KERNEL_BINARY(sub, -)
-MF_KERNEL_BINARY(mul, *)
-MF_KERNEL_BINARY(div, /)
-MF_KERNEL_BINARY_FUNC(atan2, atan2f)
-MF_KERNEL_BINARY_FUNC(pow, powf)
+MF_KERNEL_MATH_B(ADD, +)
+MF_KERNEL_MATH_B(SUB, -)
+MF_KERNEL_MATH_B(MUL, *)
+MF_KERNEL_MATH_B(DIV, /)
+MF_KERNEL_BINARY(STEP, f32, f32, MF_SAFE_F32(vb < va ? 0.0f : 1.0f))
+MF_KERNEL_MATH_BF(ATAN2, atan2f)
+MF_KERNEL_MATH_BF(POW, powf)
 
 // --- Unary Math ---
-MF_KERNEL_UNARY(sin, sinf)
-MF_KERNEL_UNARY(cos, cosf)
-MF_KERNEL_UNARY(floor, floorf)
-MF_KERNEL_UNARY(ceil, ceilf)
-MF_KERNEL_UNARY(abs, fabsf)
-MF_KERNEL_UNARY(sqrt, sqrtf)
+MF_KERNEL_MATH_U(SIN, sinf)
+MF_KERNEL_MATH_U(COS, cosf)
+MF_KERNEL_MATH_U(FLOOR, floorf)
+MF_KERNEL_MATH_U(CEIL, ceilf)
+MF_KERNEL_MATH_U(ABS, fabsf)
+MF_KERNEL_MATH_U(SQRT, sqrtf)
 
 // --- Min/Max/Clamp/Mix ---
-
-MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb))
-
-MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
-
-MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, MF_SAFE_F32(fmaf(va, vb, vc)))
-
-MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)))
-
-MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc))
+MF_KERNEL_BINARY(MIN, f32, f32, (va < vb ? va : vb))
+MF_KERNEL_BINARY(MAX, f32, f32, (va > vb ? va : vb))
+MF_KERNEL_TERNARY(FMA, f32, f32, f32, f32, MF_SAFE_F32(fmaf(va, vb, vc)))
+MF_KERNEL_TERNARY(CLAMP, f32, f32, f32, f32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)))
+MF_KERNEL_TERNARY(MIX, f32, f32, f32, f32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc))
 
 // --- Vector Math ---
 
@@ -53,7 +49,7 @@ static inline f32 _vec_len_sq_impl(f32* a_ptr, size_t len) {
     return sum;
 }
 
-static void op_dot(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_DOT(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
@@ -74,7 +70,7 @@ static void op_dot(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-static void op_length(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_LENGTH(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
@@ -92,7 +88,7 @@ static void op_length(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_NORMALIZE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
@@ -115,7 +111,7 @@ static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_SMOOTHSTEP(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t sz = ctx->batch_size;
     
     f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
@@ -123,7 +119,6 @@ static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     f32* e_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
     const mf_type_info* e_info = &ctx->reg_info[inst->src1_idx];
 
-    // Smoothstep has 2 edges.
     f32 e0 = 0.0f;
     f32 e1 = 1.0f;
     
@@ -156,10 +151,9 @@ static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-
 // --- Reduction ---
 
-static void op_reduce_sum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_SUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* src_info = &ctx->reg_info[inst->src1_idx];
     size_t sz = ctx->batch_size;
     
@@ -172,31 +166,6 @@ static void op_reduce_sum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         s_ptr += st1;
     }
     
-    // Result is a scalar
     f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
     *d_ptr = sum;
-}
-void mf_ops_register_math(mf_op_func* table) {
-    table[MF_OP_ADD] = op_add;
-    table[MF_OP_SUB] = op_sub;
-    table[MF_OP_MUL] = op_mul;
-    table[MF_OP_DIV] = op_div;
-    table[MF_OP_SIN] = op_sin;
-    table[MF_OP_COS] = op_cos;
-    table[MF_OP_FLOOR] = op_floor;
-    table[MF_OP_CEIL] = op_ceil;
-    table[MF_OP_ABS] = op_abs;
-    table[MF_OP_SQRT] = op_sqrt;
-    table[MF_OP_MIN] = op_min;
-    table[MF_OP_MAX] = op_max;
-    table[MF_OP_FMA] = op_fma;
-    table[MF_OP_CLAMP] = op_clamp;
-    table[MF_OP_MIX] = op_mix;
-    table[MF_OP_SMOOTHSTEP] = op_smoothstep;
-    table[MF_OP_DOT] = op_dot;
-    table[MF_OP_LENGTH] = op_length;
-    table[MF_OP_NORMALIZE] = op_normalize;
-    table[MF_OP_POW] = op_pow;
-    table[MF_OP_ATAN2] = op_atan2;
-    table[MF_OP_SUM] = op_reduce_sum;
 }

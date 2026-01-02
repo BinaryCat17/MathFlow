@@ -9,13 +9,13 @@ static bool op_metadata_initialized = false;
 static void init_op_metadata() {
     if (op_metadata_initialized) return;
 
-#define MF_OP(suffix, op_name, opcode, cat, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4) \
-    if ((int)opcode < MF_OP_LIMIT) { \
-        OP_METADATA[(int)opcode].name = op_name; \
-        OP_METADATA[(int)opcode].ports[0] = p1; \
-        OP_METADATA[(int)opcode].ports[1] = p2; \
-        OP_METADATA[(int)opcode].ports[2] = p3; \
-        OP_METADATA[(int)opcode].ports[3] = p4; \
+#define MF_OP(suffix, op_name, op_suffix, cat, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4) \
+    if ((int)MF_OP_##op_suffix < MF_OP_LIMIT) { \
+        OP_METADATA[(int)MF_OP_##op_suffix].name = op_name; \
+        OP_METADATA[(int)MF_OP_##op_suffix].ports[0] = p1; \
+        OP_METADATA[(int)MF_OP_##op_suffix].ports[1] = p2; \
+        OP_METADATA[(int)MF_OP_##op_suffix].ports[2] = p3; \
+        OP_METADATA[(int)MF_OP_##op_suffix].ports[3] = p4; \
     }
     MF_OP_LIST
 #undef MF_OP

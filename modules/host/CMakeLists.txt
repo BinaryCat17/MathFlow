@@ -3,7 +3,6 @@ find_package(Stb REQUIRED)
 
 # --- Host Core (Manifest, Config, Loader, Headless) ---
 add_library(mf_host_core STATIC
-    src/mf_manifest_loader.c
     src/mf_host_headless.c
     src/mf_host_common.c
     src/mf_loader.c

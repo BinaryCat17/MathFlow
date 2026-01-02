@@ -463,7 +463,7 @@ static void mf_backend_cpu_dispatch(
     // 0. Pre-calculate Shapes and Allocate Memory
     for (uint32_t i = 0; i < program->meta.tensor_count; ++i) {
         mf_tensor* t = &main_state->registers[i];
-        if (!t->buffer && program->builtin_ids[i] == MF_BUILTIN_NONE) {
+        if (!t->buffer && program->builtin_ids[i] == MF_BUILTIN_NONE && program->tensor_data[i] == NULL) {
             mf_exec_ctx_resize_tensor(NULL, t, t->info.shape, t->info.ndim);
         }
     }

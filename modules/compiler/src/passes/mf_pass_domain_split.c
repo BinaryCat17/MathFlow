@@ -24,8 +24,8 @@ static void mark_domain(mf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
             
             // For now, if shapes are different, we mark as shared (UINT32_MAX).
             // If shapes are same, we can stick to one domain as they are compatible.
-            const mf_type_info* shape_a = &ir->nodes[node->domain_node_idx].out_shape.info;
-            const mf_type_info* shape_b = &ir->nodes[domain_idx].out_shape.info;
+            const mf_type_info* shape_a = &ir->nodes[node->domain_node_idx].out_info;
+            const mf_type_info* shape_b = &ir->nodes[domain_idx].out_info;
             
             if (!shapes_equal(shape_a, shape_b)) {
                 node->domain_node_idx = UINT32_MAX; 
@@ -61,7 +61,7 @@ bool mf_pass_domain_split(mf_graph_ir* ir, mf_compiler_diag* diag) {
             u32 rep_idx = (u32)i;
             for (size_t j = 0; j < i; ++j) {
                 if (ir->nodes[j].type == MF_NODE_OUTPUT && 
-                    shapes_equal(&ir->nodes[j].out_shape.info, &ir->nodes[i].out_shape.info)) 
+                    shapes_equal(&ir->nodes[j].out_info, &ir->nodes[i].out_info)) 
                 {
                     rep_idx = (u32)j;
                     break;

@@ -5,22 +5,22 @@
 #include <string.h>
 
 // --- Comparison ---
-MF_KERNEL_COMPARE(less, <)
-MF_KERNEL_COMPARE(greater, >)
-MF_KERNEL_COMPARE(equal, ==)
-MF_KERNEL_COMPARE(nequal, !=)
-MF_KERNEL_COMPARE(lequal, <=)
-MF_KERNEL_COMPARE(gequal, >=)
+MF_KERNEL_COMPARE(LESS, <)
+MF_KERNEL_COMPARE(GREATER, >)
+MF_KERNEL_COMPARE(EQUAL, ==)
+MF_KERNEL_COMPARE(NEQUAL, !=)
+MF_KERNEL_COMPARE(LEQUAL, <=)
+MF_KERNEL_COMPARE(GEQUAL, >=)
 
 // --- Logic ---
-MF_KERNEL_LOGIC(and, &&)
-MF_KERNEL_LOGIC(or, ||)
-MF_KERNEL_LOGIC(xor, !=)
+MF_KERNEL_LOGIC(AND, &&)
+MF_KERNEL_LOGIC(OR, ||)
+MF_KERNEL_LOGIC(XOR, !=)
 
-MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v)
+MF_KERNEL_UNARY(NOT, u8, u8, !v)
 
 // --- Selection ---
-static void op_select(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_SELECT(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t sz = ctx->batch_size;
     
     f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
@@ -41,18 +41,4 @@ static void op_select(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         f_ptr += st3;
         d_ptr += st0;
     }
-}
-
-void mf_ops_register_logic(mf_op_func* table) {
-    table[MF_OP_LESS] = op_less;
-    table[MF_OP_GREATER] = op_greater;
-    table[MF_OP_EQUAL] = op_equal;
-    table[MF_OP_NEQUAL] = op_nequal;
-    table[MF_OP_LEQUAL] = op_lequal;
-    table[MF_OP_GEQUAL] = op_gequal;
-    table[MF_OP_AND] = op_and;
-    table[MF_OP_OR] = op_or;
-    table[MF_OP_XOR] = op_xor;
-    table[MF_OP_NOT] = op_not;
-    table[MF_OP_SELECT] = op_select;
 }

@@ -7,7 +7,7 @@
 #include <mathflow/base/mf_log.h>
 
 // --- Op: CumSum (Prefix Sum) ---
-static void op_cumsum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_CUMSUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t count = ctx->batch_size;
     f32* src_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
     f32* dst_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
@@ -49,17 +49,13 @@ static void op_cumsum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
 }
 
 // --- Op: Compress (Filter) ---
-static void op_compress(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    // Compress is a special case because it changes output size dynamically.
-    // In our new flat model, this requires a two-pass approach (prefix sum + scatter).
-    // For now, it is disabled until a proper parallel implementation is added.
+void op_COMPRESS(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     (void)ctx; (void)inst;
     MF_LOG_WARN("OpCompress is temporarily disabled in the new Flat Execution model.");
 }
 
 // --- Op: Gather (Random Access) ---
-static void op_gather(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    // --- Hot Loop using Flat Registry ---
+void op_GATHER(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     u8* dst_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
     u8* idx_ptr = (u8*)ctx->reg_ptrs[inst->src2_idx];
     u8* data_base = (u8*)ctx->reg_ptrs[inst->src1_idx];
@@ -120,10 +116,4 @@ static void op_gather(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
             }
         }
     }
-}
-
-void mf_ops_array_register(mf_op_func* table) {
-    table[MF_OP_GATHER] = op_gather;
-    table[MF_OP_CUMSUM] = op_cumsum;
-    table[MF_OP_COMPRESS] = op_compress;
 }

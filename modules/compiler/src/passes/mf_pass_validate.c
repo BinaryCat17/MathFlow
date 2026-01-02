@@ -32,9 +32,9 @@ bool mf_pass_validate(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, 
         mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
         mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]);
 
-        const mf_type_info* info1 = s1 ? &s1->out_shape.info : NULL;
-        const mf_type_info* info2 = s2 ? &s2->out_shape.info : NULL;
-        const mf_type_info* info3 = s3 ? &s3->out_shape.info : NULL;
+        const mf_type_info* info1 = s1 ? &s1->out_info : NULL;
+        const mf_type_info* info2 = s2 ? &s2->out_info : NULL;
+        const mf_type_info* info3 = s3 ? &s3->out_info : NULL;
 
         switch (meta->shape_rule) {
             case MF_SHAPE_BROADCAST:
@@ -49,7 +49,7 @@ bool mf_pass_validate(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, 
                 break;
 
             case MF_SHAPE_SAME_AS_S1:
-                if (s1 && !shapes_match(&node->out_shape.info, info1)) {
+                if (s1 && !shapes_match(&node->out_info, info1)) {
                     MF_REPORT(node, "Shape Error: Output shape does not match Input 1 in '%s'", node->id);
                     success = false;
                 }

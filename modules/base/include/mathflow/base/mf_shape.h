@@ -4,6 +4,16 @@
 #include <mathflow/base/mf_types.h>
 
 /**
+ * @brief Calculates total number of elements in a shape.
+ */
+size_t mf_shape_calc_count(const int32_t* shape, uint8_t ndim);
+
+/**
+ * @brief Calculates total bytes needed for a tensor.
+ */
+size_t mf_shape_calc_bytes(mf_dtype dtype, const int32_t* shape, uint8_t ndim);
+
+/**
  * Checks if two shapes can be broadcasted and returns the result in 'out'.
  * Returns true if successful, false if shapes are incompatible.
  */

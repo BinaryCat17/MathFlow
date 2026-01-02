@@ -6,7 +6,7 @@
 #include <string.h>
 #include <math.h>
 
-static void op_matmul(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_MATMUL(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
     const mf_type_info* b_info = &ctx->reg_info[inst->src2_idx];
     const mf_type_info* dst_info = &ctx->reg_info[inst->dest_idx];
@@ -53,15 +53,11 @@ static void op_matmul(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-// Zero-Copy Transpose
-static void op_transpose(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    // Transpose is a metadata operation. In our new flat model, 
-    // it should be handled by the dispatcher/compiler during stride calculation.
-    // If it's a kernel, it's essentially a no-op if strides are already correct.
+void op_TRANSPOSE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     (void)ctx; (void)inst;
 }
 
-static void op_inverse(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_INVERSE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
     size_t sz_a = 1;
     for(int i=0; i<a_info->ndim; ++i) sz_a *= a_info->shape[i];
@@ -91,9 +87,7 @@ static void op_inverse(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         }
     }
     else {
-        // Fallback: Copy with strides (Flattening)
         size_t count = sz_a;
-        int32_t indices[MF_MAX_DIMS] = {0};
         for(size_t i=0; i<count; ++i) {
             size_t offset = 0;
             size_t temp_idx = i;
@@ -106,8 +100,7 @@ static void op_inverse(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-// Join(a, b, [c, d]) -> [..., N] where ... is the common shape
-static void op_join(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+void op_JOIN(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const mf_type_info* dst_info = &ctx->reg_info[inst->dest_idx];
     int components = dst_info->shape[dst_info->ndim - 1];
     
@@ -123,7 +116,7 @@ static void op_join(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     i32 st1 = MF_GET_STRIDE_S1(inst);
     i32 st2 = MF_GET_STRIDE_S2(inst);
     i32 st3 = MF_GET_STRIDE_S3(inst);
-    i32 st4 = MF_GET_STRIDE_S4(inst); // Now available in ISA v4!
+    i32 st4 = MF_GET_STRIDE_S4(inst);
 
     for (size_t i = 0; i < sz_a; ++i) {
         d_ptr[0] = *a_ptr;
@@ -137,11 +130,4 @@ static void op_join(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         if (d_in_ptr) d_in_ptr += st4;
         d_ptr += st0;
     }
-}
-
-void mf_ops_register_matrix(mf_op_func* table) {
-    table[MF_OP_MATMUL] = op_matmul; 
-    table[MF_OP_TRANSPOSE] = op_transpose; 
-    table[MF_OP_INVERSE] = op_inverse;
-    table[MF_OP_JOIN] = op_join;
 }

@@ -3,6 +3,19 @@
 #include <stdio.h>
 #include <string.h>
 
+size_t mf_shape_calc_count(const int32_t* shape, uint8_t ndim) {
+    if (ndim == 0) return 1;
+    size_t count = 1;
+    for (int i = 0; i < ndim; ++i) {
+        count *= (shape[i] > 0 ? shape[i] : 1);
+    }
+    return count;
+}
+
+size_t mf_shape_calc_bytes(mf_dtype dtype, const int32_t* shape, uint8_t ndim) {
+    return mf_shape_calc_count(shape, ndim) * mf_dtype_size(dtype);
+}
+
 void mf_shape_calc_strides(mf_type_info* info) {
     int32_t stride = 1;
     for (int k = info->ndim - 1; k >= 0; --k) {

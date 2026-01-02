@@ -164,18 +164,18 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
 
             // --- Validation ---
             bool is_out = (sym->flags & MF_SYMBOL_FLAG_OUTPUT) != 0;
-            mf_tensor* port_tensor = &ker->program->tensors[sym->register_idx];
+            mf_type_info* port_info = &ker->program->tensor_infos[sym->register_idx];
 
             mf_type_info res_info;
             mf_type_info_init_contiguous(&res_info, res->desc.info.dtype, res->desc.info.shape, res->desc.info.ndim);
 
-            if (!mf_shape_is_compatible(&port_tensor->info, &res_info, is_out)) {
+            if (!mf_shape_is_compatible(port_info, &res_info, is_out)) {
                 char s_port[64], s_res[64];
-                mf_shape_format(&port_tensor->info, s_port, sizeof(s_port));
+                mf_shape_format(port_info, s_port, sizeof(s_port));
                 mf_shape_format(&res->desc.info, s_res, sizeof(s_res));
                 
                 MF_LOG_ERROR("Kernel '%s': Binding failure for port '%s'. Incompatible shapes or types.", ker->id, pb->kernel_port);
-                MF_LOG_ERROR("  Port:     %s (DType: %d, %s)", s_port, port_tensor->info.dtype, is_out ? "Output" : "Input");
+                MF_LOG_ERROR("  Port:     %s (DType: %d, %s)", s_port, port_info->dtype, is_out ? "Output" : "Input");
                 MF_LOG_ERROR("  Resource: %s (DType: %d)", s_res, res->desc.info.dtype);
                 continue;
             }
@@ -212,19 +212,20 @@ static void apply_initial_data(mf_engine* engine) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
         for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
             mf_bin_symbol* sym = &ker->program->symbols[s];
-            mf_tensor* t_const = &ker->program->tensors[sym->register_idx];
+            mf_type_info* info_const = &ker->program->tensor_infos[sym->register_idx];
+            void* data_const = ker->program->tensor_data[sym->register_idx];
             
-            if (mf_tensor_is_valid(t_const)) {
+            if (data_const) {
                 for (u32 b = 0; b < ker->binding_count; ++b) {
                     if (ker->bindings[b].local_reg == sym->register_idx) {
                         mf_resource_inst* res = &engine->resources[ker->bindings[b].global_res];
-                        size_t bytes = mf_tensor_size_bytes(t_const);
+                        size_t bytes = mf_shape_calc_bytes(info_const->dtype, info_const->shape, info_const->ndim);
                         if (res->size_bytes == bytes) {
                             MF_LOG_DEBUG("Engine: Initializing resource '%s' from kernel '%s' symbol '%s' (%zu bytes)", 
                                 res->name, ker->id, sym->name, bytes);
-                            memcpy(res->buffers[0]->data, mf_tensor_data(t_const), bytes);
+                            memcpy(res->buffers[0]->data, data_const, bytes);
                             if (res->buffers[1] != res->buffers[0]) {
-                                memcpy(res->buffers[1]->data, mf_tensor_data(t_const), bytes);
+                                memcpy(res->buffers[1]->data, data_const, bytes);
                             }
                         } else {
                             MF_LOG_WARN("Engine: Resource '%s' size mismatch for initial data from '%s' (expected %zu, got %zu)",

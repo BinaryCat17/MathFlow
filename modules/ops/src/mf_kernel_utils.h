@@ -20,8 +20,22 @@
 
 #define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
 
-#define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR) \
-static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+#define MF_KERNEL_UNARY(NAME, TYPE_IN, TYPE_OUT, EXPR) \
+void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+    const size_t sz = ctx->batch_size; \
+    TYPE_OUT* d_ptr = (TYPE_OUT*)ctx->reg_ptrs[inst->dest_idx]; \
+    const TYPE_IN* a_ptr = (const TYPE_IN*)ctx->reg_ptrs[inst->src1_idx]; \
+    const i32 st0 = MF_GET_STRIDE_D(inst); \
+    const i32 st1 = MF_GET_STRIDE_S1(inst); \
+    for(size_t i=0; i<sz; ++i) { \
+        const TYPE_IN v = *a_ptr; \
+        *d_ptr = (TYPE_OUT)(EXPR); \
+        a_ptr += st1; d_ptr += st0; \
+    } \
+}
+
+#define MF_KERNEL_BINARY(NAME, TYPE_IN, TYPE_OUT, EXPR) \
+void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
     const size_t sz = ctx->batch_size; \
     TYPE_OUT* d_ptr = (TYPE_OUT*)ctx->reg_ptrs[inst->dest_idx]; \
     const TYPE_IN* a_ptr = (const TYPE_IN*)ctx->reg_ptrs[inst->src1_idx]; \
@@ -36,8 +50,8 @@ static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
     } \
 }
 
-#define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR) \
-static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+#define MF_KERNEL_TERNARY(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, EXPR) \
+void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
     const size_t sz = ctx->batch_size; \
     TYPE_OUT* d_ptr = (TYPE_OUT*)ctx->reg_ptrs[inst->dest_idx]; \
     const TYPE_A* a_ptr = (const TYPE_A*)ctx->reg_ptrs[inst->src1_idx]; \
@@ -54,27 +68,13 @@ static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
     } \
 }
 
-#define MF_KERNEL_UNARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR) \
-static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
-    const size_t sz = ctx->batch_size; \
-    TYPE_OUT* d_ptr = (TYPE_OUT*)ctx->reg_ptrs[inst->dest_idx]; \
-    const TYPE_IN* a_ptr = (const TYPE_IN*)ctx->reg_ptrs[inst->src1_idx]; \
-    const i32 st0 = MF_GET_STRIDE_D(inst); \
-    const i32 st1 = MF_GET_STRIDE_S1(inst); \
-    for(size_t i=0; i<sz; ++i) { \
-        const TYPE_IN v = *a_ptr; \
-        *d_ptr = (TYPE_OUT)(EXPR); \
-        a_ptr += st1; d_ptr += st0; \
-    } \
-}
-
 // --- Specific Shortcuts ---
 
-#define MF_KERNEL_BINARY(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(va OP vb))
-#define MF_KERNEL_BINARY_FUNC(NAME, FUNC) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(FUNC(va, vb)))
-#define MF_KERNEL_UNARY(NAME, FUNC) MF_KERNEL_UNARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(FUNC(v)))
+#define MF_KERNEL_MATH_U(NAME, FUNC) MF_KERNEL_UNARY(NAME, f32, f32, MF_SAFE_F32(FUNC(v)))
+#define MF_KERNEL_MATH_B(NAME, OP)   MF_KERNEL_BINARY(NAME, f32, f32, MF_SAFE_F32(va OP vb))
+#define MF_KERNEL_MATH_BF(NAME, FUNC) MF_KERNEL_BINARY(NAME, f32, f32, MF_SAFE_F32(FUNC(va, vb)))
 
-#define MF_KERNEL_COMPARE(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, u8, U8, (va OP vb))
-#define MF_KERNEL_LOGIC(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, u8, u8, U8, (va OP vb))
+#define MF_KERNEL_COMPARE(NAME, OP) MF_KERNEL_BINARY(NAME, f32, u8, (va OP vb))
+#define MF_KERNEL_LOGIC(NAME, OP)   MF_KERNEL_BINARY(NAME, u8, u8, (va OP vb))
 
 #endif // MF_KERNEL_UTILS_H
