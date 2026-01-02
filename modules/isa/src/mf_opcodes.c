@@ -41,8 +41,6 @@ const char* mf_opcode_to_str(u16 opcode) {
         case MF_OP_XOR:       return "XOR";
         case MF_OP_NOT:       return "NOT";
         case MF_OP_SELECT:    return "SELECT";
-        case MF_OP_RANGE:     return "RANGE";
-        case MF_OP_INDEX:     return "INDEX";
         case MF_OP_GATHER:    return "GATHER";
         case MF_OP_CUMSUM:    return "CUMSUM";
         case MF_OP_COMPRESS:  return "FILTER";

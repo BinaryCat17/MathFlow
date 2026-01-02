@@ -64,7 +64,7 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         offset += sizeof(mf_bin_tensor_desc);
         
         mf_tensor* t = &prog->tensors[i];
-        mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, (mf_identity)desc->identity, desc->shape, desc->ndim);
+        mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, desc->shape, desc->ndim);
     }
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
@@ -116,7 +116,7 @@ static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* k
                         
                         // Validate compatibility before patching
                         mf_type_info res_info;
-                        mf_type_info_init_contiguous(&res_info, pr->dtype, MF_IDENTITY_UNIFORM, pr->shape, pr->ndim);
+                        mf_type_info_init_contiguous(&res_info, pr->dtype, pr->shape, pr->ndim);
                         
                         bool is_out = (node->type == MF_NODE_OUTPUT);
                         const mf_type_info* port_info = is_out ? &node->out_shape.info : &node->constant.info;
@@ -135,6 +135,7 @@ static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* k
                         memcpy(node->out_shape.info.shape, pr->shape, sizeof(int32_t)*MF_MAX_DIMS);
                         mf_shape_calc_strides(&node->out_shape.info);
                         node->constant = node->out_shape;
+                        node->provider = pr->provider;
                         break;
                     }
                 }
@@ -153,11 +154,66 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(path, &ir, arena, &diag)) return NULL;
         
+        // Build Contract from Manifest
+        mf_compile_contract contract = {0};
         if (ker && pipe) {
-            _patch_ir_from_manifest(&ir, ker, pipe);
+            contract.input_count = 0;
+            contract.output_count = 0;
+            
+            // First pass: Count bindings to allocate arrays
+            for (u32 b = 0; b < ker->binding_count; ++b) {
+                const char* port_name = ker->bindings[b].kernel_port;
+                // We need to know if it's input or output. 
+                // IR knows this, but we haven't matched them yet.
+                // Let's find the node in IR.
+                for (size_t n = 0; n < ir.node_count; ++n) {
+                    if (strcmp(ir.nodes[n].id, port_name) == 0) {
+                        if (ir.nodes[n].type == MF_NODE_INPUT) contract.input_count++;
+                        if (ir.nodes[n].type == MF_NODE_OUTPUT) contract.output_count++;
+                        break;
+                    }
+                }
+            }
+
+            contract.inputs = MF_ARENA_PUSH(arena, mf_compile_port, contract.input_count);
+            contract.outputs = MF_ARENA_PUSH(arena, mf_compile_port, contract.output_count);
+            
+            u32 in_idx = 0;
+            u32 out_idx = 0;
+            for (u32 b = 0; b < ker->binding_count; ++b) {
+                const char* port_name = ker->bindings[b].kernel_port;
+                const char* res_name = ker->bindings[b].global_resource;
+                
+                // Find resource in pipeline
+                mf_pipeline_resource* pr = NULL;
+                for (u32 r = 0; r < pipe->resource_count; ++r) {
+                    if (strcmp(res_name, pipe->resources[r].name) == 0) {
+                        pr = &pipe->resources[r];
+                        break;
+                    }
+                }
+                if (!pr) continue;
+
+                for (size_t n = 0; n < ir.node_count; ++n) {
+                    if (strcmp(ir.nodes[n].id, port_name) == 0) {
+                        mf_compile_port* cp = NULL;
+                        if (ir.nodes[n].type == MF_NODE_INPUT) cp = &contract.inputs[in_idx++];
+                        else if (ir.nodes[n].type == MF_NODE_OUTPUT) cp = &contract.outputs[out_idx++];
+                        
+                        if (cp) {
+                            cp->name = port_name;
+                            cp->dtype = pr->dtype;
+                            cp->ndim = pr->ndim;
+                            memcpy(cp->shape, pr->shape, sizeof(int32_t) * MF_MAX_DIMS);
+                            ir.nodes[n].provider = pr->provider;
+                        }
+                        break;
+                    }
+                }
+            }
         }
 
-        mf_program* prog = mf_compile(&ir, arena, &diag);
+        mf_program* prog = mf_compile(&ir, &contract, arena, &diag);
         return prog;
     } else if (strcmp(ext, "bin") == 0) {
         return _load_binary(path, arena);

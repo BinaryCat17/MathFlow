@@ -41,8 +41,9 @@ static inline mf_tensor_iter mf_tensor_iter_begin(const mf_tensor* t) {
 
 #define _MF_ITER_CHECK_BOUNDS(it, msg_suffix) \
     if ((uint8_t*)(it)->ptr > (uint8_t*)(it)->limit || ((uint8_t*)(it)->ptr < (uint8_t*)(it)->start && (it)->tensor->info.ndim > 0)) { \
-        MF_LOG_FATAL("Tensor iterator out of bounds " msg_suffix "! Ptr: %p, Range: [%p, %p]", \
-                     (it)->ptr, (it)->start, (it)->limit); \
+        const mf_tensor* _t = (it)->tensor; \
+        MF_LOG_FATAL("Tensor iterator out of bounds " msg_suffix "! Ptr: %p, Range: [%p, %p]. Buffer: %p, Size: %zu, Offset: %zu, Shape[0]: %d, Stride[0]: %d, ndim: %d, dtype: %d", \
+                     (it)->ptr, (it)->start, (it)->limit, (_t->buffer ? _t->buffer->data : NULL), (_t->buffer ? _t->buffer->size_bytes : 0), _t->byte_offset, _t->info.shape[0], _t->info.strides[0], _t->info.ndim, _t->info.dtype); \
     }
 
 static inline void mf_tensor_iter_next(mf_tensor_iter* it) {

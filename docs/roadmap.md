@@ -9,31 +9,29 @@
 
 ## Active Development
 
-### Milestone 13: Pure Logic Architecture
+### Milestone 13: Pure Logic Architecture (In Progress)
 
-#### Phase 7: Logic Purity & Intrinsic Inputs
-- [ ] **Index Node Elimination:** Полное удаление `MF_NODE_INDEX` из компилятора и `MF_OP_INDEX` из ISA. Перевод всех существующих графов на использование узлов `Input`.
-- [ ] **Intrinsic Naming Convention:** Внедрение соглашения об именах для автоматического определения `SPATIAL` идентичности. Порты `u_FragX`, `u_FragY`, `u_FragZ` автоматически получают шаг 1 и привязываются к генераторам координат.
-- [ ] **Manifest-Driven Generators:** Расширение формата `.mfapp`. Возможность явно указать тип генератора для входного порта (например, `generator: "index", axis: 0`).
-- [ ] **Loader Synthesis:** Доработка `mf_loader.c` для автоматического создания виртуальных ресурсов-генераторов, если граф требует `u_Frag...` входы, но они не описаны в манифесте.
-- [ ] **Subgraph Universality:** Обеспечение полной поддержки любых "координатных" входов в подграфах без нарушения их чистоты (purity).
+**Goal:** Achieve complete Inversion of Control (IoC) and graph purity by unifying all external data sources under the `Input` node.
 
-### Milestone 13: Pure Logic Architecture
+#### Phase 7: Pure Logic & Shape-Driven Compilation
+- [x] **ISA & Base Cleanup:** Полное удаление `MF_OP_INDEX`, `MF_NODE_INDEX` и перечисления `mf_identity`. Система переходит на чистый `STEP_N` (strides).
+- [x] **Stride Inference Engine:** Переработка `mf_pass_analyze`. Реализация правил автоматического бродкастинга: сопоставление размерностей входа и домена для вычисления оптимальных страйдов.
+- [x] **Heterogeneous Tasks:** Поддержка графов с несколькими выходами разных форм. Компилятор автоматически разбивает граф на задачи.
+- [ ] **Context-Aware Subgraphs:** Обеспечение проброса геометрии домена внутрь подграфов через узлы `Call`.
+- [x] **Explicit Task Geometry API:** Изменение API компилятора. `mf_compile` теперь требует явного описания "Контракта Ядра".
+- [x] **Virtual Resource Providers:** Расширение `.mfapp`. Входы привязываются к ресурсам с провайдерами (например, `host.index`).
+- [x] **Loader Orchestration:** `mf_loader` собирает геометрию задач из манифеста и передает её компилятору.
+- [x] **Generator Backend:** Реализация в `mf_backend_cpu` генерации данных для виртуальных ресурсов (индексов) без аллокации буфера.
 
-#### Phase 7: Logic Purity & Intrinsic Inputs
-- [ ] **Index Node Elimination:** Полное удаление `MF_NODE_INDEX` из компилятора и `MF_OP_INDEX` из ISA. Перевод всех существующих графов на использование узлов `Input`.
-- [ ] **Intrinsic Naming Convention:** Внедрение соглашения об именах для автоматического определения `SPATIAL` идентичности. Порты `u_FragX`, `u_FragY`, `u_FragZ` автоматически получают шаг 1 и привязываются к генераторам координат.
-- [ ] **Manifest-Driven Generators:** Расширение формата `.mfapp`. Возможность явно указать тип генератора для входного порта (например, `generator: "index", axis: 0`).
-- [ ] **Loader Synthesis:** Доработка `mf_loader.c` для автоматического создания виртуальных ресурсов-генераторов, если граф требует `u_Frag...` входы, но они не описаны в манифесте.
-- [ ] **Subgraph Universality:** Обеспечение полной поддержки любых "координатных" входов в подграфах без нарушения их чистоты (purity).
+#### Phase 8: Architectural Hardening & Stability
+- [x] **Strict DType Propagation:** Исправлен баг, при котором бродкастинг форм перезаписывал целевой тип операции (например, в Select).
+- [x] **Host Policy Isolation:** Хост больше не форсирует разрешение `out_Color` для не-пиксельных графов.
+- [ ] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для строгой валидации.
+- [ ] **In-place Metadata:** Внедрение флага `MF_OP_FLAG_INPLACE_SAFE` для возвращения эффективной аллокации регистров без риска порчи данных в батчах.
+- [ ] **String-less IR Ports:** Переход на атомарные ID или хеши для портов и узлов внутри компилятора для повышения надежности инлайнера.
+- [ ] **Index Buffer Pooling:** Оптимизация бэкенда — переиспользование буферов для виртуальных ресурсов вместо постоянных аллокаций.
+- [ ] **Stride Model Expansion:** Исследование перехода от `i8` линейных страйдов к полной поддержке N-D тензорных шагов для честного бродкастинга.
 
----
-
-## Completed Milestones (Summary)
-
-*   **Milestone 12: Intelligence & Performance:** Автоматическая детекция транзиентных ресурсов, оптимизация размера инструкций, ускорение горячего цикла бэкенда и внедрение нативных математических ядер. Стабилизация системы типов и переход на Port-Aware разрешение.
-*   **Milestone 11: Hardening & Memory Safety:** Внедрены защищенные итераторы, Atomic Kill Switch и детальные отчеты об ошибках в ядрах. Реализована модель STEP_N.
----
 ## Archive (Detailed Task History)
 
 <details>

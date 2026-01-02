@@ -11,37 +11,6 @@ typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
 
 // ... (op_range, op_cumsum, _check_mask_ptr, op_compress remain the same)
 
-// --- Op: Range (Iota) ---
-static void op_range(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* count_tensor = bi->s1;
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, count_tensor);
-    int count = mf_utils_get_scalar_int(count_tensor);
-    if (count < 0) count = 0;
-
-    int32_t shape[] = { (int32_t)count };
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
-
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    if (dst->info.dtype == MF_DTYPE_I32) {
-        mf_accessor_i32 d = mf_accessor_i32_begin(dst);
-        for (int i = 0; i < count; ++i) {
-            mf_accessor_i32_set(&d, (int32_t)i);
-            mf_accessor_i32_advance(&d, 1);
-        }
-    } else {
-        dst->info.dtype = MF_DTYPE_F32; // Default to F32
-        mf_accessor_f32 d = mf_accessor_f32_begin(dst);
-        for (int i = 0; i < count; ++i) {
-            mf_accessor_f32_set(&d, (f32)i);
-            mf_accessor_f32_advance(&d, 1);
-        }
-    }
-}
-
 // --- Op: CumSum (Prefix Sum) ---
 static void op_cumsum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_tensor* dst = bi->d;
@@ -59,8 +28,8 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_f32 it_src = mf_accessor_f32_begin(src);
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
 
-    i32 st0 = MF_GET_STRIDE(dst);
-    i32 st1 = MF_GET_STRIDE(src);
+    i32 st0 = MF_GET_STRIDE_D(bi);
+    i32 st1 = MF_GET_STRIDE_S1(bi);
 
     f32 sum = 0.0f;
     for (size_t i = 0; i < count; ++i) {
@@ -91,7 +60,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     
     size_t true_count = 0;
     mf_accessor_u8 it_count = mf_accessor_u8_begin(mask);
-    i32 st2 = MF_GET_STRIDE(mask);
+    i32 st2 = MF_GET_STRIDE_S2(bi);
 
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_count)) true_count++;
@@ -110,7 +79,7 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_u8 it_mask = mf_accessor_u8_begin(mask);
     u8* dst_raw = (u8*)mf_tensor_data(dst); 
 
-    i32 st1 = MF_GET_STRIDE(data);
+    i32 st1 = MF_GET_STRIDE_S1(bi);
 
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_mask)) {
@@ -119,49 +88,6 @@ static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
         }
         mf_accessor_f32_advance(&it_data, st1);
         mf_accessor_u8_advance(&it_mask, st2);
-    }
-}
-
-// --- Op: Index (Intrinsic Coordinate) ---
-static void op_index(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
-    mf_tensor* dst = bi->d;
-    mf_tensor* axis_t = bi->s1;
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, axis_t);
-    int axis = mf_utils_get_scalar_int(axis_t);
-    if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
-
-    size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
-
-    int32_t shape[] = { (int32_t)count };
-    if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
-
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    u32 axis_stride = 1;
-    for (int i = ctx->ndim - 1; i > axis; --i) axis_stride *= ctx->domain_shape[i];
-    u32 axis_size = ctx->domain_shape[axis];
-    if (axis_size == 0) axis_size = 1;
-
-    i32 st0 = MF_GET_STRIDE(dst);
-    u32 start_linear = ctx->linear_offset;
-
-    if (dst->info.dtype == MF_DTYPE_I32) {
-        mf_accessor_i32 d = mf_accessor_i32_begin(dst);
-        for (size_t i = 0; i < count; ++i) {
-            u32 global_idx = start_linear + (u32)i;
-            mf_accessor_i32_set(&d, (int32_t)((global_idx / axis_stride) % axis_size));
-            mf_accessor_i32_advance(&d, st0);
-        }
-    } else {
-        dst->info.dtype = MF_DTYPE_F32; // Default to F32
-        mf_accessor_f32 d = mf_accessor_f32_begin(dst);
-        for (size_t i = 0; i < count; ++i) {
-            u32 global_idx = start_linear + (u32)i;
-            mf_accessor_f32_set(&d, (f32)((global_idx / axis_stride) % axis_size));
-            mf_accessor_f32_advance(&d, st0);
-        }
     }
 }
 
@@ -194,8 +120,8 @@ static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 
     // Raw pointer for destination (Generic copy)
     u8* dst_ptr = (u8*)mf_tensor_data(dst);
-    i32 st_dst = MF_GET_STRIDE(dst);
-    i32 st_idx = MF_GET_STRIDE(src_indices);
+    i32 st_dst = MF_GET_STRIDE_D(bi);
+    i32 st_idx = MF_GET_STRIDE_S2(bi);
 
     for (size_t i = 0; i < out_count; ++i) {
         int idx = -1;
@@ -224,9 +150,11 @@ static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 }
 
 void mf_ops_array_register(mf_op_func* table) {
-    table[MF_OP_RANGE] = op_range;
-    table[MF_OP_INDEX] = op_index;
+
     table[MF_OP_GATHER] = op_gather;
+
     table[MF_OP_CUMSUM] = op_cumsum;
+
     table[MF_OP_COMPRESS] = op_compress;
+
 }

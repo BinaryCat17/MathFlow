@@ -8,6 +8,10 @@
         "resources": [
             { "name": "MyFont", "dtype": "F32", "shape": [262144] },
             { "name": "MyFont_Info", "dtype": "F32", "shape": [9600] },
+            { "name": "u_FragX", "dtype": "F32", "shape": [], "provider": "host.index.1" },
+            { "name": "u_FragY", "dtype": "F32", "shape": [], "provider": "host.index.0" },
+            { "name": "u_Chan",  "dtype": "F32", "shape": [], "provider": "host.index.2" },
+            { "name": "u_Time",  "dtype": "F32", "shape": [] },
             { "name": "out_Color", "dtype": "F32", "shape": [600, 800, 4] }
         ],
         "kernels": [
@@ -18,7 +22,10 @@
                     { "port": "out", "resource": "out_Color" },
                     { "port": "font", "resource": "MyFont" },
                     { "port": "font_info", "resource": "MyFont_Info" },
-                    { "port": "time", "resource": "u_Time" }
+                    { "port": "time", "resource": "u_Time" },
+                    { "port": "pixel_x", "resource": "u_FragX" },
+                    { "port": "pixel_y", "resource": "u_FragY" },
+                    { "port": "channel", "resource": "u_Chan" }
                 ]
             }
         ]

@@ -36,7 +36,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 
 // --- Compilation ---
 
-mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag) {
+mf_program* mf_compile(mf_graph_ir* ir, const mf_compile_contract* contract, mf_arena* arena, mf_compiler_diag* diag) {
     // 0. Optimizations
     if (!mf_pass_fuse(ir, diag)) {
         return NULL;
@@ -52,7 +52,7 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
     }
 
     // 2. Static Analysis (Types & Shapes)
-    if (!mf_pass_analyze(ir, sorted, sorted_count, diag)) {
+    if (!mf_pass_analyze(ir, sorted, sorted_count, contract, diag)) {
         return NULL;
     }
 
@@ -111,7 +111,6 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
         mf_tensor* t = &prog->tensors[i];
         mf_bin_tensor_desc desc = {0};
         desc.dtype = (u8)t->info.dtype;
-        desc.identity = (u8)t->info.identity;
         desc.ndim = t->info.ndim;
         void* data_ptr = mf_tensor_data(t);
         desc.is_constant = (data_ptr != NULL);

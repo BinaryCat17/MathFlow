@@ -73,8 +73,8 @@ int mf_host_app_init(mf_host_app* app, const mf_host_desc* desc) {
     app->desc = *desc; 
 
     mf_engine_desc engine_desc = {0};
-    engine_desc.arena_size = 32 * 1024 * 1024; 
-    engine_desc.heap_size = 128 * 1024 * 1024; 
+    engine_desc.arena_size = 64 * 1024 * 1024; 
+    engine_desc.heap_size = 1024 * 1024 * 1024; 
     mf_loader_init_backend(&engine_desc.backend, desc->num_threads);
 
     app->engine = mf_engine_create(&engine_desc);
@@ -156,7 +156,15 @@ void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
     app->desc.height = height;
 
     int32_t screen_shape[] = { height, width, 4 };
-    mf_engine_resize_resource(app->engine, "out_Color", screen_shape, 3);
+    
+    mf_tensor* t_out = mf_engine_map_resource(app->engine, "out_Color");
+    if (t_out) {
+        // Only auto-resize if it's already a 3D tensor (Pixel Engine mode) 
+        // or if it's uninitialized (ndim=0).
+        if (t_out->info.ndim == 3 || t_out->info.ndim == 0) {
+            mf_engine_resize_resource(app->engine, "out_Color", screen_shape, 3);
+        }
+    }
 
     mf_tensor* t_res = mf_engine_map_resource(app->engine, "u_Resolution");
     if (t_res) {

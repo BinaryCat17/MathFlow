@@ -128,6 +128,10 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
                 const mf_json_value* name = mf_json_get_field(res, "name");
                 if (name && name->type == MF_JSON_VAL_STRING) pr->name = strdup(name->as.s);
                 
+                const mf_json_value* provider = mf_json_get_field(res, "provider");
+                if (provider && provider->type == MF_JSON_VAL_STRING) pr->provider = strdup(provider->as.s);
+                else pr->provider = NULL;
+
                 const mf_json_value* dtype = mf_json_get_field(res, "dtype");
                 if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = mf_dtype_from_str(dtype->as.s);
                 
@@ -148,38 +152,8 @@ int mf_app_load_config(const char* mfapp_path, mf_host_desc* out_desc) {
             }
         }
 
-        // --- Host-Compiler Schema Sync: Inject System Resources ---
-        struct { const char* name; mf_dtype dtype; int ndim; int32_t shape[MF_MAX_DIMS]; bool readonly; } sys_res[] = {
-            { "u_Time",       MF_DTYPE_F32, 0, {1,0,0,0,0,0,0,0}, true },
-            { "u_Resolution", MF_DTYPE_F32, 1, {2,0,0,0,0,0,0,0}, true },
-            { "u_Mouse",      MF_DTYPE_F32, 1, {4,0,0,0,0,0,0,0}, true },
-            { "u_ResX",       MF_DTYPE_F32, 0, {1,0,0,0,0,0,0,0}, true },
-            { "u_ResY",       MF_DTYPE_F32, 0, {1,0,0,0,0,0,0,0}, true },
-            { "u_Aspect",     MF_DTYPE_F32, 0, {1,0,0,0,0,0,0,0}, true },
-            { "out_Color",    MF_DTYPE_F32, 3, {(int32_t)out_desc->height, (int32_t)out_desc->width, 4, 0,0,0,0,0}, false }
-        };
-
-        for (int s = 0; s < 7; ++s) {
-            bool found = false;
-            for (u32 r = 0; r < out_desc->pipeline.resource_count; ++r) {
-                if (strcmp(out_desc->pipeline.resources[r].name, sys_res[s].name) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                out_desc->pipeline.resource_count++;
-                out_desc->pipeline.resources = realloc(out_desc->pipeline.resources, out_desc->pipeline.resource_count * sizeof(mf_pipeline_resource));
-                mf_pipeline_resource* pr = &out_desc->pipeline.resources[out_desc->pipeline.resource_count - 1];
-                pr->name = strdup(sys_res[s].name);
-                pr->dtype = sys_res[s].dtype;
-                pr->ndim = (uint8_t)sys_res[s].ndim;
-                pr->flags = sys_res[s].readonly ? MF_RESOURCE_FLAG_READONLY : 0;
-                memcpy(pr->shape, sys_res[s].shape, sizeof(int32_t) * pr->ndim);
-                MF_LOG_DEBUG("Manifest: Injected system resource '%s'", pr->name);
-            }
-        }
-        MF_LOG_DEBUG("Manifest: Total resources after injection: %u", out_desc->pipeline.resource_count);
+        // --- Manifest Validation ---
+        MF_LOG_DEBUG("Manifest: Resources loaded: %u", out_desc->pipeline.resource_count);
 
         // Kernels
         const mf_json_value* kernels = mf_json_get_field(pipeline, "kernels");

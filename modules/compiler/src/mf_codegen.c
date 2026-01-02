@@ -51,6 +51,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->name[MF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->name_hash = mf_fnv1a_hash(sym->name);
             sym->register_idx = reg_idx;
+            if (node->provider) {
+                strncpy(sym->provider, node->provider, MF_MAX_SYMBOL_NAME - 1);
+                sym->provider[MF_MAX_SYMBOL_NAME - 1] = '\0';
+            } else {
+                sym->provider[0] = '\0';
+            }
             sym->flags = (node->type == MF_NODE_INPUT) ? MF_SYMBOL_FLAG_INPUT : 
                          (node->type == MF_NODE_OUTPUT) ? MF_SYMBOL_FLAG_OUTPUT : 0;
         }
@@ -76,7 +82,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]); 
         mf_ir_node* s4 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[3]);
 
-        if (node->type == MF_NODE_CONST || node->type == MF_NODE_INDEX || node->type == MF_NODE_RANGE) {
+        if (node->type == MF_NODE_CONST) {
             if (node->constant.buffer) {
                 t_desc->buffer = node->constant.buffer;
                 t_desc->byte_offset = node->constant.byte_offset;
@@ -111,6 +117,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
             inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
+            memcpy(inst->strides, node->strides, sizeof(i8) * 4);
+
+            if (inst->opcode == MF_OP_SUM && inst->strides[1] > 0) {
+                inst->strides[0] = -1; // Reduction flag
+            }
+
             if (meta->category == MF_OP_CAT_SPECIAL) {
                 if (node->type == MF_NODE_INPUT && s1) {
                     inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
@@ -119,7 +131,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 }
             } else {
                 inst->opcode = meta->opcode;
-                if (node->type == MF_NODE_INDEX && !s1) inst->src1_idx = inst->dest_idx;
                 instr_count++; emitted = true;
             }
         }

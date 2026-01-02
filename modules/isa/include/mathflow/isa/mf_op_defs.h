@@ -14,7 +14,6 @@ typedef enum {
     MF_OP_CAT_REDUCTION,   // Data reduction (Sum, Size, CumSum)
     MF_OP_CAT_ACCEL,       // High-performance accelerators (MatMul, Inverse)
     MF_OP_CAT_MEMORY,      // Layout & Random Access (Gather, Slice, Reshape, Filter)
-    MF_OP_CAT_ARRAY,       // Generators (Range, Index)
 } mf_op_category;
 
 #define MF_TYPE_MASK_F32 (1 << MF_DTYPE_F32)
@@ -44,7 +43,6 @@ typedef enum {
     MF_SHAPE_GATHER,        // Shape follows indices
     MF_SHAPE_RESHAPE,       // Shape follows constant value
     MF_SHAPE_SLICE,         // 1D slice
-    MF_SHAPE_DYNAMIC_1D,    // For Index/Range
     MF_SHAPE_SCALAR,        // Output is a single value (ndim=0)
 } mf_shape_rule;
 
@@ -60,7 +58,7 @@ typedef enum {
     /* --- Special Nodes (Compiler Intrinsics) --- */ \
     MF_OP(CONST,   "Const",   MF_OP_NOOP,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SPECIAL,    MF_ACCESS_SPECIAL, "out", NULL,  NULL,  NULL) \
     MF_OP(INPUT,   "Input",   MF_OP_NOOP,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SPECIAL,    MF_ACCESS_SPECIAL, "out", NULL,  NULL,  NULL) \
-    MF_OP(OUTPUT,  "Output",  MF_OP_COPY,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL) \
+    MF_OP(OUTPUT,  "Output",  MF_OP_COPY,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SPECIAL,    MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL) \
     MF_OP(CALL,    "Call",    MF_OP_NOOP,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SPECIAL,    MF_ACCESS_SPECIAL, NULL,  NULL,  NULL,  NULL) \
     MF_OP(COPY,    "Copy",    MF_OP_COPY,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL) \
     \
@@ -87,12 +85,12 @@ typedef enum {
     MF_OP(SELECT,  "Select",  MF_OP_SELECT,  MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT_2, MF_SHAPE_BROADCAST,MF_ACCESS_LINEAR,  "cond","true","false",NULL) \
     \
     /* --- Atomic Logic --- */ \
-    MF_OP(LESS,    "Less",    MF_OP_LESS,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
-    MF_OP(GREATER, "Greater", MF_OP_GREATER, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
+    MF_OP(LESS,    "Less",    MF_OP_LESS,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
+    MF_OP(GREATER, "Greater", MF_OP_GREATER, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
     MF_OP(EQUAL,   "Equal",   MF_OP_EQUAL,   MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
     MF_OP(NEQUAL,  "NotEqual",MF_OP_NEQUAL,  MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
-    MF_OP(LEQUAL,  "LessEqual",MF_OP_LEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
-    MF_OP(GEQUAL,  "GreaterEqual",MF_OP_GEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
+    MF_OP(LEQUAL,  "LessEqual",MF_OP_LEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
+    MF_OP(GEQUAL,  "GreaterEqual",MF_OP_GEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
     MF_OP(AND,     "And",     MF_OP_AND,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
     MF_OP(OR,      "Or",      MF_OP_OR,      MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
     MF_OP(XOR,     "Xor",     MF_OP_XOR,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL) \
@@ -116,10 +114,7 @@ typedef enum {
     MF_OP(GATHER,  "Gather",  MF_OP_GATHER,  MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_GATHER,     MF_ACCESS_RANDOM,  "data", "indices", NULL, NULL) \
     MF_OP(COMPRESS,"Filter",  MF_OP_COMPRESS,MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_RANDOM,  "in",   "mask", NULL, NULL) \
     MF_OP(SLICE,   "Slice",   MF_OP_SLICE,   MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SLICE,      MF_ACCESS_LINEAR,  "in",   "range", NULL, NULL) \
-    MF_OP(RESHAPE, "Reshape", MF_OP_RESHAPE, MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_RESHAPE,    MF_ACCESS_LINEAR,  "in",   "shape", NULL, NULL) \
-    \
-    /* --- Array Generators --- */ \
-    MF_OP(RANGE,   "Range",   MF_OP_RANGE,   MF_OP_CAT_ARRAY,  MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_DYNAMIC_1D, MF_ACCESS_LINEAR,  "count",NULL, NULL, NULL) \
-    MF_OP(INDEX,   "Index",   MF_OP_INDEX,   MF_OP_CAT_ARRAY,  MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_DYNAMIC_1D, MF_ACCESS_LINEAR,  "axis", NULL, NULL, NULL)
-
-#endif // MF_OP_DEFS_H
+        MF_OP(RESHAPE, "Reshape", MF_OP_RESHAPE, MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_RESHAPE,    MF_ACCESS_LINEAR,  "in",   "shape", NULL, NULL)
+    
+    #endif // MF_OP_DEFS_H
+    

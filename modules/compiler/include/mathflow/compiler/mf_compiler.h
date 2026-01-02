@@ -56,6 +56,8 @@ typedef struct {
     // Constant Data (valid if type == MF_NODE_INPUT)
     mf_tensor constant; 
 
+    const char* provider; // Optional: "host.index", etc.
+
     // Sub-Graph Data
     const char* sub_graph_path; // For MF_NODE_CALL
 
@@ -66,6 +68,7 @@ typedef struct {
     u16 out_reg_idx;    // Index in the global Tensor Pool
     u32 domain_node_idx; // Index of the node that defines the domain for this node
     mf_tensor out_shape; // Predicted output shape and dtype
+    i8 strides[4];       // Inferred linear strides [Dest, S1, S2, S3]
 } mf_ir_node;
 
 typedef struct {
@@ -90,11 +93,25 @@ typedef struct {
 
 // --- Compiler Interface ---
 
+typedef struct {
+    const char* name;
+    mf_dtype dtype;
+    uint8_t ndim;
+    int32_t shape[MF_MAX_DIMS];
+} mf_compile_port;
+
+typedef struct {
+    mf_compile_port* inputs;
+    uint32_t input_count;
+    mf_compile_port* outputs;
+    uint32_t output_count;
+} mf_compile_contract;
+
 // 1. Parse JSON -> IR
 bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena, mf_compiler_diag* diag);
 
 // 2. IR -> Program
-mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag);
+mf_program* mf_compile(mf_graph_ir* ir, const mf_compile_contract* contract, mf_arena* arena, mf_compiler_diag* diag);
 
 // 3. Save Program
 bool mf_compile_save_program(const mf_program* prog, const char* path);

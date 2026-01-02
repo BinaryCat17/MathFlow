@@ -98,9 +98,9 @@
         { "src": "adv_factor", "dst": "charw", "dst_port": "b" },
         { "src": "dx", "dst": "charidx_f", "dst_port": "a" },
         { "src": "charw", "dst": "charidx_f", "dst_port": "b" },
-        { "src": "charidx_f", "dst": "charidx", "dst_port": "in" },
+        { "src": "charidx_f", "dst": "charidx", "dst_port": "x" },
         
-        { "src": "charidx", "dst": "safe_charidx", "dst_port": "in" },
+        { "src": "charidx", "dst": "safe_charidx", "dst_port": "x" },
         { "src": "zero", "dst": "safe_charidx", "dst_port": "min" },
         { "src": "text_len_minus_1", "dst": "safe_charidx", "dst_port": "max" },
 
@@ -156,11 +156,11 @@
         { "src": "v1", "dst": "atlasv", "dst_port": "b" },
         { "src": "localy", "dst": "atlasv", "dst_port": "t" },
         
-        { "src": "atlasu", "dst": "safe_atlasu", "dst_port": "in" },
+        { "src": "atlasu", "dst": "safe_atlasu", "dst_port": "x" },
         { "src": "zero_f", "dst": "safe_atlasu", "dst_port": "min" },
         { "src": "one_f",  "dst": "safe_atlasu", "dst_port": "max" },
         
-        { "src": "atlasv", "dst": "safe_atlasv", "dst_port": "in" },
+        { "src": "atlasv", "dst": "safe_atlasv", "dst_port": "x" },
         { "src": "zero_f", "dst": "safe_atlasv", "dst_port": "min" },
         { "src": "one_f",  "dst": "safe_atlasv", "dst_port": "max" },
 
@@ -168,14 +168,14 @@
         { "src": "atlas_dim", "dst": "au_px", "dst_port": "b" },
         { "src": "safe_atlasv", "dst": "av_px", "dst_port": "a" },
         { "src": "atlas_dim", "dst": "av_px", "dst_port": "b" },
-        { "src": "au_px", "dst": "au_idx", "dst_port": "in" },
-        { "src": "av_px", "dst": "av_idx", "dst_port": "in" },
+        { "src": "au_px", "dst": "au_idx", "dst_port": "x" },
+        { "src": "av_px", "dst": "av_idx", "dst_port": "x" },
         { "src": "av_idx", "dst": "rowoff", "dst_port": "a" },
         { "src": "atlas_dim", "dst": "rowoff", "dst_port": "b" },
         { "src": "rowoff", "dst": "flatidx", "dst_port": "a" },
         { "src": "au_idx", "dst": "flatidx", "dst_port": "b" },
         
-        { "src": "flatidx", "dst": "safe_flatidx", "dst_port": "in" },
+        { "src": "flatidx", "dst": "safe_flatidx", "dst_port": "x" },
         { "src": "zero_f", "dst": "safe_flatidx", "dst_port": "min" },
         { "src": "atlas_max_idx", "dst": "safe_flatidx", "dst_port": "max" },
 

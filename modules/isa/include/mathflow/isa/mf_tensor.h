@@ -55,11 +55,13 @@ static inline bool mf_tensor_same_shape(const mf_tensor* a, const mf_tensor* b) 
 
 // Check if the tensor data is contiguous in memory
 static inline bool mf_tensor_is_contiguous(const mf_tensor* t) {
-    if (t->info.ndim <= 1) return true;
+    if (t->info.ndim == 0) return true;
+    if (t->info.ndim == 1) return t->info.strides[0] == 1 || t->info.shape[0] <= 1;
+    
     int32_t stride = 1;
     for (int i = t->info.ndim - 1; i >= 0; --i) {
         if (t->info.strides[i] != stride) return false;
-        stride *= t->info.shape[i];
+        stride *= (t->info.shape[i] > 0 ? t->info.shape[i] : 1);
     }
     return true;
 }

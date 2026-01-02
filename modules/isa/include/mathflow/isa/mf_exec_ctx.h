@@ -109,7 +109,7 @@ static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor
     }
 
     mf_type_info info;
-    mf_type_info_init_contiguous(&info, tensor->info.dtype, tensor->info.identity, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
+    mf_type_info_init_contiguous(&info, tensor->info.dtype, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
 
     if (!mf_tensor_resize(tensor, ctx->allocator, &info)) {
         ctx->error = MF_ERROR_OOM;

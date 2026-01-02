@@ -185,51 +185,6 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
             if (v_val) parse_const_tensor(v_val, data, &dst->constant, arena);
             break;
         }
-        case MF_NODE_INDEX: {
-            const mf_json_value* v_axis = mf_json_get_field(data, "axis");
-            const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
-            
-            if (!v_dtype) {
-                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': missing 'dtype' (must be explicit)", dst->id);
-                return false;
-            }
-
-            if (!v_axis || v_axis->type != MF_JSON_VAL_NUMBER) {
-                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': missing or invalid 'axis' (must be a number)", dst->id);
-                return false;
-            }
-            
-            mf_dtype dtype = mf_dtype_from_str(v_dtype->as.s);
-            if (dtype != MF_DTYPE_F32 && dtype != MF_DTYPE_I32) {
-                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': invalid 'dtype' (must be F32 or I32)", dst->id);
-                return false;
-            }
-
-            dst->constant.info.dtype = dtype;
-            dst->constant.info.ndim = 0;
-            size_t bytes = mf_dtype_size(dtype);
-            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
-            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
-            mf_buffer_init_view(buf, mem, bytes);
-            dst->constant.buffer = buf;
-            
-            if (dtype == MF_DTYPE_F32) *((f32*)mem) = (f32)v_axis->as.n;
-            else *((int32_t*)mem) = (int32_t)v_axis->as.n;
-
-            // Also set output dtype for inference
-            dst->out_shape.info.dtype = dtype;
-            break;
-        }
-        case MF_NODE_RANGE: {
-            const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
-            if (!v_dtype) {
-                mf_compiler_diag_report(diag, dst->loc, "Range node '%s': missing 'dtype' (must be explicit)", dst->id);
-                return false;
-            }
-            mf_dtype dtype = mf_dtype_from_str(v_dtype->as.s);
-            dst->out_shape.info.dtype = dtype;
-            break;
-        }
         case MF_NODE_CALL: {
             const mf_json_value* v_path = mf_json_get_field(data, "path");
             if (v_path && v_path->type == MF_JSON_VAL_STRING) {

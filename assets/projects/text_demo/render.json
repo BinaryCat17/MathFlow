@@ -9,12 +9,12 @@
         { "id": "pos", "type": "Const", "data": {"value": [50.0, 100.0]} },
         { "id": "size", "type": "Const", "data": {"value": 48.0} },
         
-        { "id": "u_FragX", "type": "Index", "data": {"axis": 1, "dtype": "f32"} },
-        { "id": "u_FragY", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
+        { "id": "pixel_x", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
+        { "id": "pixel_y", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
 
         { "id": "draw_text", "type": "Call", "data": {"path": "../../lib/text/render_text.json"} },
         
-        { "id": "chan", "type": "Index", "data": {"axis": 2, "dtype": "f32"} },
+        { "id": "channel", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
         { "id": "c3", "type": "Const", "data": {"value": 3.0} },
         { "id": "is_alpha_chan", "type": "Equal" },
         
@@ -27,10 +27,10 @@
         { "src": "font", "dst": "draw_text", "dst_port": "fontatlas" },
         { "src": "font_info", "dst": "draw_text", "dst_port": "fontinfo" },
         { "src": "size", "dst": "draw_text", "dst_port": "fontsize" },
-        { "src": "u_FragX", "dst": "draw_text", "dst_port": "pixelx" },
-        { "src": "u_FragY", "dst": "draw_text", "dst_port": "pixely" },
+        { "src": "pixel_x", "dst": "draw_text", "dst_port": "pixelx" },
+        { "src": "pixel_y", "dst": "draw_text", "dst_port": "pixely" },
         
-        { "src": "chan", "dst": "is_alpha_chan", "dst_port": "a" },
+        { "src": "channel", "dst": "is_alpha_chan", "dst_port": "a" },
         { "src": "c3", "dst": "is_alpha_chan", "dst_port": "b" },
         
         { "src": "is_alpha_chan", "dst": "final_color", "dst_port": "cond" },

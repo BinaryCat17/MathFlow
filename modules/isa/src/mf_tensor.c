@@ -155,7 +155,7 @@ bool mf_tensor_reshape(mf_tensor* dst, const mf_tensor* src, const int32_t* new_
     mf_tensor_view(dst, src);
     
     // Modify Metadata
-    mf_type_info_init_contiguous(&dst->info, src->info.dtype, src->info.identity, new_shape, (uint8_t)ndim);
+    mf_type_info_init_contiguous(&dst->info, src->info.dtype, new_shape, (uint8_t)ndim);
     
     return true;
 }

@@ -65,7 +65,23 @@ bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_com
             }
 
             if (found_reg >= 0) {
-                node->out_reg_idx = (u16)found_reg;
+                // Double check: is this register used as an input for the SAME node?
+                // If so, we cannot reuse it if the operation is not safe for in-place.
+                bool used_as_input = false;
+                for (size_t l = 0; l < ir->link_count; ++l) {
+                    if (ir->links[l].dst_node_idx == node_idx) {
+                        if (ir->nodes[ir->links[l].src_node_idx].out_reg_idx == (u16)found_reg) {
+                            used_as_input = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (!used_as_input) {
+                    node->out_reg_idx = (u16)found_reg;
+                } else {
+                    node->out_reg_idx = next_reg++;
+                }
             } else {
                 node->out_reg_idx = next_reg++;
             }

@@ -11,6 +11,33 @@ void mf_shape_calc_strides(mf_type_info* info) {
     }
 }
 
+void mf_shape_infer_strides(const mf_type_info* shape, const mf_type_info* domain, int32_t* out_strides) {
+    // Default to 0 (broadcast)
+    for (int i = 0; i < MF_MAX_DIMS; ++i) out_strides[i] = 0;
+    
+    if (shape->ndim == 0) return; // Scalar remains 0
+    
+    // Match dimensions from tail to head (NumPy style broadcasting)
+    int32_t current_stride = 1;
+    int s_idx = shape->ndim - 1;
+    int d_idx = domain->ndim - 1;
+    
+    while (s_idx >= 0 && d_idx >= 0) {
+        if (shape->shape[s_idx] == domain->shape[d_idx]) {
+            out_strides[d_idx] = current_stride;
+            current_stride *= shape->shape[s_idx];
+        } else if (shape->shape[s_idx] == 1) {
+            out_strides[d_idx] = 0;
+        } else {
+            // Incompatible shapes for linear iteration! 
+            // Fallback to 0 or we might need to report error.
+            out_strides[d_idx] = 0;
+        }
+        s_idx--;
+        d_idx--;
+    }
+}
+
 void mf_shape_format(const mf_type_info* info, char* buf, size_t size) {
     if (info->ndim == 0) {
         snprintf(buf, size, "[]");
@@ -76,16 +103,20 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
 }
 
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
-    if (dom_count <= 1) return (op_count > 0) ? 1 : 0;
-    
-    if (op_count == dom_count || op_count == 0) return 1;
-    if (op_count == 1) return 0;
-    
-    if (op_count > dom_count && (op_count % dom_count == 0)) {
-        size_t stride = op_count / dom_count;
-        if (stride <= 16) return (i32)stride; 
+    if (dom_count <= 1) {
+        // If domain is scalar, we only want 1 element. 
+        // If operand has more than 1 element, we must use stride 0 to stay at index 0.
+        return (op_count == 1 || op_count == 0) ? 1 : 0;
     }
     
+    // Exact match or special case for empty constants
+    if (op_count == dom_count || op_count == 0) return 1;
+    
+    // Scalar / Broadcast
+    if (op_count == 1) return 0;
+    
+    // Mismatched sizes cannot be iterated linearly with a single constant stride.
+    // In current VM architecture, we fallback to Stride 0 (broadcasting).
     return 0; 
 }
 

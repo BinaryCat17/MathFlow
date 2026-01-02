@@ -42,10 +42,11 @@ static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
         
         res->name = mf_arena_strdup(&engine->arena, desc->name);
         res->name_hash = mf_fnv1a_hash(res->name);
+        res->provider = desc->provider ? mf_arena_strdup(&engine->arena, desc->provider) : NULL;
         res->flags = desc->flags;
         
         memset(&res->desc, 0, sizeof(mf_tensor));
-        mf_type_info_init_contiguous(&res->desc.info, desc->dtype, MF_IDENTITY_UNIFORM, desc->shape, desc->ndim);
+        mf_type_info_init_contiguous(&res->desc.info, desc->dtype, desc->shape, desc->ndim);
         
         bool is_dynamic = false;
         for (int k = 0; k < desc->ndim; ++k) if (desc->shape[k] <= 0) is_dynamic = true;
@@ -165,7 +166,10 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
             bool is_out = (sym->flags & MF_SYMBOL_FLAG_OUTPUT) != 0;
             mf_tensor* port_tensor = &ker->program->tensors[sym->register_idx];
 
-            if (!mf_shape_is_compatible(&port_tensor->info, &res->desc.info, is_out)) {
+            mf_type_info res_info;
+            mf_type_info_init_contiguous(&res_info, res->desc.info.dtype, res->desc.info.shape, res->desc.info.ndim);
+
+            if (!mf_shape_is_compatible(&port_tensor->info, &res_info, is_out)) {
                 char s_port[64], s_res[64];
                 mf_shape_format(&port_tensor->info, s_port, sizeof(s_port));
                 mf_shape_format(&res->desc.info, s_res, sizeof(s_res));

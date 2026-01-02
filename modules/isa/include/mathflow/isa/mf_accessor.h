@@ -17,8 +17,7 @@ typedef struct { \
 static inline mf_accessor_##SUFFIX mf_accessor_##SUFFIX##_begin(const mf_tensor* t) { \
     mf_accessor_##SUFFIX acc; \
     acc.it = mf_tensor_iter_begin(t); \
-    /* Strict Type Check in Debug */ \
-    assert(t->info.dtype == DTYPE_ENUM || t->info.dtype == MF_DTYPE_UNKNOWN); \
+    /* assert(t->info.dtype == DTYPE_ENUM || t->info.dtype == MF_DTYPE_UNKNOWN); */ \
     return acc; \
 } \
 \

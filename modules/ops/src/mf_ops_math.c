@@ -71,8 +71,8 @@ static void op_smoothstep(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     f32 span = e1 - e0;
     if (fabsf(span) < 1e-6f) span = 1e-6f;
 
-    i32 st0 = MF_GET_STRIDE(dst);
-    i32 st2 = MF_GET_STRIDE(x);
+    i32 st0 = MF_GET_STRIDE_D(bi);
+    i32 st2 = MF_GET_STRIDE_S2(bi);
 
     for (size_t i = 0; i < sz; ++i) {
         f32 val = mf_accessor_f32_get(&it_x);
@@ -132,7 +132,7 @@ static void op_dot(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
     mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
     mf_accessor_f32 it_b = mf_accessor_f32_begin(b);
-    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st0 = MF_GET_STRIDE_D(bi);
 
     for (size_t i = 0; i < out_count; ++i) {
         mf_accessor_f32_set(&it_dst, MF_SAFE_F32(_vec_dot(&it_a, &it_b, vec_len)));
@@ -160,7 +160,7 @@ static void op_length(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     size_t out_count = mf_tensor_count(dst);
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
     mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
-    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st0 = MF_GET_STRIDE_D(bi);
 
     for (size_t i = 0; i < out_count; ++i) {
         mf_accessor_f32_set(&it_dst, MF_SAFE_F32(sqrtf(_vec_len_sq(&it_a, vec_len))));
@@ -212,7 +212,7 @@ static void op_reduce_sum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
     f32 sum = 0;
     
     mf_accessor_f32 it = mf_accessor_f32_begin(src);
-    i32 st1 = MF_GET_STRIDE(src);
+    i32 st1 = MF_GET_STRIDE_S1(bi);
 
     for (size_t i = 0; i < count; ++i) {
         sum += mf_accessor_f32_get(&it);

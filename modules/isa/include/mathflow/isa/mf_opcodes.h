@@ -76,9 +76,7 @@ typedef enum {
     // --- Array Ops (256 - 511) ---
     MF_OP_ARRAY_BEGIN = 256,
     
-    // Generators
-    MF_OP_RANGE = 260, // Output: [0, 1, 2, ... N-1]
-    MF_OP_INDEX = 261, // Output: Index of current element. Args: [Dest, AxisConst, -]
+    // Memory
     MF_OP_GATHER = 262, // Output[i] = Source[ Indices[i] ]. Args: [Source, Indices, -]
 
     // --- Array Ops ---

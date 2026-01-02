@@ -29,7 +29,7 @@ bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag);
 // - Propagates Shapes and DTypes
 // - Validates compatibility (Strong Typing)
 // - Checks broadcasting rules
-bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag);
+bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, const mf_compile_contract* contract, mf_compiler_diag* diag);
 
 // --- Pass: Validation (Strict Consistency) ---
 // Performs final structural and semantic checks before codegen.

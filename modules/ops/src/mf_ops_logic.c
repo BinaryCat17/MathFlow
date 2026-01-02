@@ -48,10 +48,10 @@ static void op_select(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
 
     bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
 
-    i32 st0 = MF_GET_STRIDE(dst);
-    i32 st1 = MF_GET_STRIDE(cond);
-    i32 st2 = MF_GET_STRIDE(true_val);
-    i32 st3 = MF_GET_STRIDE(false_val);
+    i32 st0 = MF_GET_STRIDE_D(bi);
+    i32 st1 = MF_GET_STRIDE_S1(bi);
+    i32 st2 = MF_GET_STRIDE_S2(bi);
+    i32 st3 = MF_GET_STRIDE_S3(bi);
 
     for(size_t i=0; i<sz_dst; ++i) {
         bool condition = false;

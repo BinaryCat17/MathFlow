@@ -47,6 +47,7 @@ typedef struct {
  */
 typedef struct {
     const char* name;
+    const char* provider;
     u32         name_hash;
     mf_buffer*  buffers[2];   // [0] Front, [1] Back
     size_t      size_bytes;

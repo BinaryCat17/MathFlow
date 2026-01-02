@@ -6,7 +6,7 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 11       // Added Identity to Tensor Desc
+#define MF_BINARY_VERSION 12       // Removed Identity (Shape-Driven ISA)
 
 #define MF_MAX_SYMBOL_NAME 64
 
@@ -17,6 +17,7 @@
 // Map Name -> Register Index
 typedef struct {
     char name[MF_MAX_SYMBOL_NAME];
+    char provider[MF_MAX_SYMBOL_NAME];
     uint32_t name_hash; // FNV-1a
     uint32_t register_idx;
     uint32_t related_name_hash; // Hash of the Input symbol that drives this Output's shape (0 if none)
@@ -36,9 +37,9 @@ typedef struct {
 // Followed immediately by shape data? No, fixed max dims.
 typedef struct {
     uint8_t dtype;       // mf_dtype
-    uint8_t identity;    // mf_identity
     uint8_t ndim;        // Rank
     uint8_t is_constant; // 1 if data follows, 0 if uninitialized buffer
+    uint8_t reserved;    // Padding
     
     int32_t shape[MF_MAX_DIMS];
     

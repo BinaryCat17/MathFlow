@@ -45,24 +45,17 @@ static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tenso
     return false;
 }
 
-static mf_identity infer_node_identity(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node* s3, const mf_op_metadata* meta) {
-    if (node->type == MF_NODE_CONST) return MF_IDENTITY_CONSTANT;
-    if (node->type == MF_NODE_INDEX) return MF_IDENTITY_SPATIAL;
-    if (node->type == MF_NODE_INPUT) return MF_IDENTITY_UNIFORM;
-    if (meta->category == MF_OP_CAT_REDUCTION && meta->shape_rule == MF_SHAPE_SCALAR) return MF_IDENTITY_UNIFORM;
-
-    mf_identity id = MF_IDENTITY_CONSTANT;
-    mf_ir_node* srcs[] = { s1, s2, s3 };
-    for (int i = 0; i < 3; ++i) {
-        if (srcs[i]) {
-            mf_identity src_id = srcs[i]->out_shape.info.identity;
-            if (src_id > id) id = src_id;
-        }
+static const mf_compile_port* find_port(const mf_compile_contract* contract, const char* name, bool is_input) {
+    if (!contract || !name) return NULL;
+    uint32_t count = is_input ? contract->input_count : contract->output_count;
+    mf_compile_port* ports = is_input ? contract->inputs : contract->outputs;
+    for (uint32_t i = 0; i < count; ++i) {
+        if (ports[i].name && strcmp(ports[i].name, name) == 0) return &ports[i];
     }
-    return id;
+    return NULL;
 }
 
-bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag) {
+bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, const mf_compile_contract* contract, mf_compiler_diag* diag) {
     for (size_t i = 0; i < count; ++i) {
         mf_ir_node* node = sorted_nodes[i];
         if (node->type == MF_NODE_UNKNOWN || node->type >= MF_NODE_COUNT) continue;
@@ -76,21 +69,33 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
         mf_tensor* out = &node->out_shape;
         
-        // Identity is useful for shape rules
-        out->info.identity = infer_node_identity(node, s1, s2, s3, meta);
+        char s_before[64] = "unknown";
+        mf_shape_format(&out->info, s_before, sizeof(s_before));
 
         // --- 1. Resolve Output Shape First ---
         switch (meta->shape_rule) {
             case MF_SHAPE_SPECIAL:
                 if (node->type == MF_NODE_CONST) {
                     node->out_shape = node->constant;
-                } else if (node->type == MF_NODE_INPUT) {
-                    if (!s1) {
-                        out->info.ndim = node->constant.info.ndim;
-                        memcpy(out->info.shape, node->constant.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
-                    } else {
-                        out->info.ndim = s1->out_shape.info.ndim;
-                        memcpy(out->info.shape, s1->out_shape.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+                } else if (node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
+                    const mf_compile_port* cp = find_port(contract, node->id, (node->type == MF_NODE_INPUT));
+                    if (cp) {
+                        out->info.dtype = cp->dtype;
+                        out->info.ndim = cp->ndim;
+                        memcpy(out->info.shape, cp->shape, sizeof(int32_t) * MF_MAX_DIMS);
+                    } else if (node->type == MF_NODE_INPUT) {
+                        if (s1) {
+                            // Inlined input port - adopt shape from caller
+                            out->info = s1->out_shape.info;
+                        } else {
+                            // Fallback to internal constant if no contract binding and no source link
+                            out->info.dtype = node->constant.info.dtype;
+                            out->info.ndim = node->constant.info.ndim;
+                            memcpy(out->info.shape, node->constant.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+                        }
+                    } else if (node->type == MF_NODE_OUTPUT && s1) {
+                        // Output adopts shape from its input if not explicitly bound
+                        out->info = s1->out_shape.info;
                     }
                 }
                 break;
@@ -183,16 +188,6 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
                 }
                 break;
 
-            case MF_SHAPE_DYNAMIC_1D:
-                out->info.ndim = 1;
-                if (node->type == MF_NODE_RANGE && s1 && mf_tensor_is_valid(&s1->constant)) {
-                    void* d = mf_tensor_data(&s1->constant);
-                    out->info.shape[0] = (s1->constant.info.dtype == MF_DTYPE_F32) ? (int)*((f32*)d) : *((int32_t*)d);
-                } else {
-                    out->info.shape[0] = 0; // Dynamic
-                }
-                break;
-
             case MF_SHAPE_SCALAR:
                 out->info.ndim = 0;
                 out->info.shape[0] = 1;
@@ -200,14 +195,13 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
         }
 
         // --- 2. Resolve Output DType (Must happen AFTER shape resolution) ---
-        mf_dtype dtype = out->info.dtype;
+        mf_dtype dtype = MF_DTYPE_UNKNOWN;
 
         // FORCE rules always take precedence
         if (meta->out_rule == MF_OUT_FORCE_F32) dtype = MF_DTYPE_F32;
         else if (meta->out_rule == MF_OUT_FORCE_U8)  dtype = MF_DTYPE_U8;
         else if (meta->out_rule == MF_OUT_FORCE_I32) dtype = MF_DTYPE_I32;
-        // If no force rule and dtype is still unknown, apply propagation rules
-        else if (dtype == MF_DTYPE_UNKNOWN) {
+        else {
             if (meta->out_rule == MF_OUT_SAME_AS_INPUT) {
                 if (s1) dtype = s1->out_shape.info.dtype;
                 else if (node->constant.info.dtype != MF_DTYPE_UNKNOWN) dtype = node->constant.info.dtype;
@@ -216,8 +210,10 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             }
         }
 
-        // Fallback to F32 if still unknown
-        if (dtype == MF_DTYPE_UNKNOWN) dtype = MF_DTYPE_F32;
+        // If still unknown (e.g. not matched by rules), fallback to what was there or F32
+        if (dtype == MF_DTYPE_UNKNOWN) {
+            dtype = (out->info.dtype != MF_DTYPE_UNKNOWN) ? out->info.dtype : MF_DTYPE_F32;
+        }
         
         out->info.dtype = dtype;
 
@@ -243,10 +239,18 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
         // --- 3. Finalize Strides ---
         mf_shape_calc_strides(&out->info);
 
+        // Inferred Linear Strides (For VM execution)
+        size_t dom_count = mf_tensor_count(out);
+        node->strides[0] = (i8)mf_shape_calc_linear_stride(dom_count, dom_count);
+        node->strides[1] = s1 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), dom_count) : 0;
+        node->strides[2] = s2 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), dom_count) : 0;
+        node->strides[3] = s3 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), dom_count) : 0;
+
         char s_shape[64];
         mf_shape_format(&out->info, s_shape, sizeof(s_shape));
-        MF_LOG_TRACE("Analyze: Node %u (%s) -> ID: %s, Identity: %d, Rule: %s, Type: %s, Shape: %s", 
-            node_idx, meta->name, node->id, out->info.identity, _rule_name(meta->out_rule), _dtype_name(out->info.dtype), s_shape);
+        MF_LOG_INFO("Analyze: Node %u (%s) ID:%s -> Shape:%s (Before:%s), Type:%s, Strides:[%d,%d,%d,%d]", 
+            node_idx, meta->name, node->id, s_shape, s_before, _dtype_name(out->info.dtype),
+            node->strides[0], node->strides[1], node->strides[2], node->strides[3]);
         
         if (s1 || s2 || s3) {
             MF_LOG_TRACE("  Inputs: S1:%s (%s), S2:%s (%s), S3:%s (%s)",

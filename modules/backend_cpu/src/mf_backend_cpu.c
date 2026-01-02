@@ -49,6 +49,7 @@ typedef struct {
     u8 ndim;
     u32 domain_shape[MF_MAX_DIMS];
     i32 strides[MF_MAX_REGISTERS];
+    const char* providers[MF_MAX_REGISTERS];
 
     // Parallel Reduction Support
     f32* reduction_scratch; // [num_threads * num_registers]
@@ -347,13 +348,72 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         *worker_t = *main_t;
 
         i32 stride = batch->strides[i];
-        if (main_t->buffer) {
+        const char* provider = batch->providers[i];
+        if (provider && strncmp(provider, "host.index", 10) == 0) {
+            // Generate Indices
+            size_t elements = count;
+            size_t ndim = main_t->info.ndim;
+            
+            // Check for explicit axis (e.g. host.index.1)
+            int axis = -1;
+            if (strlen(provider) > 11 && provider[10] == '.') {
+                axis = atoi(provider + 11);
+            }
+
+            if (ndim == 0) ndim = 1; 
+            
+            size_t bytes = elements * ndim * sizeof(f32);
+            void* mem = mf_exec_ctx_scratch_alloc(worker_ctx, bytes);
+            if (mem) {
+                f32* fmem = (f32*)mem;
+                u32 current_coords[MF_MAX_DIMS];
+                memcpy(current_coords, worker_ctx->tile_offset, sizeof(u32) * MF_MAX_DIMS);
+                
+                for (size_t e = 0; e < elements; ++e) {
+                    for (size_t d = 0; d < ndim; ++d) {
+                        int target_axis = (axis >= 0) ? axis : (int)d;
+                        if (target_axis < batch->ndim) {
+                            fmem[e * ndim + d] = (f32)current_coords[target_axis];
+                        } else {
+                            fmem[e * ndim + d] = 0.0f;
+                        }
+                    }
+                    for (int d = batch->ndim - 1; d >= 0; --d) {
+                        current_coords[d]++;
+                        if (current_coords[d] < (int)batch->domain_shape[d] || d == 0) break;
+                        current_coords[d] = 0;
+                    }
+                }
+
+                mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
+                mf_buffer_init_view(scratch_buf, mem, bytes);
+                worker_t->buffer = scratch_buf;
+                worker_t->byte_offset = 0;
+                
+                // Adjust metadata for the flat window view
+                worker_t->info.ndim = (uint8_t)((ndim > 1) ? 2 : 1);
+                worker_t->info.shape[0] = (int32_t)count;
+                worker_t->info.shape[1] = (int32_t)ndim;
+                mf_shape_calc_strides(&worker_t->info);
+            }
+        } else if (main_t->buffer) {
             size_t dtype_sz = mf_dtype_size(main_t->info.dtype);
             worker_t->byte_offset = main_t->byte_offset + (start_idx * (size_t)stride * dtype_sz);
             
-            if (i == 57 || stride > 1) {
+            if (stride > 1) {
                 MF_LOG_TRACE("  Prep Reg %u: External (Buffer: %p, Size: %zu, Stride: %d, Offset: %zu)", 
                     i, (void*)main_t->buffer->data, main_t->buffer->size_bytes, stride, worker_t->byte_offset);
+            }
+            
+            // Adjust metadata for the flat window view
+            worker_t->info.ndim = (stride > 1) ? 2 : 1;
+            worker_t->info.shape[0] = (int32_t)count;
+            worker_t->info.strides[0] = stride;
+            if (stride > 1) {
+                worker_t->info.shape[1] = stride;
+                worker_t->info.strides[1] = 1;
+            } else if (stride == 0) {
+                worker_t->info.strides[0] = 0;
             }
         } else {
             // This is a temporary register (scratchpad). Allocate memory in worker's arena.
@@ -369,6 +429,16 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
                 worker_t->buffer = scratch_buf;
                 worker_t->byte_offset = 0;
                 
+                worker_t->info.ndim = (stride > 1) ? 2 : 1;
+                worker_t->info.shape[0] = (int32_t)count;
+                worker_t->info.strides[0] = stride;
+                if (stride > 1) {
+                    worker_t->info.shape[1] = stride;
+                    worker_t->info.strides[1] = 1;
+                } else if (stride == 0) {
+                    worker_t->info.strides[0] = 0;
+                }
+                
                 if (stride > 1) {
                     MF_LOG_TRACE("  Prep Reg %u: Scratchpad (Size: %zu, Stride: %d)", i, bytes, stride);
                 }
@@ -377,16 +447,8 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
             }
         }
         
-        // Adjust metadata for the flat window view
-        if (stride > 0) {
-            worker_t->info.ndim = (stride > 1) ? 2 : 1;
-            worker_t->info.shape[0] = (int32_t)count;
-            worker_t->info.strides[0] = stride;
-            if (stride > 1) {
-                worker_t->info.shape[1] = stride;
-                worker_t->info.strides[1] = 1;
-            }
-        } else if (batch->reduction_scratch && stride == -1) {
+        // Reductions still need special handling for the buffer
+        if (!provider && batch->reduction_scratch && stride == -1) {
             // Redirect output to thread-local scratch space
             mf_buffer* scratch_buf = MF_ARENA_PUSH(&state->reg_arena, mf_buffer, 1);
             scratch_buf->data = &batch->reduction_scratch[tid * MF_MAX_REGISTERS + i];
@@ -479,6 +541,7 @@ static void mf_backend_cpu_dispatch(
     if (!domain) return;
 
     size_t total_elements = mf_tensor_count(domain);
+    MF_LOG_INFO("CPU Dispatch: Total elements in domain: %zu", total_elements);
     if (total_elements == 0) {
         MF_LOG_WARN("CPU Backend: Dispatch ignored. Domain has 0 elements.");
         return;
@@ -509,30 +572,73 @@ static void mf_backend_cpu_dispatch(
     // 1. Analyze Tensors & Detect Reductions
     u8 reg_processed[MF_MAX_REGISTERS] = {0};
     memset(batch.strides, 0, sizeof(batch.strides));
-
+    memset(batch.providers, 0, sizeof(batch.providers));
     bool has_reductions = false;
 
-    // Initialize strides from program metadata
+    // Pre-populate providers from symbols (to avoid aliasing issues in state)
+    for (u32 s = 0; s < program->meta.symbol_count; ++s) {
+        const mf_bin_symbol* sym = &program->symbols[s];
+        if (sym->register_idx < MF_MAX_REGISTERS && sym->provider[0] != '\0') {
+            batch.providers[sym->register_idx] = sym->provider;
+            MF_LOG_DEBUG("  Registry: Reg %u has provider '%s' (from symbol '%s')", sym->register_idx, sym->provider, sym->name);
+        }
+    }
+
+    // Initialize strides from instruction metadata
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         
         uint16_t regs[] = { inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx };
+        int8_t reg_strides[] = { inst->strides[0], inst->strides[1], inst->strides[2], inst->strides[3], 0 };
+
         for (int r = 0; r < 5; ++r) {
             uint16_t reg_idx = regs[r];
-            if (reg_idx < program->meta.tensor_count && !reg_processed[reg_idx]) {
-                const mf_tensor* t = &program->tensors[reg_idx];
-                batch.strides[reg_idx] = (t->info.identity == MF_IDENTITY_SPATIAL) ? 1 : 0;
+            if (reg_idx >= program->meta.tensor_count) continue;
+
+            // NOOP instructions (Constants/Inputs) should not set strides if possible.
+            bool is_noop = (inst->opcode == MF_OP_NOOP);
+
+            if (!reg_processed[reg_idx]) {
+                batch.strides[reg_idx] = reg_strides[r];
                 batch.active_regs[batch.active_reg_count++] = reg_idx;
                 reg_processed[reg_idx] = 1;
+            } else if (!is_noop) {
+                // If we already have a stride, but this is a real computation,
+                // prefer the stride from the computation.
+                // Special case: if we have 0 vs 1, we need to decide.
+                // In a batch, if ANY instruction says it's spatial (1), it probably is.
+                // EXCEPT if the computational instruction explicitly says 0.
+                if (reg_strides[r] == 0) {
+                    batch.strides[reg_idx] = 0;
+                } else if (batch.strides[reg_idx] == 0 && reg_strides[r] > 0) {
+                    batch.strides[reg_idx] = reg_strides[r];
+                }
             }
         }
 
-        // Detect if this is a parallel reduction task (Explicit for SUM)
-        if (inst->opcode == MF_OP_REDUCE_SUM) {
-            // If the output is a scalar but input has spatial strides, it's a reduction
-            if (batch.strides[inst->src1_idx] > 0) {
-                batch.strides[inst->dest_idx] = -1; // Flag for reduction
-                has_reductions = true;
+        // Special case: Constants/Inputs should NEVER have stride 1 in a large domain 
+        // if they were inferred as stride 0 in their computational use.
+        // Actually, the priority logic above already handles this IF the computational
+        // instruction comes first. But it doesn't. 
+        // Let's force stride 0 for everything that isn't the domain itself or a provider.
+    }
+
+    // Post-process: ensure providers and domain-matching registers have stride 1
+    for (size_t k = 0; k < batch.active_reg_count; ++k) {
+        u16 reg_idx = batch.active_regs[k];
+        if (batch.providers[reg_idx]) {
+            batch.strides[reg_idx] = 1;
+            continue;
+        }
+
+        // Failsafe: if tensor is smaller than domain, it MUST be broadcasted (stride 0)
+        // to avoid immediate OOB when workers try to slice it.
+        mf_tensor* main_t = &main_state->registers[reg_idx];
+        if (main_t->buffer && mf_tensor_count(main_t) < total_elements) {
+            if (batch.strides[reg_idx] != 0) {
+                MF_LOG_DEBUG("  Failsafe: Reg %u forced to Stride 0 (Size %zu < Domain %zu)", 
+                    reg_idx, mf_tensor_count(main_t), total_elements);
+                batch.strides[reg_idx] = 0;
             }
         }
     }
@@ -540,6 +646,12 @@ static void mf_backend_cpu_dispatch(
     // 2. Allocate scratch memory if needed
     if (has_reductions && num_threads > 1) {
         batch.reduction_scratch = calloc(num_threads * MF_MAX_REGISTERS, sizeof(f32));
+    }
+
+    for (size_t k = 0; k < batch.active_reg_count; ++k) {
+        u16 reg_idx = batch.active_regs[k];
+        MF_LOG_DEBUG("  Batch Reg %u: Stride %d (Provider: %s)", 
+            reg_idx, batch.strides[reg_idx], batch.providers[reg_idx] ? batch.providers[reg_idx] : "NONE");
     }
 
     // 3. Dispatch Jobs

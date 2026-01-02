@@ -67,14 +67,6 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                  continue;
             }
 
-            // --- Validation: Forbid Index inside subgraphs ---
-            for (size_t k = 0; k < child_ir.node_count; ++k) {
-                if (child_ir.nodes[k].type == MF_NODE_INDEX) {
-                    mf_compiler_diag_report(diag, node->loc, "Subgraph '%s' contains an 'Index' node. Subgraphs must be pure functions; pass coordinates as inputs instead.", node->sub_graph_path);
-                    return false;
-                }
-            }
-
             const char** child_raw_ids = MF_ARENA_PUSH(arena, const char*, child_ir.node_count);
             for (size_t k = 0; k < child_ir.node_count; ++k) child_raw_ids[k] = child_ir.nodes[k].id;
 
@@ -217,7 +209,10 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                 MF_LOG_DEBUG("Inline: Could not find port key '%s' in port_map", key);
                 drop_link = true;
             }
-            else l.dst_port = 0;
+            else {
+                l.dst_port = 0;
+                l.dst_port_name = "out";
+            }
         } else {
             mf_map_get(&global_map, dst_node->id, &final_dst_idx);
         }

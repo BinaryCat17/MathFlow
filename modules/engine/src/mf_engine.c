@@ -16,13 +16,15 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
     state->register_count = prog->meta.tensor_count;
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
     state->ownership_flags = MF_ARENA_PUSH(arena, uint8_t, state->register_count);
+    state->providers = MF_ARENA_PUSH(arena, const char*, state->register_count);
     
-    if (!state->registers || !state->ownership_flags) {
+    if (!state->registers || !state->ownership_flags || !state->providers) {
         MF_LOG_ERROR("Engine: Failed to allocate state registers for program.");
         return;
     }
     
     memset(state->ownership_flags, 0, state->register_count);
+    memset(state->providers, 0, sizeof(const char*) * state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
         mf_tensor* t_prog = &prog->tensors[i];
@@ -212,9 +214,10 @@ void mf_engine_dispatch(mf_engine* engine) {
             t->buffer = (bind->flags & MF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
             t->byte_offset = 0;
             t->info = res->desc.info; // Sync metadata
+            ker->state.providers[bind->local_reg] = res->provider;
 
-            MF_LOG_TRACE("  Binding: Reg %u -> Resource '%s' (Buffer: %p, Size: %zu)", 
-                bind->local_reg, res->name, (void*)t->buffer->data, t->buffer->size_bytes);
+            MF_LOG_TRACE("  Binding: Reg %u -> Resource '%s' (Provider: %s, Buffer: %p, Size: %zu)", 
+                bind->local_reg, res->name, res->provider ? res->provider : "NONE", (void*)t->buffer->data, t->buffer->size_bytes);
         }
         
         // 3. Execution (Frequency Loop)
@@ -284,7 +287,7 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     mf_allocator* alloc = (mf_allocator*)&engine->heap;
     
     mf_type_info new_info;
-    mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, res->desc.info.identity, new_shape, new_ndim);
+    mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, new_shape, new_ndim);
     
     size_t new_bytes = 1;
     for(int d=0; d<new_ndim; ++d) new_bytes *= (new_shape[d] > 0 ? new_shape[d] : 1);

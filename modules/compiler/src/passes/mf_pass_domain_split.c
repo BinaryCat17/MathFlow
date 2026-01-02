@@ -1,20 +1,33 @@
 #include "mf_passes.h"
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_shape.h>
 #include <string.h>
+
+static bool shapes_equal(const mf_type_info* a, const mf_type_info* b) {
+    if (a->ndim != b->ndim) return false;
+    for (int i = 0; i < a->ndim; ++i) {
+        if (a->shape[i] != b->shape[i]) return false;
+    }
+    return true;
+}
 
 static void mark_domain(mf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
     mf_ir_node* node = &ir->nodes[node_idx];
     
-    // If already marked by a different domain, it might be a shared dependency.
-    // We prioritize the "largest" or "most specific" domain, 
-    // or we leave it as shared (domain_node_idx = UINT32_MAX).
     if (node->domain_node_idx != UINT32_MAX) {
         if (node->domain_node_idx != domain_idx) {
-            // Check if it's a scalar or constant. Scalars are usually global/shared.
-            bool is_scalar = (node->out_shape.info.ndim == 0);
-            if (!is_scalar) {
-                // If it's not scalar and used by multiple domains, 
-                // it's a complex case. For now, mark as shared.
+            // Node is used by multiple domains. 
+            // In a pure STEP_N model, shared nodes must either:
+            // 1. Be moved to a 'common' domain (calculated once).
+            // 2. Be duplicated (bad for perf).
+            // 3. Be constants/inputs (already fine).
+            
+            // For now, if shapes are different, we mark as shared (UINT32_MAX).
+            // If shapes are same, we can stick to one domain as they are compatible.
+            const mf_type_info* shape_a = &ir->nodes[node->domain_node_idx].out_shape.info;
+            const mf_type_info* shape_b = &ir->nodes[domain_idx].out_shape.info;
+            
+            if (!shapes_equal(shape_a, shape_b)) {
                 node->domain_node_idx = UINT32_MAX; 
             }
         }
@@ -39,20 +52,24 @@ bool mf_pass_domain_split(mf_graph_ir* ir, mf_compiler_diag* diag) {
         ir->nodes[i].domain_node_idx = UINT32_MAX;
     }
 
-    // 2. Find all Outputs and propagate their domain backwards
+    // 2. Find all Outputs and propagate their domain backwards.
+    // We want to group by shape, so if multiple outputs have the same shape,
+    // they can share the same 'domain representative'.
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].type == MF_NODE_OUTPUT) {
-            mark_domain(ir, (u32)i, (u32)i);
+            // Check if we already have a domain for this shape
+            u32 rep_idx = (u32)i;
+            for (size_t j = 0; j < i; ++j) {
+                if (ir->nodes[j].type == MF_NODE_OUTPUT && 
+                    shapes_equal(&ir->nodes[j].out_shape.info, &ir->nodes[i].out_shape.info)) 
+                {
+                    rep_idx = (u32)j;
+                    break;
+                }
+            }
+            mark_domain(ir, (u32)i, rep_idx);
         }
     }
-
-    // 3. Any node still marked UINT32_MAX is either:
-    //    - Not used by any Output (DCE candidate)
-    //    - A global constant/input
-    //    - Part of a cycle (should have been caught by topo sort)
-    
-    // For now, nodes without domain are treated as "Global" (domain 0 or similar)
-    // but CodeGen expects a valid domain_reg. We can use the node itself if it's a constant.
 
     return true;
 }
