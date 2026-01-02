@@ -60,6 +60,10 @@ static inline f32 mf_utils_get_scalar_f32(const mf_tensor* t) {
     return 0.0f;
 }
 
+// --- Stride Inference ---
+
+#define MF_GET_STRIDE(t) ((t)->info.identity == MF_IDENTITY_SPATIAL ? 1 : 0)
+
 // --- Macros: Optimized Kernel Definitions ---
 
 #define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
@@ -79,13 +83,16 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_accessor_##ACC_OUT it_dst = mf_accessor_##ACC_OUT##_begin(dst); \
     mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
     mf_accessor_##ACC_IN it_b = mf_accessor_##ACC_IN##_begin(b); \
+    i32 st0 = MF_GET_STRIDE(dst); \
+    i32 st1 = MF_GET_STRIDE(a); \
+    i32 st2 = MF_GET_STRIDE(b); \
     for(size_t i=0; i<sz_dst; ++i) { \
         TYPE_IN va = mf_accessor_##ACC_IN##_get(&it_a); \
         TYPE_IN vb = mf_accessor_##ACC_IN##_get(&it_b); \
         mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
-        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
-        mf_accessor_##ACC_IN##_advance(&it_b, inst->strides[2]); \
-        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
+        mf_accessor_##ACC_IN##_advance(&it_a, st1); \
+        mf_accessor_##ACC_IN##_advance(&it_b, st2); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, st0); \
     } \
 }
 
@@ -107,15 +114,19 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
     mf_accessor_##ACC_IN it_b = mf_accessor_##ACC_IN##_begin(b); \
     mf_accessor_##ACC_IN it_c = mf_accessor_##ACC_IN##_begin(c); \
+    i32 st0 = MF_GET_STRIDE(dst); \
+    i32 st1 = MF_GET_STRIDE(a); \
+    i32 st2 = MF_GET_STRIDE(b); \
+    i32 st3 = MF_GET_STRIDE(c); \
     for(size_t i=0; i<sz_dst; ++i) { \
         TYPE_A va = mf_accessor_##ACC_IN##_get(&it_a); \
         TYPE_B vb = mf_accessor_##ACC_IN##_get(&it_b); \
         TYPE_C vc = mf_accessor_##ACC_IN##_get(&it_c); \
         mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
-        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
-        mf_accessor_##ACC_IN##_advance(&it_b, inst->strides[2]); \
-        mf_accessor_##ACC_IN##_advance(&it_c, inst->strides[3]); \
-        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
+        mf_accessor_##ACC_IN##_advance(&it_a, st1); \
+        mf_accessor_##ACC_IN##_advance(&it_b, st2); \
+        mf_accessor_##ACC_IN##_advance(&it_c, st3); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, st0); \
     } \
 }
 
@@ -131,11 +142,13 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     size_t sz_dst = mf_tensor_count(dst); \
     mf_accessor_##ACC_OUT it_dst = mf_accessor_##ACC_OUT##_begin(dst); \
     mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
+    i32 st0 = MF_GET_STRIDE(dst); \
+    i32 st1 = MF_GET_STRIDE(a); \
     for(size_t i=0; i<sz_dst; ++i) { \
         TYPE_IN v = mf_accessor_##ACC_IN##_get(&it_a); \
         mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
-        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
-        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
+        mf_accessor_##ACC_IN##_advance(&it_a, st1); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, st0); \
     } \
 }
 

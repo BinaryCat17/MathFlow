@@ -4,11 +4,15 @@
 #include <mathflow/base/mf_types.h>
 #include "mf_opcodes.h"
 
-// Standard 3-address code instruction
-// Updated to support 3 source operands (e.g. Select, Clamp, Mix)
-// Layout: [ Opcode (16) | Dest (16) | Src1 (16) | Src2 (16) | Src3 (16) | Reserved (16) ]
-// Total Size: 96 bits (12 bytes).
-// Note: We keep it packed/minimal. 
+/**
+ * @brief Standard 4-address code instruction.
+ * 
+ * Layout: [ Opcode (16) | Dest (16) | Src1 (16) | Src2 (16) | Src3 (16) | Src4 (16) ]
+ * Total Size: 12 bytes.
+ * 
+ * Strides are no longer stored per-instruction. Instead, they are inferred 
+ * at runtime from the tensor's identity (Spatial vs Uniform).
+ */
 typedef struct {
     u16 opcode;
     u16 dest_idx;
@@ -16,11 +20,6 @@ typedef struct {
     u16 src2_idx;
     u16 src3_idx;
     u16 src4_idx;
-
-    // Element-strides for [Dest, Src1, Src2, Src3, Src4]
-    // Determines pointer advancement per domain element.
-    // 0 = Constant/Broadcast, 1 = Sequential, C = Channels
-    i32 strides[5]; 
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

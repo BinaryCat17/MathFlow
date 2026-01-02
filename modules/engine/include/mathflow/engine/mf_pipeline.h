@@ -5,7 +5,9 @@
 #include <mathflow/isa/mf_tensor.h>
 
 // Resource Flags
-#define MF_RESOURCE_FLAG_READONLY (1 << 0) // Cannot be bound to an Output port
+#define MF_RESOURCE_FLAG_READONLY   (1 << 0) // Cannot be bound to an Output port
+#define MF_RESOURCE_FLAG_PERSISTENT (1 << 1) // Force double-buffering (state)
+#define MF_RESOURCE_FLAG_TRANSIENT  (1 << 2) // Single-buffered (scratchpad)
 
 // Description of a Global Resource (Blackboard Buffer)
 typedef struct {

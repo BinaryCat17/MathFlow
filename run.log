@@ -1,6 +1,5 @@
-22:48:42 [32m[INFO ][0m MathFlow Visualizer[0m
-22:48:42 [32m[INFO ][0m App: Inventory Demo (Interactive)[0m
-22:48:42 [32m[INFO ][0m Graph: assets/projects/inventory/inventory_render.json[0m
-22:48:42 [32m[INFO ][0m Resolution: 512x512[0m
-22:48:42 [32m[INFO ][0m Creating Engine...[0m
-22:48:42 [32m[INFO ][0m Loader: Loading Pipeline with 2 kernels[0m
+13:28:13 [32m[INFO ][0m [mf_manifest_loader.c:18] Host: Loading raw graph directly: tests/unit/math/native_ops_test.json[0m
+13:28:13 [32m[INFO ][0m [mf_engine.c:90] Creating Engine...[0m
+13:28:13 [32m[INFO ][0m [mf_loader.c:242] Loader: Loading Pipeline with 1 kernels[0m
+13:28:13 [31m[ERROR][0m [mf_loader.c:249] Loader: Failed to load kernel program tests/unit/math/native_ops_test.json[0m
+13:28:13 [31m[ERROR][0m [mf_host_headless.c:20] Failed to initialize Host App[0m

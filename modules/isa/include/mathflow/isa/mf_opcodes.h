@@ -46,7 +46,12 @@ typedef enum {
     MF_OP_MATMUL = 40,
     MF_OP_TRANSPOSE = 41,
     MF_OP_INVERSE = 42,
+    MF_OP_DOT = 43,
+    MF_OP_LENGTH = 44,
+    MF_OP_NORMALIZE = 45,
     MF_OP_JOIN = 46, // Join two tensors into last dim: [..., 2]
+    MF_OP_MIX = 47,
+    MF_OP_SMOOTHSTEP = 48,
 
     // Comparison
     MF_OP_LESS = 60,

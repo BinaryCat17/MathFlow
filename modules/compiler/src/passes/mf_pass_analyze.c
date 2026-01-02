@@ -112,6 +112,10 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
                 }
                 break;
 
+            case MF_SHAPE_SAME_AS_S2:
+                if (s2) out->info = s2->out_shape.info;
+                break;
+
             case MF_SHAPE_BROADCAST:
                 if (!s1 || !s2) { MF_REPORT(node, "Missing inputs for broadcast op"); return false; }
                 if (s3) {
@@ -147,7 +151,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
                 break;
 
             case MF_SHAPE_DOT:
-                if (!s1 || !s2) return false;
+                if (!s1) return false;
                 out->info.ndim = s1->out_shape.info.ndim > 0 ? s1->out_shape.info.ndim - 1 : 0;
                 for(int k=0; k<out->info.ndim; ++k) out->info.shape[k] = s1->out_shape.info.shape[k];
                 break;

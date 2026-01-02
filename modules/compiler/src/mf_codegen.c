@@ -107,33 +107,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
             inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
-            // Calculate Strides relative to domain using Data Identity
-            u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
-            size_t dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
-            
-            // Destination Stride
-            if (node->out_shape.info.identity == MF_IDENTITY_SPATIAL) {
-                size_t n_out = mf_tensor_count(&node->out_shape);
-                inst->strides[0] = mf_shape_calc_linear_stride(n_out * dom_count, dom_count);
-            } else {
-                inst->strides[0] = 0; // Uniforms/Constants don't step
-            }
-
-            // Source Strides
-            mf_ir_node* srcs[] = { s1, s2, s3, s4 };
-            for (int s = 0; s < 4; ++s) {
-                if (srcs[s]) {
-                    if (srcs[s]->out_shape.info.identity == MF_IDENTITY_SPATIAL) {
-                        size_t n_src = mf_tensor_count(&srcs[s]->out_shape);
-                        inst->strides[s + 1] = mf_shape_calc_linear_stride(n_src * dom_count, dom_count);
-                    } else {
-                        inst->strides[s + 1] = 0; // Broadcast
-                    }
-                } else {
-                    inst->strides[s + 1] = 0;
-                }
-            }
-
             if (meta->category == MF_OP_CAT_SPECIAL) {
                 if (node->type == MF_NODE_INPUT && s1) {
                     inst->opcode = MF_OP_COPY; instr_count++; emitted = true;

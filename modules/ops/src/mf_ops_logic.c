@@ -45,15 +45,20 @@ static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
     bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
     size_t esize = mf_dtype_size(dst->info.dtype);
 
+    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st1 = MF_GET_STRIDE(cond);
+    i32 st2 = MF_GET_STRIDE(true_val);
+    i32 st3 = MF_GET_STRIDE(false_val);
+
     for(size_t i=0; i<sz_dst; ++i) {
         bool condition = cond_is_f32 ? (mf_accessor_f32_get(&it_c) != 0.0f) : (*((u8*)it_c.it.ptr) != 0);
         
         memcpy(it_dst.it.ptr, condition ? it_t.it.ptr : it_f.it.ptr, esize);
 
-        mf_accessor_f32_advance(&it_c, inst->strides[1]);
-        mf_accessor_f32_advance(&it_t, inst->strides[2]);
-        mf_accessor_f32_advance(&it_f, inst->strides[3]);
-        mf_accessor_f32_advance(&it_dst, inst->strides[0]);
+        mf_accessor_f32_advance(&it_c, st1);
+        mf_accessor_f32_advance(&it_t, st2);
+        mf_accessor_f32_advance(&it_f, st3);
+        mf_accessor_f32_advance(&it_dst, st0);
     }
 }
 

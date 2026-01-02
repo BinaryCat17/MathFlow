@@ -32,6 +32,172 @@ MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, MF_SAFE_F32(fmaf(va, vb,
 
 MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)), f32, f32)
 
+MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc), f32, f32)
+
+static void op_smoothstep(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* e = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); // Edges [2] or Scalar
+    mf_tensor* x = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, e);
+    MF_CHECK_INPUT(ctx, x);
+
+    dst->info.dtype = MF_DTYPE_F32;
+    if (!mf_utils_resolve_unary_shape(ctx, dst, x)) return;
+    MF_CHECK_DST_DATA(ctx, dst);
+
+    size_t sz = mf_tensor_count(dst);
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_x = mf_accessor_f32_begin(x);
+    mf_accessor_f32 it_e = mf_accessor_f32_begin(e);
+
+    // Smoothstep has 2 edges. If e has 2 elements, we use them. If 1, we assume [0, e].
+    f32 e0 = 0.0f;
+    f32 e1 = 1.0f;
+    
+    if (mf_tensor_count(e) >= 2) {
+        e0 = mf_accessor_f32_get(&it_e);
+        mf_accessor_f32_advance(&it_e, 1);
+        e1 = mf_accessor_f32_get(&it_e);
+    } else if (mf_tensor_count(e) == 1) {
+        e1 = mf_accessor_f32_get(&it_e);
+    }
+
+    f32 span = e1 - e0;
+    if (fabsf(span) < 1e-6f) span = 1e-6f;
+
+    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st2 = MF_GET_STRIDE(x);
+
+    for (size_t i = 0; i < sz; ++i) {
+        f32 val = mf_accessor_f32_get(&it_x);
+        f32 t = (val - e0) / span;
+        if (t < 0.0f) t = 0.0f;
+        if (t > 1.0f) t = 1.0f;
+        
+        f32 res = t * t * (3.0f - 2.0f * t);
+        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(res));
+        
+        mf_accessor_f32_advance(&it_x, st2);
+        mf_accessor_f32_advance(&it_dst, st0);
+    }
+}
+
+static void op_dot(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    MF_CHECK_INPUT(ctx, b);
+    
+    dst->info.dtype = MF_DTYPE_F32;
+    
+    // Output shape is input shape minus last dimension
+    if (a->info.ndim > 1) {
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim - 1)) return;
+    } else {
+        u32 scalar_shape[] = {1};
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, scalar_shape, 1)) return;
+    }
+    MF_CHECK_DST_DATA(ctx, dst);
+
+    size_t vec_len = a->info.shape[a->info.ndim - 1];
+    size_t out_count = mf_tensor_count(dst);
+    
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
+    mf_accessor_f32 it_b = mf_accessor_f32_begin(b);
+
+    i32 st0 = MF_GET_STRIDE(dst);
+
+    for (size_t i = 0; i < out_count; ++i) {
+        f32 sum = 0;
+        for (size_t j = 0; j < vec_len; ++j) {
+            sum += mf_accessor_f32_get(&it_a) * mf_accessor_f32_get(&it_b);
+            mf_accessor_f32_advance(&it_a, 1);
+            mf_accessor_f32_advance(&it_b, 1);
+        }
+        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(sum));
+        mf_accessor_f32_advance(&it_dst, st0);
+    }
+}
+
+static void op_length(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    
+    dst->info.dtype = MF_DTYPE_F32;
+    if (a->info.ndim > 1) {
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim - 1)) return;
+    } else {
+        u32 scalar_shape[] = {1};
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, scalar_shape, 1)) return;
+    }
+    MF_CHECK_DST_DATA(ctx, dst);
+
+    size_t vec_len = a->info.shape[a->info.ndim - 1];
+    size_t out_count = mf_tensor_count(dst);
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
+
+    i32 st0 = MF_GET_STRIDE(dst);
+
+    for (size_t i = 0; i < out_count; ++i) {
+        f32 sum = 0;
+        for (size_t j = 0; j < vec_len; ++j) {
+            f32 v = mf_accessor_f32_get(&it_a);
+            sum += v * v;
+            mf_accessor_f32_advance(&it_a, 1);
+        }
+        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(sqrtf(sum)));
+        mf_accessor_f32_advance(&it_dst, st0);
+    }
+}
+
+static void op_normalize(mf_exec_ctx* ctx, const mf_instruction* inst) {
+    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
+    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+    
+    MF_CHECK_DST_VIEW(ctx, dst);
+    MF_CHECK_INPUT(ctx, a);
+    
+    dst->info.dtype = MF_DTYPE_F32;
+    if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return;
+    MF_CHECK_DST_DATA(ctx, dst);
+
+    size_t vec_len = a->info.shape[a->info.ndim - 1];
+    size_t out_count = mf_tensor_count(dst) / vec_len;
+    
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
+
+    for (size_t i = 0; i < out_count; ++i) {
+        // First pass: Calc length
+        f32 sum = 0;
+        mf_accessor_f32 it_len = it_a;
+        for (size_t j = 0; j < vec_len; ++j) {
+            f32 v = mf_accessor_f32_get(&it_len);
+            sum += v * v;
+            mf_accessor_f32_advance(&it_len, 1);
+        }
+        f32 len = sqrtf(sum);
+        f32 inv_len = (len > 1e-6f) ? (1.0f / len) : 0.0f;
+
+        // Second pass: Normalize
+        for (size_t j = 0; j < vec_len; ++j) {
+            mf_accessor_f32_set(&it_dst, mf_accessor_f32_get(&it_a) * inv_len);
+            mf_accessor_f32_advance(&it_a, 1);
+            mf_accessor_f32_advance(&it_dst, 1);
+        }
+    }
+}
+
 // --- Reduction ---
 
 static void op_reduce_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
@@ -46,9 +212,11 @@ static void op_reduce_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     f32 sum = 0;
     
     mf_accessor_f32 it = mf_accessor_f32_begin(src);
+    i32 st1 = MF_GET_STRIDE(src);
+
     for (size_t i = 0; i < count; ++i) {
         sum += mf_accessor_f32_get(&it);
-        mf_accessor_f32_advance(&it, inst->strides[1]);
+        mf_accessor_f32_advance(&it, st1);
     }
     
     // Result is a scalar
@@ -71,6 +239,11 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_MAX] = op_max;
     table[MF_OP_FMA] = op_fma;
     table[MF_OP_CLAMP] = op_clamp;
+    table[MF_OP_MIX] = op_mix;
+    table[MF_OP_SMOOTHSTEP] = op_smoothstep;
+    table[MF_OP_DOT] = op_dot;
+    table[MF_OP_LENGTH] = op_length;
+    table[MF_OP_NORMALIZE] = op_normalize;
     table[MF_OP_POW] = op_pow;
     table[MF_OP_ATAN2] = op_atan2;
     table[MF_OP_SUM] = op_reduce_sum;

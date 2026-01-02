@@ -166,10 +166,9 @@ static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_o
             if (t2) v_s2 = get_val(t2);
             if (t3) v_s3 = get_val(t3);
             if (t4) v_s4 = get_val(t4);
-            MF_LOG_DEBUG("Exec #%u: %s (D:%u, S1:%u[%.2f], S2:%u[%.2f], S3:%u[%.2f], S4:%u[%.2f]) Strides: [%d, %d, %d, %d, %d]", 
+            MF_LOG_DEBUG("Exec #%u: %s (D:%u, S1:%u[%.2f], S2:%u[%.2f], S3:%u[%.2f], S4:%u[%.2f])", 
                 i, mf_opcode_to_str(inst->opcode), inst->dest_idx, 
-                inst->src1_idx, v_s1, inst->src2_idx, v_s2, inst->src3_idx, v_s3, inst->src4_idx, v_s4,
-                inst->strides[0], inst->strides[1], inst->strides[2], inst->strides[3], inst->strides[4]);
+                inst->src1_idx, v_s1, inst->src2_idx, v_s2, inst->src3_idx, v_s3, inst->src4_idx, v_s4);
         }
 
         mf_op_func op = op_table[inst->opcode];
@@ -350,21 +349,18 @@ static void mf_backend_cpu_dispatch(
 
     bool has_reductions = false;
 
-    // Initialize strides from instructions in the current range
+    // Initialize strides from program metadata
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
         
         uint16_t regs[] = { inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx };
         for (int r = 0; r < 5; ++r) {
             uint16_t reg_idx = regs[r];
-            if (!reg_processed[reg_idx]) {
-                batch.strides[reg_idx] = inst->strides[r];
+            if (reg_idx < program->meta.tensor_count && !reg_processed[reg_idx]) {
+                const mf_tensor* t = &program->tensors[reg_idx];
+                batch.strides[reg_idx] = (t->info.identity == MF_IDENTITY_SPATIAL) ? 1 : 0;
                 batch.active_regs[batch.active_reg_count++] = reg_idx;
                 reg_processed[reg_idx] = 1;
-            } else {
-                if (inst->strides[r] > batch.strides[reg_idx]) {
-                    batch.strides[reg_idx] = inst->strides[r];
-                }
             }
         }
 

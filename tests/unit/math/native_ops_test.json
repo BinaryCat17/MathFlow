@@ -1,0 +1,13 @@
+{
+    "nodes": [
+        { "id": "Edges", "type": "Const", "data": {"value": [0.0, 10.0]} },
+        { "id": "X", "type": "Const", "data": {"value": 5.0} },
+        { "id": "Res", "type": "SmoothStep" },
+        { "id": "Out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Edges", "dst": "Res", "dst_port": "edges" },
+        { "src": "X", "dst": "Res", "dst_port": "x" },
+        { "src": "Res", "dst": "Out", "dst_port": "in" }
+    ]
+}

@@ -49,12 +49,15 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_accessor_f32 it_src = mf_accessor_f32_begin(src);
     mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
 
+    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st1 = MF_GET_STRIDE(src);
+
     f32 sum = 0.0f;
     for (size_t i = 0; i < count; ++i) {
         sum += mf_accessor_f32_get(&it_src);
         mf_accessor_f32_set(&it_dst, sum);
-        mf_accessor_f32_advance(&it_src, inst->strides[1]);
-        mf_accessor_f32_advance(&it_dst, inst->strides[0]);
+        mf_accessor_f32_advance(&it_src, st1);
+        mf_accessor_f32_advance(&it_dst, st0);
     }
 }
 
@@ -78,9 +81,11 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     size_t true_count = 0;
     mf_accessor_u8 it_count = mf_accessor_u8_begin(mask);
+    i32 st2 = MF_GET_STRIDE(mask);
+
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_count)) true_count++;
-        mf_accessor_u8_advance(&it_count, inst->strides[2]);
+        mf_accessor_u8_advance(&it_count, st2);
     }
 
     dst->info.dtype = data->info.dtype;
@@ -91,17 +96,19 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     size_t write_idx = 0;
     size_t elem_size = mf_dtype_size(data->info.dtype);
-    mf_accessor_f32 it_data = mf_accessor_f32_begin(data); // Assume F32 for now, but should be generic
+    mf_accessor_f32 it_data = mf_accessor_f32_begin(data); 
     mf_accessor_u8 it_mask = mf_accessor_u8_begin(mask);
     u8* dst_raw = (u8*)mf_tensor_data(dst); 
+
+    i32 st1 = MF_GET_STRIDE(data);
 
     for(size_t i=0; i<count; ++i) {
         if (_check_mask(&it_mask)) {
             memcpy(dst_raw + write_idx * elem_size, it_data.it.ptr, elem_size);
             write_idx++;
         }
-        mf_accessor_f32_advance(&it_data, inst->strides[1]);
-        mf_accessor_u8_advance(&it_mask, inst->strides[2]);
+        mf_accessor_f32_advance(&it_data, st1);
+        mf_accessor_u8_advance(&it_mask, st2);
     }
 }
 
@@ -130,11 +137,13 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u32 axis_size = ctx->domain_shape[axis];
     if (axis_size == 0) axis_size = 1;
 
+    i32 st0 = MF_GET_STRIDE(dst);
+
     u32 start_linear = ctx->linear_offset;
     for (size_t i = 0; i < count; ++i) {
         u32 global_idx = start_linear + (u32)i;
         mf_accessor_f32_set(&d, (f32)((global_idx / axis_stride) % axis_size));
-        mf_accessor_f32_advance(&d, inst->strides[0]);
+        mf_accessor_f32_advance(&d, st0);
     }
 }
 
@@ -161,14 +170,15 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_accessor_f32 it_idx = mf_accessor_f32_begin(src_indices);
     bool idx_is_f32 = (src_indices->info.dtype == MF_DTYPE_F32);
 
+    i32 st0 = MF_GET_STRIDE(dst);
+    i32 st2 = MF_GET_STRIDE(src_indices);
+
     for (size_t i = 0; i < out_count; ++i) {
         int idx = -1;
         if (idx_is_f32) {
-            // Use safe get to handle NaN/Inf indices
             f32 f_idx = mf_accessor_f32_get_safe(&it_idx);
             idx = (int)f_idx;
         } else {
-            // Re-map as i32 accessor for integers
             idx = *((int32_t*)it_idx.it.ptr);
         }
 
@@ -176,9 +186,7 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
             void* src_ptr = mf_tensor_iter_get_at_linear(src_data, (size_t)idx);
             memcpy(it_dst.it.ptr, src_ptr, elem_size);
         } else {
-            // RELIABILITY: Safe default instead of crash
             memset(it_dst.it.ptr, 0, elem_size);
-            
             if (_mf_should_log_error(ctx)) {
                 ctx->error = MF_ERROR_OUT_OF_BOUNDS;
                 ctx->error_idx = (u32)i;
@@ -186,8 +194,8 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
                              idx, i, data_count);
             }
         }
-        mf_accessor_f32_advance(&it_idx, inst->strides[2]);
-        mf_accessor_f32_advance(&it_dst, inst->strides[0]);
+        mf_accessor_f32_advance(&it_idx, st2);
+        mf_accessor_f32_advance(&it_dst, st0);
     }
 }
 

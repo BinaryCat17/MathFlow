@@ -33,7 +33,6 @@ static bool is_shape_static(const mf_type_info* info) {
 
 
 static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
-    mf_allocator* allocator = (mf_allocator*)&engine->heap;
     engine->resource_count = pipe->resource_count;
     engine->resources = MF_ARENA_PUSH(&engine->arena, mf_resource_inst, engine->resource_count);
     
@@ -50,17 +49,61 @@ static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
         
         bool is_dynamic = false;
         for (int k = 0; k < desc->ndim; ++k) if (desc->shape[k] <= 0) is_dynamic = true;
-        
         res->size_bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
-        res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
-        res->buffers[1] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
         
-        if (res->size_bytes > 0) {
-            mf_buffer_alloc(res->buffers[0], allocator, res->size_bytes);
-            mf_buffer_alloc(res->buffers[1], allocator, res->size_bytes);
+        res->buffers[0] = NULL;
+        res->buffers[1] = NULL;
+    }
+}
+
+static void analyze_transience(mf_engine* engine) {
+    for (u32 r_idx = 0; r_idx < engine->resource_count; ++r_idx) {
+        mf_resource_inst* res = &engine->resources[r_idx];
+        
+        if (res->flags & MF_RESOURCE_FLAG_PERSISTENT) continue;
+        if (res->flags & MF_RESOURCE_FLAG_TRANSIENT) continue;
+
+        bool read_before_write = false;
+        bool write_happened = false;
+
+        for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
+            mf_kernel_inst* ker = &engine->kernels[k_idx];
+            bool k_reads = false;
+            bool k_writes = false;
+
+            for (u32 b = 0; b < ker->binding_count; ++b) {
+                if (ker->bindings[b].global_res == r_idx) {
+                    if (ker->bindings[b].flags & MF_SYMBOL_FLAG_INPUT) k_reads = true;
+                    if (ker->bindings[b].flags & MF_SYMBOL_FLAG_OUTPUT) k_writes = true;
+                }
+            }
+
+            if (k_reads && !write_happened) { read_before_write = true; break; }
+            if (k_writes) write_happened = true;
+        }
+
+        if (!read_before_write && write_happened) {
+            res->flags |= MF_RESOURCE_FLAG_TRANSIENT;
+        }
+    }
+}
+
+static void allocate_resources(mf_engine* engine) {
+    mf_allocator* allocator = (mf_allocator*)&engine->heap;
+    for (u32 i = 0; i < engine->resource_count; ++i) {
+        mf_resource_inst* res = &engine->resources[i];
+        bool is_transient = (res->flags & MF_RESOURCE_FLAG_TRANSIENT) != 0;
+        
+        res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
+        if (res->size_bytes > 0) mf_buffer_alloc(res->buffers[0], allocator, res->size_bytes);
+        else memset(res->buffers[0], 0, sizeof(mf_buffer));
+
+        if (is_transient) {
+            res->buffers[1] = res->buffers[0]; // Point to same buffer
         } else {
-            memset(res->buffers[0], 0, sizeof(mf_buffer));
-            memset(res->buffers[1], 0, sizeof(mf_buffer));
+            res->buffers[1] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
+            if (res->size_bytes > 0) mf_buffer_alloc(res->buffers[1], allocator, res->size_bytes);
+            else memset(res->buffers[1], 0, sizeof(mf_buffer));
         }
     }
 }
@@ -176,7 +219,9 @@ static void apply_initial_data(mf_engine* engine) {
                             MF_LOG_DEBUG("Engine: Initializing resource '%s' from kernel '%s' symbol '%s' (%zu bytes)", 
                                 res->name, ker->id, sym->name, bytes);
                             memcpy(res->buffers[0]->data, mf_tensor_data(t_const), bytes);
-                            memcpy(res->buffers[1]->data, mf_tensor_data(t_const), bytes);
+                            if (res->buffers[1] != res->buffers[0]) {
+                                memcpy(res->buffers[1]->data, mf_tensor_data(t_const), bytes);
+                            }
                         } else {
                             MF_LOG_WARN("Engine: Resource '%s' size mismatch for initial data from '%s' (expected %zu, got %zu)",
                                 res->name, ker->id, res->size_bytes, bytes);
@@ -198,12 +243,18 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
     init_resources(engine, pipe);
     init_kernels(engine, pipe, programs);
     resolve_bindings(engine, pipe);
+    
+    analyze_transience(engine);
+    allocate_resources(engine);
+    
     apply_initial_data(engine);
 
     for (u32 i = 0; i < engine->resource_count; ++i) {
         mf_resource_inst* res = &engine->resources[i];
         char s_shape[64];
         mf_shape_format(&res->desc.info, s_shape, sizeof(s_shape));
-        MF_LOG_INFO("Engine: Resource '%s' ready. Shape: %s, Size: %zu bytes", res->name, s_shape, res->size_bytes);
+        MF_LOG_INFO("Engine: Resource '%s' ready. Shape: %s, Size: %zu bytes %s", 
+            res->name, s_shape, res->size_bytes, 
+            (res->flags & MF_RESOURCE_FLAG_TRANSIENT) ? "[TRANSIENT]" : "");
     }
 }

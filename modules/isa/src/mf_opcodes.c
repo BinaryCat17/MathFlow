@@ -24,6 +24,11 @@ const char* mf_opcode_to_str(u16 opcode) {
         case MF_OP_MATMUL:    return "MATMUL";
         case MF_OP_TRANSPOSE: return "TRANSPOSE";
         case MF_OP_INVERSE:   return "INVERSE";
+        case MF_OP_DOT:       return "DOT";
+        case MF_OP_LENGTH:    return "LENGTH";
+        case MF_OP_NORMALIZE: return "NORMALIZE";
+        case MF_OP_MIX:       return "MIX";
+        case MF_OP_SMOOTHSTEP: return "SMOOTHSTEP";
         case MF_OP_JOIN:      return "JOIN";
         case MF_OP_LESS:      return "LESS";
         case MF_OP_GREATER:   return "GREATER";

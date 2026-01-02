@@ -35,6 +35,7 @@ typedef enum {
 typedef enum {
     MF_SHAPE_SPECIAL,       // Handled individually (Const, Input, Call)
     MF_SHAPE_SAME_AS_S1,    // Output shape = Input 1 shape
+    MF_SHAPE_SAME_AS_S2,    // Output shape = Input 2 shape
     MF_SHAPE_BROADCAST,     // Broadcast S1 and S2 (and S3 if present)
     MF_SHAPE_MATMUL,        // Matrix Multiplication [M,K] x [K,N] -> [M,N]
     MF_SHAPE_TRANSPOSE,     // Swap dim 0 and 1
@@ -81,6 +82,8 @@ typedef enum {
     MF_OP(FMA,     "Fma",     MF_OP_FMA,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   "c",   NULL) \
     MF_OP(CLAMP,   "Clamp",   MF_OP_CLAMP,   MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "x",   "min", "max", NULL) \
     MF_OP(STEP,    "Step",    MF_OP_STEP,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "edge","x",   NULL,  NULL) \
+    MF_OP(MIX,     "Mix",     MF_OP_MIX,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   "t",   NULL) \
+    MF_OP(SMOOTHSTEP,"SmoothStep",MF_OP_SMOOTHSTEP,MF_OP_CAT_ATOMIC,MF_TYPE_MASK_F32, MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S2, MF_ACCESS_LINEAR,  "edges","x",  NULL,  NULL) \
     MF_OP(SELECT,  "Select",  MF_OP_SELECT,  MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT_2, MF_SHAPE_BROADCAST,MF_ACCESS_LINEAR,  "cond","true","false",NULL) \
     \
     /* --- Atomic Logic --- */ \
@@ -97,6 +100,8 @@ typedef enum {
     \
     /* --- Reductions (N:1 mapping) --- */ \
     MF_OP(REDUCE_SUM, "ReduceSum", MF_OP_SUM, MF_OP_CAT_REDUCTION, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_SCALAR,    MF_ACCESS_GLOBAL,  "in",  NULL,  NULL,  NULL) \
+    MF_OP(DOT,        "Dot",       MF_OP_DOT,     MF_OP_CAT_REDUCTION, MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_DOT,       MF_ACCESS_WINDOW,  "a",   "b",   NULL,  NULL) \
+    MF_OP(LENGTH,     "Length",    MF_OP_LENGTH,  MF_OP_CAT_REDUCTION, MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_DOT,       MF_ACCESS_WINDOW,  "x",   NULL,  NULL,  NULL) \
     MF_OP(SIZE,       "Size",      MF_OP_NOOP,    MF_OP_CAT_REDUCTION, MF_TYPE_MASK_ALL,     MF_OUT_FORCE_F32,     MF_SHAPE_SCALAR,    MF_ACCESS_GLOBAL,  "in",  NULL,  NULL,  NULL) \
     MF_OP(CUMSUM,  "CumSum",  MF_OP_CUMSUM,  MF_OP_CAT_REDUCTION, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_GLOBAL, "in",  NULL,  NULL,  NULL) \
     \
@@ -106,6 +111,7 @@ typedef enum {
     \
     /* --- Memory & Layout --- */ \
     MF_OP(TRANSPOSE,"Transpose", MF_OP_TRANSPOSE, MF_OP_CAT_MEMORY, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_TRANSPOSE, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL) \
+    MF_OP(NORMALIZE,"Normalize", MF_OP_NORMALIZE, MF_OP_CAT_MEMORY, MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S1, MF_ACCESS_WINDOW,  "in",  NULL,  NULL,  NULL) \
     MF_OP(JOIN,    "Join",      MF_OP_JOIN,      MF_OP_CAT_MEMORY, MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_JOIN,      MF_ACCESS_LINEAR,  "a",   "b",   "c",   "d") \
     MF_OP(GATHER,  "Gather",  MF_OP_GATHER,  MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_GATHER,     MF_ACCESS_RANDOM,  "data", "indices", NULL, NULL) \
     MF_OP(COMPRESS,"Filter",  MF_OP_COMPRESS,MF_OP_CAT_MEMORY,  MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_RANDOM,  "in",   "mask", NULL, NULL) \
