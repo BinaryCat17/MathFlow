@@ -59,12 +59,8 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->register_idx = reg_idx;
             sym->builtin_id = node->builtin_id;
             sym->builtin_axis = node->builtin_axis;
-            if (node->provider) {
-                strncpy(sym->provider, node->provider, MF_MAX_SYMBOL_NAME - 1);
-                sym->provider[MF_MAX_SYMBOL_NAME - 1] = '\0';
-            } else {
-                sym->provider[0] = '\0';
-            }
+            if (node->provider) strncpy(sym->provider, node->provider, MF_MAX_SYMBOL_NAME - 1);
+            else sym->provider[0] = '\0';
             sym->flags = (node->type == MF_NODE_INPUT) ? MF_SYMBOL_FLAG_INPUT : 
                          (node->type == MF_NODE_OUTPUT) ? MF_SYMBOL_FLAG_OUTPUT : 0;
         }
@@ -77,54 +73,38 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         
         size_t current_size = mf_shape_calc_bytes(t_info->dtype, t_info->shape, t_info->ndim);
         size_t new_size = mf_shape_calc_bytes(node->out_info.dtype, node->out_info.shape, node->out_info.ndim);
-        
-        if (t_info->ndim == 0 || new_size > current_size) {
-            *t_info = node->out_info;
-        }
+        if (t_info->ndim == 0 || new_size > current_size) *t_info = node->out_info;
 
         const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
-        
-        mf_ir_node* s1 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[0]);
-        mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
-        mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]); 
-        mf_ir_node* s4 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[3]);
-
-        if (node->type == MF_NODE_CONST) {
-            prog->tensor_data[reg_idx] = node->const_data;
+        mf_ir_node* inputs[4] = {0};
+        for (u8 k = 0; k < 4; ++k) {
+            if (meta->ports[k]) inputs[k] = mf_ir_find_input_by_name(ir, node_idx, meta->ports[k]);
         }
+
+        if (node->type == MF_NODE_CONST) prog->tensor_data[reg_idx] = node->const_data;
 
         uint32_t start_instr_idx = (uint32_t)instr_count;
         bool emitted = false;
 
-        if (node->type == MF_NODE_SIZE && s1) {
-            mf_type_info size_info;
-            size_info.dtype = MF_DTYPE_F32;
-            size_info.ndim = 0;
-            size_info.shape[0] = 1;
-            mf_shape_calc_strides(&size_info);
-            prog->tensor_infos[reg_idx] = size_info;
-
-            size_t count_val = mf_shape_calc_count(s1->out_info.shape, s1->out_info.ndim);
+        if (node->type == MF_NODE_SIZE && inputs[0]) {
+            prog->tensor_infos[reg_idx] = (mf_type_info){MF_DTYPE_F32, 0, {1}, {0}};
             f32* count_data = MF_ARENA_PUSH(arena, f32, 1);
-            *count_data = (f32)count_val;
+            *count_data = (f32)mf_shape_calc_count(inputs[0]->out_info.shape, inputs[0]->out_info.ndim);
             prog->tensor_data[reg_idx] = count_data;
-            emitted = false; 
         } else {
             mf_instruction* inst = &instrs[instr_count];
             memset(inst, 0, sizeof(mf_instruction));
             inst->dest_idx = reg_idx;
-            inst->src1_idx = s1 ? s1->out_reg_idx : 0;
-            inst->src2_idx = s2 ? s2->out_reg_idx : 0;
-            inst->src3_idx = s3 ? s3->out_reg_idx : 0;
-            inst->src4_idx = s4 ? s4->out_reg_idx : 0;
-
+            inst->src1_idx = inputs[0] ? inputs[0]->out_reg_idx : 0;
+            inst->src2_idx = inputs[1] ? inputs[1]->out_reg_idx : 0;
+            inst->src3_idx = inputs[2] ? inputs[2]->out_reg_idx : 0;
+            inst->src4_idx = inputs[3] ? inputs[3]->out_reg_idx : 0;
             inst->line = node->loc.line;
             inst->column = node->loc.column;
-
-            memcpy(inst->strides, node->strides, sizeof(i32) * 8);
+            memcpy(inst->strides, node->strides, sizeof(i32) * 5);
 
             if (meta->category == MF_OP_CAT_SPECIAL) {
-                if ((node->type == MF_NODE_INPUT && s1) || node->type == MF_NODE_OUTPUT || node->type == MF_NODE_COPY) {
+                if ((node->type == MF_NODE_INPUT && inputs[0]) || node->type == MF_NODE_OUTPUT || node->type == MF_NODE_COPY) {
                     inst->opcode = MF_OP_COPY; instr_count++; emitted = true;
                 }
             } else {
@@ -136,13 +116,11 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         if (emitted) {
             bool is_global = (meta->access_pattern == MF_ACCESS_GLOBAL);
             bool domain_changed = (current_domain_node_idx == UINT32_MAX || node->domain_node_idx != current_domain_node_idx);
-
             if (domain_changed || is_global) {
                 if (task_count > 0) tasks[task_count - 1].inst_count = start_instr_idx - tasks[task_count - 1].start_inst;
                 tasks[task_count].start_inst = start_instr_idx;
-                
-                if (is_global && s1) {
-                    tasks[task_count].domain_reg = s1->out_reg_idx;
+                if (is_global && inputs[0]) {
+                    tasks[task_count].domain_reg = inputs[0]->out_reg_idx;
                     current_domain_node_idx = UINT32_MAX; 
                 } else {
                     u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
@@ -155,11 +133,9 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     }
 
     if (task_count > 0) tasks[task_count - 1].inst_count = (u32)instr_count - tasks[task_count - 1].start_inst;
-
     prog->code = instrs;
     prog->tasks = tasks;
     prog->meta.instruction_count = (u32)instr_count;
     prog->meta.task_count = task_count;
-    
     return true;
 }

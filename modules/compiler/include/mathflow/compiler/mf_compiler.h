@@ -29,7 +29,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-#define MF_OP(suffix, name, op_suffix, cat, in_mask, out_mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4) MF_NODE_##suffix,
+#define MF_OP(suffix, name, op_suffix, cat, in_mask, out_mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) MF_NODE_##suffix,
     MF_OP_LIST
 #undef MF_OP
 
@@ -46,6 +46,7 @@ typedef struct {
     mf_shape_rule shape_rule;
     mf_access_pattern access_pattern;
     const char* ports[4];
+    u8 arity;
 } mf_op_metadata;
 
 extern const mf_op_metadata MF_OP_METADATA[MF_NODE_COUNT];
@@ -72,7 +73,7 @@ typedef struct {
     u16 out_reg_idx;    // Index in the global Tensor Pool
     u32 domain_node_idx; // Index of the node that defines the domain for this node
     mf_type_info out_info; // Predicted output shape and dtype
-    i32 strides[4];       // Inferred linear strides [Dest, S1, S2, S3]
+    i32 strides[5];       // Inferred linear strides [Dest, S1, S2, S3, S4]
     bool is_spatial;     // Explicitly tracked spatial status
 } mf_ir_node;
 

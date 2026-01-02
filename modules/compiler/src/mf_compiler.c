@@ -1,10 +1,10 @@
 #include <mathflow/compiler/mf_compiler.h>
-#include <mathflow/isa/mf_opcodes.h>
 #include "mf_compiler_internal.h"
 #include "mf_passes.h"
 #include <mathflow/base/mf_log.h>
-#include <string.h>
+#include <mathflow/base/mf_shape.h>
 #include <stdio.h>
+#include <string.h>
 #include <stdarg.h>
 
 // Note: Logic moved to sub-modules (mf_json_parser.c, mf_semantics.c, mf_codegen.c)

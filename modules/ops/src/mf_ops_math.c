@@ -6,31 +6,24 @@
 #include "mf_ops_internal.h"
 #include <math.h>
 
-// --- Arithmetic ---
-MF_KERNEL_MATH_B(ADD, +)
-MF_KERNEL_MATH_B(SUB, -)
-MF_KERNEL_MATH_B(MUL, *)
-MF_KERNEL_MATH_B(DIV, /)
-MF_KERNEL_BINARY(STEP, f32, f32, MF_SAFE_F32(vb < va ? 0.0f : 1.0f))
-MF_KERNEL_MATH_BF(ATAN2, atan2f)
-MF_KERNEL_MATH_BF(POW, powf)
+/**
+ * MathFlow Atomic Kernels
+ * Automatically generated from mf_ops_db.inc
+ */
 
-// --- Unary Math ---
-MF_KERNEL_MATH_U(SIN, sinf)
-MF_KERNEL_MATH_U(COS, cosf)
-MF_KERNEL_MATH_U(FLOOR, floorf)
-MF_KERNEL_MATH_U(CEIL, ceilf)
-MF_KERNEL_MATH_U(ABS, fabsf)
-MF_KERNEL_MATH_U(SQRT, sqrtf)
+#define MF_GEN_AUTO(_op, _ke, _ar) MF_KERNEL_AUTO(_op, _ke, _ar)
+#define MF_GEN_MANUAL(...)
 
-// --- Min/Max/Clamp/Mix ---
-MF_KERNEL_BINARY(MIN, f32, f32, (va < vb ? va : vb))
-MF_KERNEL_BINARY(MAX, f32, f32, (va > vb ? va : vb))
-MF_KERNEL_TERNARY(FMA, f32, f32, f32, f32, MF_SAFE_F32(fmaf(va, vb, vc)))
-MF_KERNEL_TERNARY(CLAMP, f32, f32, f32, f32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)))
-MF_KERNEL_TERNARY(MIX, f32, f32, f32, f32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc))
+#define MF_OP(_s, _n, _op, _cat, _in, _out, _tr, _sr, _ar, _p1, _p2, _p3, _p4, _kt, _ke, _arity) \
+    MF_GEN_##_kt(_op, _ke, _arity)
 
-// --- Vector Math ---
+MF_OP_LIST
+
+#undef MF_OP
+#undef MF_GEN_AUTO
+#undef MF_GEN_MANUAL
+
+// --- Vector Math (Custom Kernels) ---
 
 static inline f32 _vec_dot_impl(f32* a_ptr, f32* b_ptr, size_t len) {
     f32 sum = 0;
