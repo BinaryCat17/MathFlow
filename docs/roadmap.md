@@ -9,14 +9,14 @@
 
 ## Current Focus: Architectural Hardening & Performance
 
-### Phase 1: Backend Refactoring (High Priority)
+### Phase 1: Backend Refactoring (Completed)
 **Goal:** Eliminate the "Smart Backend" anti-pattern. Make the execution engine a "dumb" and fast interpreter of an explicit Execution Plan.
 
 - [x] **Remove Instruction Baking:** Удаление структуры `mf_cpu_baked_instr`. Воркер работает напрямую с `mf_instruction`, что упрощает отладку и убирает лишние аллокации.
-- [ ] **Execution Plan (Register Plan):** Диспетчер готовит массив `mf_cpu_reg_plan` (Buffer, Generator, Scratch) заранее. Воркер лишь следует плану.
-- [ ] **Builtin ID System:** Замена строк (`host.index`) на перечисления (Builtin IDs) в `mf_program`. Бэкенд перестает парсить строки.
-- [ ] **Zero-Guess Dispatch:** Бэкенд полностью доверяет страйдам компилятора. Если компилятор ошибся — бэкенд падает, а не пытается "исправить" ситуацию.
-- [ ] **Kernel Signature Update:** Обновление `mf_op_func` для работы с сырыми инструкциями.
+- [x] **Execution Plan (Register Plan):** Диспетчер готовит массив `mf_cpu_reg_plan` (Buffer, Generator, Scratch) заранее. Воркер лишь следует плану.
+- [x] **Builtin ID System:** Замена строк (`host.index`) на перечисления (Builtin IDs) в `mf_program`. Бэкенд перестает парсить строки.
+- [x] **Zero-Guess Dispatch:** Бэкенд полностью доверяет страйдам компилятора. Если компилятор ошибся — бэкенд падает, а не пытается "исправить" ситуацию.
+- [x] **Kernel Signature Update:** Обновление `mf_op_func` для работы с сырыми инструкциями.
 
 ### Phase 2: Compiler Hardening (Medium Priority)
 **Goal:** Ensure correctness and reliability of the compilation pipeline.
@@ -26,12 +26,13 @@
 - [ ] **In-place Metadata:** Безопасное использование флага `MF_OP_FLAG_INPLACE_SAFE` для экономии памяти в регистрах.
 - [x] **Strict DType Propagation:** Исправлен баг перезаписи типа при бродкастинге.
 - [x] **Host Policy Isolation:** Хост больше не форсирует разрешение для не-пиксельных графов.
+- [x] **Provider-based Indices:** Пространственные индексы реализованы через `Input` узлы и провайдеры вместо отдельного типа узла.
 
 ### Phase 3: Logic Expansion & Optimization (Continuous)
 **Goal:** Scale the engine features and improve throughput.
 
 - [ ] **Context-Aware Subgraphs:** Проброс геометрии домена внутрь подграфов через узлы `Call`.
-- [ ] **Stride Model Expansion:** Поддержка N-D тензорных шагов для честного бродкастинга (выход за пределы `i8` страйдов).
+- [x] **Stride Model Expansion:** Поддержка N-D тензорных шагов для честного бродкастинга (страйды > 1 для векторных потоков).
 - [ ] **Index Buffer Pooling:** Переиспользование буферов для виртуальных ресурсов.
 - [x] **Stride Inference Engine:** Реализация правил автоматического бродкастинга.
 - [x] **Heterogeneous Tasks:** Поддержка графов с несколькими выходами разных форм.
