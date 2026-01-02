@@ -218,21 +218,21 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         out->info.dtype = dtype;
 
         // Absolute Validation: Does the final type match the operation's allowed types?
-        if (!((1 << dtype) & meta->type_mask)) {
+        if (!((1 << dtype) & meta->output_mask)) {
             MF_REPORT(node, "Type Error: Operation '%s' does not support %s output (Allowed mask: 0x%x)", 
-                meta->name, _dtype_name(dtype), meta->type_mask);
+                meta->name, _dtype_name(dtype), meta->output_mask);
             return false;
         }
 
         // Validate Input Types
-        if (s1 && !((1 << s1->out_shape.info.dtype) & meta->type_mask)) {
+        if (s1 && !((1 << s1->out_shape.info.dtype) & meta->input_mask)) {
             MF_REPORT(node, "Input 1 '%s' (Type: %s) is incompatible with %s (Allowed mask: 0x%x)", 
-                s1->id, _dtype_name(s1->out_shape.info.dtype), meta->name, meta->type_mask);
+                s1->id, _dtype_name(s1->out_shape.info.dtype), meta->name, meta->input_mask);
             return false;
         }
-        if (s2 && !((1 << s2->out_shape.info.dtype) & meta->type_mask)) {
+        if (s2 && !((1 << s2->out_shape.info.dtype) & meta->input_mask)) {
             MF_REPORT(node, "Input 2 '%s' (Type: %s) is incompatible with %s (Mask: 0x%x)", 
-                s2->id, _dtype_name(s2->out_shape.info.dtype), meta->name, meta->type_mask);
+                s2->id, _dtype_name(s2->out_shape.info.dtype), meta->name, meta->input_mask);
             return false;
         }
 
@@ -243,11 +243,14 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
         size_t task_dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
 
+        // Explicit Spatial Tracking
+        node->is_spatial = (task_dom_count > 1);
+
         size_t dom_count = mf_tensor_count(out);
-        node->strides[0] = (task_dom_count > 1) ? (i8)mf_shape_calc_linear_stride(dom_count, task_dom_count) : 0;
-        node->strides[1] = s1 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), task_dom_count) : 0;
-        node->strides[2] = s2 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), task_dom_count) : 0;
-        node->strides[3] = s3 ? (i8)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), task_dom_count) : 0;
+        node->strides[0] = node->is_spatial ? (i32)mf_shape_calc_linear_stride(dom_count, task_dom_count) : 0;
+        node->strides[1] = s1 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), task_dom_count) : 0;
+        node->strides[2] = s2 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), task_dom_count) : 0;
+        node->strides[3] = s3 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), task_dom_count) : 0;
 
         char s_shape[64];
         mf_shape_format(&out->info, s_shape, sizeof(s_shape));

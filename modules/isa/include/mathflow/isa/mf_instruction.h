@@ -23,7 +23,7 @@ typedef struct mf_instruction {
     
     // Linear strides for [Dest, Src1, Src2, Src3]
     // 0 = Constant/Uniform, 1 = Spatial/Linear, -1 = Reduction
-    i8 strides[4]; 
+    i32 strides[4]; 
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

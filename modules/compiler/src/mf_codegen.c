@@ -150,7 +150,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
             inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
-            memcpy(inst->strides, node->strides, sizeof(i8) * 4);
+            memcpy(inst->strides, node->strides, sizeof(i32) * 4);
 
             if (inst->opcode == MF_OP_SUM && inst->strides[1] > 0) {
                 inst->strides[0] = -1; // Reduction flag

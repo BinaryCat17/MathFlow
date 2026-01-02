@@ -18,23 +18,26 @@
 - [x] **Zero-Guess Dispatch:** Бэкенд полностью доверяет страйдам компилятора. Если компилятор ошибся — бэкенд падает, а не пытается "исправить" ситуацию.
 - [x] **Kernel Signature Update:** Обновление `mf_op_func` для работы с сырыми инструкциями.
 
-### Phase 2: Compiler Hardening (Medium Priority)
-**Goal:** Ensure correctness and reliability of the compilation pipeline.
+### Phase 2: Compiler Hardening & Reliability
+**Goal:** Make the compilation and execution pipeline robust and predictable.
 
-- [ ] **String-less IR Ports:** Переход на атомарные ID или хеши для портов и узлов внутри компилятора.
-- [ ] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для предотвращения ошибок вывода типов.
-- [ ] **In-place Metadata:** Безопасное использование флага `MF_OP_FLAG_INPLACE_SAFE` для экономии памяти в регистрах.
+- [x] **Stride Promotion:** Замена `i8` на `i32` в `mf_instruction` для предотвращения переполнений.
+- [x] **Explicit Domain Tracking:** Внедрение флага `is_spatial` в IR для надежного вычисления страйдов.
+- [x] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для защиты от некорректного вывода типов.
+- [ ] **Math Kernel Consolidation:** Рефакторинг `mf_ops_math.c` для удаления дублирования в векторных операциях.
+- [x] **Strict Shape Validation:** Добавление прохода валидации, который проверяет совместимость всех узлов в задаче до запуска.
 - [x] **Strict DType Propagation:** Исправлен баг перезаписи типа при бродкастинге.
-- [x] **Host Policy Isolation:** Хост больше не форсирует разрешение для не-пиксельных графов.
-- [x] **Provider-based Indices:** Пространственные индексы реализованы через `Input` узлы и провайдеры вместо отдельного типа узла.
+- [x] **Provider-based Indices:** Пространственные индексы реализованы через `Input` узлы.
 
-### Phase 3: Logic Expansion & Optimization (Continuous)
-**Goal:** Scale the engine features and improve throughput.
+### Phase 3: Logic Expansion & Infrastructure
+**Goal:** Improve developer experience and support complex modular graphs.
 
 - [ ] **Context-Aware Subgraphs:** Проброс геометрии домена внутрь подграфов через узлы `Call`.
-- [x] **Stride Model Expansion:** Поддержка N-D тензорных шагов для честного бродкастинга (страйды > 1 для векторных потоков).
-- [ ] **Index Buffer Pooling:** Переиспользование буферов для виртуальных ресурсов.
-- [x] **Stride Inference Engine:** Реализация правил автоматического бродкастинга.
+- [ ] **String-less IR Ports:** Переход на атомарные ID (хеши) вместо строк внутри компилятора.
+- [ ] **Unified Error Context:** Улучшение отчетов о крашах (вывод имен портов и координат ошибки).
+- [ ] **Index Buffer Pooling:** Переиспользование буферов для виртуальных ресурсов для экономии памяти.
+- [x] **Stride Model Expansion:** Поддержка N-D тензорных шагов для векторных потоков.
+- [x] **Host Policy Isolation:** Хост больше не форсирует разрешение для не-пиксельных графов.
 - [x] **Heterogeneous Tasks:** Поддержка графов с несколькими выходами разных форм.
 - [x] **Explicit Task Geometry API:** Требование явного описания контракта ядра.
 
