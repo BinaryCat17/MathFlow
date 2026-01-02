@@ -11,6 +11,18 @@ mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port) {
     return NULL;
 }
 
+mf_ir_node* mf_ir_find_input_by_name(mf_graph_ir* ir, u32 dst_node_idx, const char* port_name) {
+    if (!port_name) return NULL;
+    for (size_t i = 0; i < ir->link_count; ++i) {
+        if (ir->links[i].dst_node_idx == dst_node_idx) {
+            if (ir->links[i].dst_port_name && strcmp(ir->links[i].dst_port_name, port_name) == 0) {
+                return &ir->nodes[ir->links[i].src_node_idx];
+            }
+        }
+    }
+    return NULL;
+}
+
 // --- Topological Sort Helpers ---
 
 typedef struct {

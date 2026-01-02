@@ -64,7 +64,7 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         offset += sizeof(mf_bin_tensor_desc);
         
         mf_tensor* t = &prog->tensors[i];
-        mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, desc->shape, desc->ndim);
+        mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, (mf_identity)desc->identity, desc->shape, desc->ndim);
     }
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
@@ -116,7 +116,7 @@ static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* k
                         
                         // Validate compatibility before patching
                         mf_type_info res_info;
-                        mf_type_info_init_contiguous(&res_info, pr->dtype, pr->shape, pr->ndim);
+                        mf_type_info_init_contiguous(&res_info, pr->dtype, MF_IDENTITY_UNIFORM, pr->shape, pr->ndim);
                         
                         bool is_out = (node->type == MF_NODE_OUTPUT);
                         const mf_type_info* port_info = is_out ? &node->out_shape.info : &node->constant.info;

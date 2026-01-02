@@ -4,12 +4,10 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/base/mf_utils.h>
 
-// --- Internal: Graph Utils ---
+// Utilities
 mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port);
+mf_ir_node* mf_ir_find_input_by_name(mf_graph_ir* ir, u32 dst_node_idx, const char* port_name);
 
-// --- Internal: CodeGen ---
-// Sorts the graph topologically and returns the sorted array of nodes
-// Returns NULL on cycle error (though currently it just skips cycles)
 mf_ir_node** mf_topo_sort(mf_graph_ir* ir, mf_arena* arena, size_t* out_count);
 
 // --- Internal: CodeGen ---

@@ -6,10 +6,13 @@
 #include <string.h>
 #include <math.h>
 
-static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+typedef struct mf_tensor mf_tensor;
+typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
+
+static void op_matmul(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* a = bi->s1;
+    mf_tensor* b = bi->s2;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -63,9 +66,9 @@ static void op_matmul(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // Zero-Copy Transpose
-static void op_transpose(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+static void op_transpose(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* a = bi->s1;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -76,9 +79,9 @@ static void op_transpose(mf_exec_ctx* ctx, const mf_instruction* inst) {
     }
 }
 
-static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+static void op_inverse(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* a = bi->s1;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);
@@ -124,12 +127,12 @@ static void op_inverse(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // Join(a, b, [c, d]) -> [..., N] where ... is the common shape
-static void op_join(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* b = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    mf_tensor* c = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-    mf_tensor* d = mf_exec_ctx_map_tensor(ctx, inst->src4_idx, MF_ACCESS_READ);
+static void op_join(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* a = bi->s1;
+    mf_tensor* b = bi->s2;
+    mf_tensor* c = bi->s3;
+    mf_tensor* d = bi->s4;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, a);

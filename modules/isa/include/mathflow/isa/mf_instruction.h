@@ -13,7 +13,7 @@
  * Strides are no longer stored per-instruction. Instead, they are inferred 
  * at runtime from the tensor's identity (Spatial vs Uniform).
  */
-typedef struct {
+typedef struct mf_instruction {
     u16 opcode;
     u16 dest_idx;
     u16 src1_idx;

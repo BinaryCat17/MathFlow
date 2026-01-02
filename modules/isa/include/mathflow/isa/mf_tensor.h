@@ -8,7 +8,7 @@
 // --- Tensor Structure ---
 
 // A Tensor is a VIEW into a buffer.
-typedef struct {
+typedef struct mf_tensor {
     mf_type_info info;   // Metadata: Shape, Strides, Type
     
     mf_buffer* buffer;   // Storage: Pointer to data owner

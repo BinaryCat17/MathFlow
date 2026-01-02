@@ -69,10 +69,10 @@ static inline f32 mf_utils_get_scalar_f32(const mf_tensor* t) {
 #define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
 
 #define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
-    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
-    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
-    mf_tensor* b = &ctx->registers[inst->src2_idx]; \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
+    mf_tensor* dst = bi->d; \
+    mf_tensor* a = bi->s1; \
+    mf_tensor* b = bi->s2; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     MF_CHECK_INPUT(ctx, b); \
@@ -107,11 +107,11 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
 }
 
 #define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
-    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
-    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
-    mf_tensor* b = &ctx->registers[inst->src2_idx]; \
-    mf_tensor* c = &ctx->registers[inst->src3_idx]; \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
+    mf_tensor* dst = bi->d; \
+    mf_tensor* a = bi->s1; \
+    mf_tensor* b = bi->s2; \
+    mf_tensor* c = bi->s3; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     MF_CHECK_INPUT(ctx, b); \
@@ -152,9 +152,9 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
 }
 
 #define MF_KERNEL_UNARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
-static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
-    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
-    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
+static void op_##NAME(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) { \
+    mf_tensor* dst = bi->d; \
+    mf_tensor* a = bi->s1; \
     MF_CHECK_DST_VIEW(ctx, dst); \
     MF_CHECK_INPUT(ctx, a); \
     dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \

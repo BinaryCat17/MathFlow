@@ -67,6 +67,14 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
                  continue;
             }
 
+            // --- Validation: Forbid Index inside subgraphs ---
+            for (size_t k = 0; k < child_ir.node_count; ++k) {
+                if (child_ir.nodes[k].type == MF_NODE_INDEX) {
+                    mf_compiler_diag_report(diag, node->loc, "Subgraph '%s' contains an 'Index' node. Subgraphs must be pure functions; pass coordinates as inputs instead.", node->sub_graph_path);
+                    return false;
+                }
+            }
+
             const char** child_raw_ids = MF_ARENA_PUSH(arena, const char*, child_ir.node_count);
             for (size_t k = 0; k < child_ir.node_count; ++k) child_raw_ids[k] = child_ir.nodes[k].id;
 

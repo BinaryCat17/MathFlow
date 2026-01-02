@@ -81,8 +81,9 @@ static inline size_t mf_dtype_size(mf_dtype type) {
     }
 }
 
-static inline void mf_type_info_init_contiguous(mf_type_info* info, mf_dtype dtype, const int32_t* shape, uint8_t ndim) {
+static inline void mf_type_info_init_contiguous(mf_type_info* info, mf_dtype dtype, mf_identity identity, const int32_t* shape, uint8_t ndim) {
     info->dtype = dtype;
+    info->identity = identity;
     info->ndim = ndim;
     if (ndim > 0 && shape) {
         for (int i = 0; i < ndim; ++i) info->shape[i] = shape[i];

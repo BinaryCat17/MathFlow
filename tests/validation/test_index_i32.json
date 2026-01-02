@@ -1,0 +1,9 @@
+{
+    "nodes": [
+        { "id": "Idx", "type": "Index", "data": { "axis": 0, "dtype": "i32" } },
+        { "id": "Out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Idx", "dst": "Out", "dst_port": "in" }
+    ]
+}

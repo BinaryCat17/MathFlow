@@ -6,36 +6,46 @@
 #include <math.h>
 #include <mathflow/base/mf_log.h>
 
+typedef struct mf_tensor mf_tensor;
+typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
+
 // ... (op_range, op_cumsum, _check_mask_ptr, op_compress remain the same)
 
 // --- Op: Range (Iota) ---
-static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* count_tensor = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+static void op_range(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* count_tensor = bi->s1;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, count_tensor);
-
     int count = mf_utils_get_scalar_int(count_tensor);
     if (count < 0) count = 0;
 
-    dst->info.dtype = MF_DTYPE_F32;
-    int32_t shape[] = { count };
+    int32_t shape[] = { (int32_t)count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     MF_CHECK_DST_DATA(ctx, dst);
-    mf_accessor_f32 d = mf_accessor_f32_begin(dst);
-
-    for (int i = 0; i < count; ++i) {
-        mf_accessor_f32_set(&d, (f32)i);
-        mf_accessor_f32_advance(&d, 1);
+    
+    if (dst->info.dtype == MF_DTYPE_I32) {
+        mf_accessor_i32 d = mf_accessor_i32_begin(dst);
+        for (int i = 0; i < count; ++i) {
+            mf_accessor_i32_set(&d, (int32_t)i);
+            mf_accessor_i32_advance(&d, 1);
+        }
+    } else {
+        dst->info.dtype = MF_DTYPE_F32; // Default to F32
+        mf_accessor_f32 d = mf_accessor_f32_begin(dst);
+        for (int i = 0; i < count; ++i) {
+            mf_accessor_f32_set(&d, (f32)i);
+            mf_accessor_f32_advance(&d, 1);
+        }
     }
 }
 
 // --- Op: CumSum (Prefix Sum) ---
-static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+static void op_cumsum(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* src = bi->s1;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
@@ -66,10 +76,10 @@ static inline bool _check_mask(const mf_accessor_u8* it) {
 }
 
 // --- Op: Compress (Filter) ---
-static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* mask = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+static void op_compress(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* data = bi->s1;
+    mf_tensor* mask = bi->s2;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, data);
@@ -113,24 +123,21 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // --- Op: Index (Intrinsic Coordinate) ---
-static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* axis_t = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+static void op_index(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* axis_t = bi->s1;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, axis_t);
-
     int axis = mf_utils_get_scalar_int(axis_t);
     if (axis < 0 || axis >= MF_MAX_DIMS) axis = 0;
 
     size_t count = (ctx->batch_size > 0) ? ctx->batch_size : 1;
 
-    dst->info.dtype = MF_DTYPE_F32;
     int32_t shape[] = { (int32_t)count };
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     MF_CHECK_DST_DATA(ctx, dst);
-    mf_accessor_f32 d = mf_accessor_f32_begin(dst);
     
     u32 axis_stride = 1;
     for (int i = ctx->ndim - 1; i > axis; --i) axis_stride *= ctx->domain_shape[i];
@@ -138,27 +145,39 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (axis_size == 0) axis_size = 1;
 
     i32 st0 = MF_GET_STRIDE(dst);
-
     u32 start_linear = ctx->linear_offset;
-    for (size_t i = 0; i < count; ++i) {
-        u32 global_idx = start_linear + (u32)i;
-        mf_accessor_f32_set(&d, (f32)((global_idx / axis_stride) % axis_size));
-        mf_accessor_f32_advance(&d, st0);
+
+    if (dst->info.dtype == MF_DTYPE_I32) {
+        mf_accessor_i32 d = mf_accessor_i32_begin(dst);
+        for (size_t i = 0; i < count; ++i) {
+            u32 global_idx = start_linear + (u32)i;
+            mf_accessor_i32_set(&d, (int32_t)((global_idx / axis_stride) % axis_size));
+            mf_accessor_i32_advance(&d, st0);
+        }
+    } else {
+        dst->info.dtype = MF_DTYPE_F32; // Default to F32
+        mf_accessor_f32 d = mf_accessor_f32_begin(dst);
+        for (size_t i = 0; i < count; ++i) {
+            u32 global_idx = start_linear + (u32)i;
+            mf_accessor_f32_set(&d, (f32)((global_idx / axis_stride) % axis_size));
+            mf_accessor_f32_advance(&d, st0);
+        }
     }
 }
 
 // --- Op: Gather (Random Access) ---
-static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src_data = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* src_indices = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+static void op_gather(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* src_data = bi->s1;
+    mf_tensor* src_indices = bi->s2;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src_data);
     MF_CHECK_INPUT(ctx, src_indices);
 
     if (!mf_utils_resolve_unary_shape(ctx, dst, src_indices)) return;
-    dst->info.dtype = src_data->info.dtype;
+    // DType should be set by compiler, but we ensure it matches src_data for safety
+    if (dst->info.dtype == MF_DTYPE_UNKNOWN) dst->info.dtype = src_data->info.dtype;
 
     MF_CHECK_DST_DATA(ctx, dst);
 
@@ -166,27 +185,34 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t out_count = mf_tensor_count(dst);
     size_t elem_size = mf_dtype_size(src_data->info.dtype);
     
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_idx = mf_accessor_f32_begin(src_indices);
+    // Iterators for Indices (Can be F32 or I32)
     bool idx_is_f32 = (src_indices->info.dtype == MF_DTYPE_F32);
+    mf_accessor_f32 it_idx_f32;
+    mf_accessor_i32 it_idx_i32;
+    if (idx_is_f32) it_idx_f32 = mf_accessor_f32_begin(src_indices);
+    else it_idx_i32 = mf_accessor_i32_begin(src_indices);
 
-    i32 st0 = MF_GET_STRIDE(dst);
-    i32 st2 = MF_GET_STRIDE(src_indices);
+    // Raw pointer for destination (Generic copy)
+    u8* dst_ptr = (u8*)mf_tensor_data(dst);
+    i32 st_dst = MF_GET_STRIDE(dst);
+    i32 st_idx = MF_GET_STRIDE(src_indices);
 
     for (size_t i = 0; i < out_count; ++i) {
         int idx = -1;
         if (idx_is_f32) {
-            f32 f_idx = mf_accessor_f32_get_safe(&it_idx);
-            idx = (int)f_idx;
+            idx = (int)mf_accessor_f32_get_safe(&it_idx_f32);
+            mf_accessor_f32_advance(&it_idx_f32, st_idx);
         } else {
-            idx = *((int32_t*)it_idx.it.ptr);
+            idx = (int)mf_accessor_i32_get(&it_idx_i32);
+            mf_accessor_i32_advance(&it_idx_i32, st_idx);
         }
 
+        u8* target = dst_ptr + (i * st_dst * elem_size);
         if (idx >= 0 && (size_t)idx < data_count) {
             void* src_ptr = mf_tensor_iter_get_at_linear(src_data, (size_t)idx);
-            memcpy(it_dst.it.ptr, src_ptr, elem_size);
+            memcpy(target, src_ptr, elem_size);
         } else {
-            memset(it_dst.it.ptr, 0, elem_size);
+            memset(target, 0, elem_size);
             if (_mf_should_log_error(ctx)) {
                 ctx->error = MF_ERROR_OUT_OF_BOUNDS;
                 ctx->error_idx = (u32)i;
@@ -194,8 +220,6 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
                              idx, i, data_count);
             }
         }
-        mf_accessor_f32_advance(&it_idx, st2);
-        mf_accessor_f32_advance(&it_dst, st0);
     }
 }
 

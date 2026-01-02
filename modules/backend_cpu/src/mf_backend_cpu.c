@@ -28,16 +28,6 @@ typedef struct {
 } mf_backend_cpu_state;
 
 typedef struct {
-    mf_op_func op;
-    const mf_instruction* inst;
-    mf_tensor* d;
-    mf_tensor* s1;
-    mf_tensor* s2;
-    mf_tensor* s3;
-    mf_tensor* s4;
-} mf_cpu_baked_instr;
-
-typedef struct {
     int thread_idx;
     mf_exec_ctx ctx;
     mf_arena temp_arena; 
@@ -112,37 +102,207 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 
 // --- Execution Logic ---
 
-static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t inst_idx) {
-    char coords[128] = {0};
-    int pos = 0;
-    
-    // Calculate exact coordinates of the failing element
-    u32 exact_linear = ctx->linear_offset + ctx->error_idx;
-    u32 temp_idx = exact_linear;
-    u32 exact_coords[MF_MAX_DIMS];
-    for (int i = ctx->ndim - 1; i >= 0; --i) {
-        exact_coords[i] = temp_idx % ctx->domain_shape[i];
-        temp_idx /= ctx->domain_shape[i];
+static const char* _dtype_to_str(mf_dtype type) {
+    switch(type) {
+        case MF_DTYPE_F32: return "F32";
+        case MF_DTYPE_I32: return "I32";
+        case MF_DTYPE_U8:  return "U8";
+        default: return "UNK";
     }
+}
+
+static const char* find_reg_name(const mf_program* prog, u32 reg_idx) {
+
+    if (!prog || !prog->symbols) return "temp";
+
+    for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
+
+        if (prog->symbols[i].register_idx == reg_idx) return prog->symbols[i].name;
+
+    }
+
+    return "temp";
+
+}
+
+
+
+static void format_tensor_debug(char* buf, const mf_tensor* t, int reg_idx, const mf_program* prog) {
+
+    if (!t) {
+
+        sprintf(buf, "Reg %-2d (NULL)", reg_idx);
+
+        return;
+
+    }
+
+    
+
+    const char* name = find_reg_name(prog, reg_idx);
+
+    char shape_str[64] = {0};
+
+    int pos = 0;
+
+    if (t->info.ndim == 0) {
+
+        strcpy(shape_str, "Scalar");
+
+    } else {
+
+        for (int i = 0; i < t->info.ndim; ++i) {
+
+            pos += sprintf(shape_str + pos, "%d%s", t->info.shape[i], (i < t->info.ndim - 1) ? "," : "");
+
+        }
+
+    }
+
+
+
+    char tag[128];
+
+    sprintf(tag, "Reg %-2d (%s)", reg_idx, name);
+
+
+
+    if (!t->buffer || !t->buffer->data) {
+
+        sprintf(buf, "%-20s : <Unallocated> [%s] Shape: [%s]", tag, _dtype_to_str(t->info.dtype), shape_str);
+
+        return;
+
+    }
+
+
+
+    if (t->info.ndim == 0 || (t->info.ndim == 1 && t->info.shape[0] == 1)) {
+
+        void* d = (u8*)t->buffer->data + t->byte_offset;
+
+        float val = 0;
+
+        if (t->info.dtype == MF_DTYPE_F32) val = *(f32*)d;
+
+        else if (t->info.dtype == MF_DTYPE_I32) val = (f32)*(int32_t*)d;
+
+        else if (t->info.dtype == MF_DTYPE_U8) val = (f32)*(u8*)d;
+
+        sprintf(buf, "%-20s : Value: %-10.3f (%s)", tag, val, _dtype_to_str(t->info.dtype));
+
+    } else {
+
+        sprintf(buf, "%-20s : Tensor[%-10s] (%s) Ptr: %p", tag, shape_str, _dtype_to_str(t->info.dtype), (void*)((u8*)t->buffer->data + t->byte_offset));
+
+    }
+
+}
+
+
+
+static void report_crash(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, const mf_cpu_baked_instr* baked, uint32_t baked_idx) {
+
+    const mf_cpu_baked_instr* bi = &baked[baked_idx];
+
+    const mf_instruction* inst = bi->raw;
+
+    uint32_t inst_idx = batch->start_inst + baked_idx;
+
+
+
+    char coords[128] = {0};
+
+    int pos = 0;
+
+    
+
+    // Calculate exact coordinates of the failing element
+
+    u32 exact_linear = ctx->linear_offset + ctx->error_idx;
+
+    u32 temp_idx = exact_linear;
+
+    u32 exact_coords[MF_MAX_DIMS];
+
+    for (int i = ctx->ndim - 1; i >= 0; --i) {
+
+        exact_coords[i] = temp_idx % ctx->domain_shape[i];
+
+        temp_idx /= ctx->domain_shape[i];
+
+    }
+
+
 
     for (int d = 0; d < ctx->ndim; ++d) {
+
         pos += sprintf(coords + pos, "%u%s", exact_coords[d], (d < ctx->ndim - 1) ? ", " : "");
+
     }
 
+
+
+    char s1_info[128], s2_info[128], s3_info[128], s4_info[128], d_info[128];
+
+    format_tensor_debug(d_info,  bi->d,  inst->dest_idx, batch->program);
+
+    format_tensor_debug(s1_info, bi->s1, inst->src1_idx, batch->program);
+
+    format_tensor_debug(s2_info, bi->s2, inst->src2_idx, batch->program);
+
+    format_tensor_debug(s3_info, bi->s3, inst->src3_idx, batch->program);
+
+    format_tensor_debug(s4_info, bi->s4, inst->src4_idx, batch->program);
+
+
+
     MF_LOG_FATAL("\n"
-                 "==================================================\n"
-                 "             KERNEL CRASH REPORT\n"
-                 "==================================================\n"
-                 "  Instruction : #%u (Opcode: %s [%d])\n"
-                 "  Registers   : D:%u, S1:%u, S2:%u, S3:%u, S4:%u\n"
-                 "  Exact Coord : [%s]\n"
-                 "  Linear Index: %u (Batch Offset: %u)\n"
-                 "  Error Type  : %s\n"
-                 "==================================================",
+
+                 "================================================================================\n"
+
+                 "                             KERNEL CRASH REPORT\n"
+
+                 "================================================================================\n"
+
+                 "  FAILED INSTRUCTION:\n"
+
+                 "  #%u Opcode: %s [%d]\n"
+
+                 "\n"
+
+                 "  OPERANDS:\n"
+
+                 "  Dest: %s\n"
+
+                 "  Src1: %s\n"
+
+                 "  Src2: %s\n"
+
+                 "  Src3: %s\n"
+
+                 "  Src4: %s\n"
+
+                 "\n"
+
+                 "  EXECUTION CONTEXT:\n"
+
+                 "  Domain Coord : [%s]\n"
+
+                 "  Linear Index : %u (Batch Offset: %u)\n"
+
+                 "  Error Type   : %s\n"
+
+                 "================================================================================\n",
+
                  inst_idx, mf_opcode_to_str(inst->opcode), inst->opcode, 
-                 inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx,
+
+                 d_info, s1_info, s2_info, s3_info, s4_info,
+
                  coords, exact_linear, ctx->error_idx,
+
                  mf_exec_error_to_str(ctx->error));
+
 }
 
 static f32 get_val(mf_tensor* t) {
@@ -162,11 +322,11 @@ static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* ba
         if (ctx->global_error_ptr && mf_atomic_load(ctx->global_error_ptr) != 0) break;
 
         const mf_cpu_baked_instr* bi = &baked[i];
-        if (bi->op) {
-            bi->op(ctx, bi->inst);
+        if (bi->op_func) {
+            ((mf_op_func)bi->op_func)(ctx, bi);
             
             if (ctx->error != MF_ERROR_NONE) {
-                report_crash(ctx, bi->inst, batch->start_inst + i);
+                report_crash(ctx, batch, baked, i);
                 break;
             }
         }
@@ -286,8 +446,8 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
     mf_cpu_baked_instr* baked = MF_ARENA_PUSH(&state->reg_arena, mf_cpu_baked_instr, batch->inst_count);
     for (u32 i = 0; i < batch->inst_count; ++i) {
         const mf_instruction* inst = &batch->program->code[batch->start_inst + i];
-        baked[i].inst = inst;
-        baked[i].op = batch->op_table[inst->opcode];
+        baked[i].raw = inst;
+        baked[i].op_func = (void*)batch->op_table[inst->opcode];
         baked[i].d  = &state->ctx.registers[inst->dest_idx];
         baked[i].s1 = (inst->src1_idx < reg_count) ? &state->ctx.registers[inst->src1_idx] : NULL;
         baked[i].s2 = (inst->src2_idx < reg_count) ? &state->ctx.registers[inst->src2_idx] : NULL;

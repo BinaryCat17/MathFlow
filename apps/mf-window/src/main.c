@@ -8,10 +8,10 @@
 
 int main(int argc, char** argv) {
     mf_host_init_logger();
-    mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
+    mf_log_set_global_level(MF_LOG_LEVEL_INFO);
 
     if (argc < 2) {
-        printf("Usage: mf-window <app.mfapp> [--log-interval <seconds>]\n");
+        printf("Usage: mf-window <app.mfapp> [--log-interval <seconds>] [--trace] [--debug]\n");
         return 1;
     }
 
@@ -22,6 +22,10 @@ int main(int argc, char** argv) {
     for (int i = 2; i < argc; ++i) {
         if (strcmp(argv[i], "--log-interval") == 0 && i + 1 < argc) {
             desc.log_interval = (float)atof(argv[++i]);
+        } else if (strcmp(argv[i], "--trace") == 0) {
+            mf_log_set_global_level(MF_LOG_LEVEL_TRACE);
+        } else if (strcmp(argv[i], "--debug") == 0) {
+            mf_log_set_global_level(MF_LOG_LEVEL_DEBUG);
         }
     }
 

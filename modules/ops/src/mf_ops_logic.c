@@ -4,6 +4,9 @@
 #include "mf_ops_internal.h"
 #include <string.h>
 
+typedef struct mf_tensor mf_tensor;
+typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
+
 // --- Comparison ---
 MF_KERNEL_COMPARE(less, <)
 MF_KERNEL_COMPARE(greater, >)
@@ -20,11 +23,11 @@ MF_KERNEL_LOGIC(xor, !=)
 MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v, u8, u8)
 
 // --- Selection ---
-static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* cond = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* true_val = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-    mf_tensor* false_val = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
+static void op_select(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* cond = bi->s1;
+    mf_tensor* true_val = bi->s2;
+    mf_tensor* false_val = bi->s3;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, cond);
@@ -36,14 +39,14 @@ static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_DST_DATA(ctx, dst);
     
     size_t sz_dst = mf_tensor_count(dst);
+    size_t esize = mf_dtype_size(dst->info.dtype);
 
-    mf_accessor_f32 it_c = mf_accessor_f32_begin(cond); // Use F32 base for condition check if needed
-    mf_accessor_f32 it_t = mf_accessor_f32_begin(true_val);
-    mf_accessor_f32 it_f = mf_accessor_f32_begin(false_val);
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_tensor_iter it_c = mf_tensor_iter_begin(cond);
+    mf_tensor_iter it_t = mf_tensor_iter_begin(true_val);
+    mf_tensor_iter it_f = mf_tensor_iter_begin(false_val);
+    mf_tensor_iter it_d = mf_tensor_iter_begin(dst);
 
     bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
-    size_t esize = mf_dtype_size(dst->info.dtype);
 
     i32 st0 = MF_GET_STRIDE(dst);
     i32 st1 = MF_GET_STRIDE(cond);
@@ -51,14 +54,19 @@ static void op_select(mf_exec_ctx* ctx, const mf_instruction* inst) {
     i32 st3 = MF_GET_STRIDE(false_val);
 
     for(size_t i=0; i<sz_dst; ++i) {
-        bool condition = cond_is_f32 ? (mf_accessor_f32_get(&it_c) != 0.0f) : (*((u8*)it_c.it.ptr) != 0);
+        bool condition = false;
+        if (cond_is_f32) {
+            condition = (*((f32*)it_c.ptr) != 0.0f);
+        } else {
+            condition = (*((u8*)it_c.ptr) != 0);
+        }
         
-        memcpy(it_dst.it.ptr, condition ? it_t.it.ptr : it_f.it.ptr, esize);
+        memcpy(it_d.ptr, condition ? it_t.ptr : it_f.ptr, esize);
 
-        mf_accessor_f32_advance(&it_c, st1);
-        mf_accessor_f32_advance(&it_t, st2);
-        mf_accessor_f32_advance(&it_f, st3);
-        mf_accessor_f32_advance(&it_dst, st0);
+        mf_tensor_iter_advance(&it_c, st1);
+        mf_tensor_iter_advance(&it_t, st2);
+        mf_tensor_iter_advance(&it_f, st3);
+        mf_tensor_iter_advance(&it_d, st0);
     }
 }
 

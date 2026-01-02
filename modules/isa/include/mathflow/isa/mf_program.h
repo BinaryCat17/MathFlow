@@ -6,7 +6,7 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 10       // Explicit IO Flags + Pure State + Symbol Hashes + Shape Propagation
+#define MF_BINARY_VERSION 11       // Added Identity to Tensor Desc
 
 #define MF_MAX_SYMBOL_NAME 64
 
@@ -36,9 +36,9 @@ typedef struct {
 // Followed immediately by shape data? No, fixed max dims.
 typedef struct {
     uint8_t dtype;       // mf_dtype
+    uint8_t identity;    // mf_identity
     uint8_t ndim;        // Rank
     uint8_t is_constant; // 1 if data follows, 0 if uninitialized buffer
-    uint8_t reserved;    
     
     int32_t shape[MF_MAX_DIMS];
     

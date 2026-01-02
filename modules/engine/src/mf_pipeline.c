@@ -45,7 +45,7 @@ static void init_resources(mf_engine* engine, const mf_pipeline_desc* pipe) {
         res->flags = desc->flags;
         
         memset(&res->desc, 0, sizeof(mf_tensor));
-        mf_type_info_init_contiguous(&res->desc.info, desc->dtype, desc->shape, desc->ndim);
+        mf_type_info_init_contiguous(&res->desc.info, desc->dtype, MF_IDENTITY_UNIFORM, desc->shape, desc->ndim);
         
         bool is_dynamic = false;
         for (int k = 0; k < desc->ndim; ++k) if (desc->shape[k] <= 0) is_dynamic = true;
@@ -249,12 +249,18 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
     
     apply_initial_data(engine);
 
+    size_t total_mem = 0;
     for (u32 i = 0; i < engine->resource_count; ++i) {
         mf_resource_inst* res = &engine->resources[i];
         char s_shape[64];
         mf_shape_format(&res->desc.info, s_shape, sizeof(s_shape));
-        MF_LOG_INFO("Engine: Resource '%s' ready. Shape: %s, Size: %zu bytes %s", 
+        bool is_transient = (res->flags & MF_RESOURCE_FLAG_TRANSIENT) != 0;
+        
+        MF_LOG_TRACE("Engine: Resource '%s' ready. Shape: %s, Size: %zu bytes %s", 
             res->name, s_shape, res->size_bytes, 
-            (res->flags & MF_RESOURCE_FLAG_TRANSIENT) ? "[TRANSIENT]" : "");
+            is_transient ? "[TRANSIENT]" : "");
+            
+        total_mem += res->size_bytes * (is_transient ? 1 : 2);
     }
+    MF_LOG_INFO("Engine: Pipeline ready. Total GPU/Shared Memory: %.2f MB", (double)total_mem / (1024.0 * 1024.0));
 }

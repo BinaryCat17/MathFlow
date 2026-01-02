@@ -63,6 +63,20 @@ struct mf_exec_ctx {
     void* user_data;
 };
 
+/**
+ * @brief Pre-resolved instruction for fast CPU execution.
+ * Contains direct pointers to tensors instead of register indices.
+ */
+typedef struct mf_cpu_baked_instr {
+    void* op_func;              // Pointer to the kernel function
+    const mf_instruction* raw;  // Original instruction metadata
+    mf_tensor* d;
+    mf_tensor* s1;
+    mf_tensor* s2;
+    mf_tensor* s3;
+    mf_tensor* s4;
+} mf_cpu_baked_instr;
+
 // --- Execution Context API (Inlined) ---
 
 static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, size_t reg_count, mf_allocator* allocator) {
@@ -95,7 +109,7 @@ static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor
     }
 
     mf_type_info info;
-    mf_type_info_init_contiguous(&info, tensor->info.dtype, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
+    mf_type_info_init_contiguous(&info, tensor->info.dtype, tensor->info.identity, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
 
     if (!mf_tensor_resize(tensor, ctx->allocator, &info)) {
         ctx->error = MF_ERROR_OOM;

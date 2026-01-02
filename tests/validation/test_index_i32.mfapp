@@ -1,0 +1,17 @@
+{
+    "window": { "title": "Index I32 Test", "width": 10, "height": 1 },
+    "pipeline": {
+        "resources": [
+            { "name": "Out", "dtype": "I32", "shape": [10] }
+        ],
+        "kernels": [
+            {
+                "id": "main",
+                "entry": "test_index_i32.json",
+                "bindings": [
+                    { "port": "Out", "resource": "Out" }
+                ]
+            }
+        ]
+    }
+}

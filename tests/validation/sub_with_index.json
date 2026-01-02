@@ -1,0 +1,10 @@
+{
+    "nodes": [
+        { "id": "In", "type": "Input", "data": { "shape": [1], "dtype": "f32" } },
+        { "id": "Idx", "type": "Index", "data": { "axis": 0, "dtype": "f32" } },
+        { "id": "Out", "type": "Output" }
+    ],
+    "links": [
+        { "src": "Idx", "dst": "Out", "dst_port": "in" }
+    ]
+}

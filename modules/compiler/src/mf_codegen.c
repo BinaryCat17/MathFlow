@@ -64,22 +64,26 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         size_t current_size = mf_tensor_size_bytes(&tmp_current);
         size_t new_size = mf_tensor_size_bytes(&node->out_shape);
         
-        if (new_size > current_size) {
+        // Always copy info if ndim was 0 (first time) or if the new one is larger.
+        if (t_desc->info.ndim == 0 || new_size > current_size) {
             t_desc->info = node->out_shape.info;
         }
-        
-        mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
-        mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
-        mf_ir_node* s3 = find_input_source(ir, node_idx, 2); 
-        mf_ir_node* s4 = find_input_source(ir, node_idx, 3);
 
-        if (node->type == MF_NODE_CONST) {
-            t_desc->buffer = node->constant.buffer;
-            t_desc->byte_offset = node->constant.byte_offset;
+        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
+        
+        mf_ir_node* s1 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[0]);
+        mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
+        mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]); 
+        mf_ir_node* s4 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[3]);
+
+        if (node->type == MF_NODE_CONST || node->type == MF_NODE_INDEX || node->type == MF_NODE_RANGE) {
+            if (node->constant.buffer) {
+                t_desc->buffer = node->constant.buffer;
+                t_desc->byte_offset = node->constant.byte_offset;
+            }
         }
 
         // Emit Instruction
-        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
         uint32_t start_instr_idx = (uint32_t)instr_count;
         bool emitted = false;
 

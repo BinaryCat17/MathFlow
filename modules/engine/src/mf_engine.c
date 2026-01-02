@@ -284,23 +284,29 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     mf_allocator* alloc = (mf_allocator*)&engine->heap;
     
     mf_type_info new_info;
-    mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, new_shape, new_ndim);
+    mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, res->desc.info.identity, new_shape, new_ndim);
     
     size_t new_bytes = 1;
     for(int d=0; d<new_ndim; ++d) new_bytes *= (new_shape[d] > 0 ? new_shape[d] : 1);
     new_bytes *= mf_dtype_size(new_info.dtype);
     
     if (res->size_bytes != new_bytes) {
+        bool is_transient = (res->buffers[0] == res->buffers[1]);
+
         mf_buffer_free(res->buffers[0]);
         if (!mf_buffer_alloc(res->buffers[0], alloc, new_bytes)) {
             MF_LOG_ERROR("Engine: Failed to reallocate front buffer for resource '%s' (%zu bytes)", name, new_bytes);
             return false;
         }
         
-        mf_buffer_free(res->buffers[1]);
-        if (!mf_buffer_alloc(res->buffers[1], alloc, new_bytes)) {
-            MF_LOG_ERROR("Engine: Failed to reallocate back buffer for resource '%s' (%zu bytes)", name, new_bytes);
-            return false;
+        if (is_transient) {
+            res->buffers[1] = res->buffers[0];
+        } else {
+            mf_buffer_free(res->buffers[1]);
+            if (!mf_buffer_alloc(res->buffers[1], alloc, new_bytes)) {
+                MF_LOG_ERROR("Engine: Failed to reallocate back buffer for resource '%s' (%zu bytes)", name, new_bytes);
+                return false;
+            }
         }
         
         res->size_bytes = new_bytes;

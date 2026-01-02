@@ -3,13 +3,13 @@
         { "id": "Scale", "type": "Const", "data": { "value": 10.0 } },
         
         // Domain 1: 1D array [5]
-        { "id": "Idx1", "type": "Index", "data": { "axis": 0 } },
+        { "id": "Idx1", "type": "Index", "data": { "axis": 0, "dtype": "f32" } },
         { "id": "Val1", "type": "Mul" },
         { "id": "Out1", "type": "Output", "data": { "name": "Small", "shape": [5] } },
 
         // Domain 2: 2D array [4, 4]
-        { "id": "X", "type": "Index", "data": { "axis": 1 } },
-        { "id": "Y", "type": "Index", "data": { "axis": 0 } },
+        { "id": "X", "type": "Index", "data": { "axis": 1, "dtype": "f32" } },
+        { "id": "Y", "type": "Index", "data": { "axis": 0, "dtype": "f32" } },
         { "id": "Val2", "type": "Add" },
         { "id": "Out2", "type": "Output", "data": { "name": "Large", "shape": [4, 4] } }
     ],

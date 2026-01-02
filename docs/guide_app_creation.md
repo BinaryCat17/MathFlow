@@ -119,9 +119,9 @@ This graph computes the color for **every pixel**. The backend executes this gra
     "nodes": [
         { "id": "State", "type": "Input", "data": {"shape": [10], "dtype": "f32"} },
         
-        // Get Pixel Coordinates
-        { "id": "X", "type": "Index", "data": {"axis": 1} },
-        { "id": "Y", "type": "Index", "data": {"axis": 0} },
+        // Get Pixel Coordinates (Explicit dtype required)
+        { "id": "X", "type": "Index", "data": {"axis": 1, "dtype": "f32"} },
+        { "id": "Y", "type": "Index", "data": {"axis": 0, "dtype": "f32"} },
 
         // Create Red Color
         { "id": "Red", "type": "Const", "data": {"value": [1, 0, 0, 1]} },
@@ -136,7 +136,7 @@ This graph computes the color for **every pixel**. The backend executes this gra
 
 **Tip: UV Coordinates**
 To get standard `[0, 1]` UV coordinates:
-1.  Get `X` (Index 1) and `Y` (Index 0).
+1.  Get `X` (Index 1) and `Y` (Index 0) with `dtype: "f32"`.
 2.  `UV.x = Div(X, u_ResX)`
 3.  `UV.y = Div(Y, u_ResY)`
 
@@ -153,6 +153,8 @@ The Render Kernel processes pixels linearly. To read a specific value from `Game
 ## 7. Reusability (Subgraphs)
 
 You can call other graphs using the `Call` node. This is useful for shared logic (e.g., `sdf_circle.json`).
+
+> **Note:** Subgraphs must be pure functions. They cannot use `Index` nodes. All coordinates and external dependencies must be passed through ports.
 
 ```json
 { 

@@ -15,9 +15,9 @@ bool mf_pass_validate(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, 
         const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
         
         u32 node_idx = (u32)(node - ir->nodes);
-        mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
-        mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
-        mf_ir_node* s3 = find_input_source(ir, node_idx, 2);
+        mf_ir_node* s1 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[0]);
+        mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
+        mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]);
 
         mf_identity node_id = node->out_shape.info.identity;
 

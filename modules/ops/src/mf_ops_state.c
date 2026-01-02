@@ -5,9 +5,12 @@
 #include "mf_ops_internal.h"
 #include <string.h>
 
-static void op_copy(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
+typedef struct mf_tensor mf_tensor;
+typedef struct mf_cpu_baked_instr mf_cpu_baked_instr;
+
+static void op_copy(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* src = bi->s1;
     if (!dst || !src) return;
 
     bool dst_allocated = (dst->buffer != NULL);
@@ -52,10 +55,10 @@ static void op_copy(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // Slice(Input, Range) -> View. Range is [Start, Count]
-static void op_slice(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* range = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+static void op_slice(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* src = bi->s1;
+    mf_tensor* range = bi->s2;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);
@@ -72,10 +75,10 @@ static void op_slice(mf_exec_ctx* ctx, const mf_instruction* inst) {
 }
 
 // Reshape(Input, ShapeTensor) -> View
-static void op_reshape(mf_exec_ctx* ctx, const mf_instruction* inst) {
-    mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
-    mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-    mf_tensor* shape_t = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
+static void op_reshape(mf_exec_ctx* ctx, const mf_cpu_baked_instr* bi) {
+    mf_tensor* dst = bi->d;
+    mf_tensor* src = bi->s1;
+    mf_tensor* shape_t = bi->s2;
     
     MF_CHECK_DST_VIEW(ctx, dst);
     MF_CHECK_INPUT(ctx, src);

@@ -187,16 +187,47 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
         }
         case MF_NODE_INDEX: {
             const mf_json_value* v_axis = mf_json_get_field(data, "axis");
-            if (v_axis && v_axis->type == MF_JSON_VAL_NUMBER) {
-                dst->constant.info.dtype = MF_DTYPE_I32;
-                dst->constant.info.ndim = 0;
-                size_t bytes = sizeof(int32_t);
-                mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
-                void* mem = MF_ARENA_PUSH(arena, u8, bytes);
-                mf_buffer_init_view(buf, mem, bytes);
-                dst->constant.buffer = buf;
-                *((int32_t*)mem) = (int32_t)v_axis->as.n;
+            const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
+            
+            if (!v_dtype) {
+                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': missing 'dtype' (must be explicit)", dst->id);
+                return false;
             }
+
+            if (!v_axis || v_axis->type != MF_JSON_VAL_NUMBER) {
+                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': missing or invalid 'axis' (must be a number)", dst->id);
+                return false;
+            }
+            
+            mf_dtype dtype = mf_dtype_from_str(v_dtype->as.s);
+            if (dtype != MF_DTYPE_F32 && dtype != MF_DTYPE_I32) {
+                mf_compiler_diag_report(diag, dst->loc, "Index node '%s': invalid 'dtype' (must be F32 or I32)", dst->id);
+                return false;
+            }
+
+            dst->constant.info.dtype = dtype;
+            dst->constant.info.ndim = 0;
+            size_t bytes = mf_dtype_size(dtype);
+            mf_buffer* buf = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            void* mem = MF_ARENA_PUSH(arena, u8, bytes);
+            mf_buffer_init_view(buf, mem, bytes);
+            dst->constant.buffer = buf;
+            
+            if (dtype == MF_DTYPE_F32) *((f32*)mem) = (f32)v_axis->as.n;
+            else *((int32_t*)mem) = (int32_t)v_axis->as.n;
+
+            // Also set output dtype for inference
+            dst->out_shape.info.dtype = dtype;
+            break;
+        }
+        case MF_NODE_RANGE: {
+            const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
+            if (!v_dtype) {
+                mf_compiler_diag_report(diag, dst->loc, "Range node '%s': missing 'dtype' (must be explicit)", dst->id);
+                return false;
+            }
+            mf_dtype dtype = mf_dtype_from_str(v_dtype->as.s);
+            dst->out_shape.info.dtype = dtype;
             break;
         }
         case MF_NODE_CALL: {
@@ -224,6 +255,7 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
     out_ir->node_count = ast->node_count;
     out_ir->node_cap = ast->node_count;
     out_ir->nodes = MF_ARENA_PUSH(arena, mf_ir_node, ast->node_count);
+    memset(out_ir->nodes, 0, sizeof(mf_ir_node) * ast->node_count);
 
     mf_str_map map;
     mf_map_init(&map, ast->node_count * 2, arena);
@@ -300,9 +332,8 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
             return false;
         }
         mf_ir_node* src_node = &out_ir->nodes[l_dst->src_node_idx];
-        if (src_node->type == MF_NODE_CALL) {
-            l_dst->src_port_name = l_src->src_port ? mf_arena_strdup(arena, l_src->src_port) : "default";
-        } else {
+        l_dst->src_port_name = l_src->src_port ? mf_arena_strdup(arena, l_src->src_port) : "out";
+        if (src_node->type != MF_NODE_CALL) {
             l_dst->src_port = get_port_index(src_node->type, l_src->src_port);
         }
 
@@ -313,9 +344,8 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
             return false;
         }
         mf_ir_node* dst_node = &out_ir->nodes[l_dst->dst_node_idx];
-        if (dst_node->type == MF_NODE_CALL) {
-            l_dst->dst_port_name = l_src->dst_port ? mf_arena_strdup(arena, l_src->dst_port) : "default";
-        } else {
+        l_dst->dst_port_name = l_src->dst_port ? mf_arena_strdup(arena, l_src->dst_port) : "in";
+        if (dst_node->type != MF_NODE_CALL) {
             l_dst->dst_port = get_port_index(dst_node->type, l_src->dst_port);
         }
     }

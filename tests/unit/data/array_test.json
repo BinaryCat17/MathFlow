@@ -1,7 +1,7 @@
 {
     "nodes": [
         { "id": "count", "type": "Const", "data": {"value": [5.0]} },
-        { "id": "range_out", "type": "Range" },
+        { "id": "range_out", "type": "Range", "data": {"dtype": "f32"} },
         { "id": "cumsum_out", "type": "CumSum" }
     ],
     "links": [

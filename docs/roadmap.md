@@ -9,71 +9,78 @@
 
 ## Active Development
 
-### Milestone 11: Hardening & Memory Safety (Completed)
+### Milestone 13: Pure Logic Architecture
 
-#### Phase 1: Defense & Visibility
-- [x] **Protected Iterators:** Внедрить `end_ptr` в `mf_tensor_iter`. Любая попытка доступа за пределы диапазона должна вызывать `MF_LOG_FATAL`. Реализовать проверку как для линейного обхода, так и для случайного доступа.
-- [x] **Atomic Kill Switch:** Реализовать глобальный атомарный флаг ошибки в `mf_engine`. При возникновении исключения в любом рабочем потоке бэкенда все остальные потоки должны завершить текущую итерацию и перейти в состояние ожидания.
-- [x] **Kernel Crash Report:** Разработать стандартизированный формат вывода ошибки: ID инструкции, мнемоника Opcode, индексы регистров, значения указателей и текущие координаты домена (`Index`).
+#### Phase 7: Logic Purity & Intrinsic Inputs
+- [ ] **Index Node Elimination:** Полное удаление `MF_NODE_INDEX` из компилятора и `MF_OP_INDEX` из ISA. Перевод всех существующих графов на использование узлов `Input`.
+- [ ] **Intrinsic Naming Convention:** Внедрение соглашения об именах для автоматического определения `SPATIAL` идентичности. Порты `u_FragX`, `u_FragY`, `u_FragZ` автоматически получают шаг 1 и привязываются к генераторам координат.
+- [ ] **Manifest-Driven Generators:** Расширение формата `.mfapp`. Возможность явно указать тип генератора для входного порта (например, `generator: "index", axis: 0`).
+- [ ] **Loader Synthesis:** Доработка `mf_loader.c` для автоматического создания виртуальных ресурсов-генераторов, если граф требует `u_Frag...` входы, но они не описаны в манифесте.
+- [ ] **Subgraph Universality:** Обеспечение полной поддержки любых "координатных" входов в подграфах без нарушения их чистоты (purity).
 
-#### Phase 2: Generalized Stride Contract (STEP_N)
-- [x] **Stride-Based Instruction Layout:** Расширить `mf_instruction`, добавив массив `i32 strides[4]` для каждого операнда (Dest, S1, S2, S3). Это позволит бэкенду использовать чистую арифметику указателей.
-- [x] **Compiler Stride Inference:** В `mf_pass_analyze` реализовать расчет линейных шагов. Если операнд броадкастится (размер 1 в домене N), его шаг становится `0`. Если он линеен — `1`. Если это сложный вью — `N`.
-- [x] **Unified Kernel Execution:** Рефакторинг макросов в `mf_kernel_utils.h`. Удалить проверки `if (size > 1)` и заменить их на безусловный инкремент `ptr += step`.
-- [x] **Role Elimination:** Полностью удалить понятия "Spatial", "Uniform" и "Reduction" из бэкенда. Теперь каждый тензор — это просто поток данных с заданным шагом.
+### Milestone 13: Pure Logic Architecture
 
-#### Phase 3: Reliability & Stabilization (Critical Fixes)
-- [x] **Register Aliasing Fix:** Исправить `mf_codegen.c`, внедрив отслеживание *максимального* требуемого размера для каждого регистра. Дескриптор в `mf_program` должен гарантировать безопасность при переиспользовании регистров (защита от Heap Corruption).
-- [x] **Dynamic Index Context:** Исправить `mf_backend_cpu.c`, обеспечив обновление координат `u_FragX`, `u_FragY` для *каждого* элемента внутри чанка. Это уберет артефакты «одноцветных квадратов».
-- [x] **Safe Gather & NaN Protection:** Внедрить в `mf_ops_array.c` и `mf_ops_math.c` защиту от NaN/Inf. Операция `Gather` должна проверять индекс до каста к целому числу и возвращать безопасный дефолт при некорректных значениях.
-- [x] **Explicit Reduction ISA:** Разделить `MF_OP_SUM` на `MF_OP_ADD` (поэлементное) и `MF_OP_REDUCE_SUM` (схлопывание в скаляр). Убрать «магические» эвристики из бэкенда.
-
-#### Phase 4: Architectural Deep Reliability
-- [x] **Typed Accessors (Checked Mode):** Заменить `mf_tensor_iter` на типизированные аксессоры. Добавить "Checked Mode" (включаемый при компиляции), который делает строгую проверку границ (bounds checking) на каждом чтении/записи.
-- [x] **Strict Static Analysis:** Реализовать pass валидации скомпилированной программы, который проверяет совместимость типов и доменов инструкций ПЕРЕД отправкой на выполнение.
-- [x] **Broadcast Identity:** Внедрить в ISA явную маркировку регистров (Constant, Spatial, Uniform). Это исключит ошибки при аллокации временной памяти в бэкенде.
-
-### Milestone 12: Intelligence & Performance (In Progress)
-
-#### Phase 5: Automatic Optimization & Slimming
-- [x] **Auto-Transient Detection:** Внедрить в `mf_engine` темпоральный анализ графа. Если ресурс не имеет зависимости от предыдущего кадра, он автоматически помечается как `Transient` и использует только один буфер вместо двух (экономия памяти и устранение лага в 1 кадр).
-- [x] **Instruction Slimming:** Убрать `strides` из структуры `mf_instruction`. Использовать `Identity` регистра для определения шага в рантайме. Это уменьшит размер байт-кода в 2 раза и улучшит Cache Locality.
-- [x] **Worker Baking:** Оптимизировать горячий цикл бэкенда. Перед запуском задачи подготавливать плоский массив указателей и шагов для всех операндов, чтобы минимизировать накладные расходы внутри `cpu_worker_job`.
-- [x] **Native Math Kernels:** Перенести `SmoothStep`, `Mix`, `Length`, `Normalize` и `Dot` из JSON-библиотек обратно в нативный C (`mf_ops_math.c`). Это даст прирост производительности в 10-50 раз для графических задач.
-- [x] **Frame Arena:** Полностью перевести аллокацию временных объектов в рантайме на линейную арену, которая сбрасывается раз в кадр. (Реализовано через worker temp arenas).
-
-#### Phase 6: Introspection & Debugging
-- [ ] **Reference Interpreter:** Создать эталонный однопоточный бэкенд-интерпретатор для отладки сложной математики.
-- [ ] **Visual Debugger Bridge:** Подготовить API для передачи состояния выполнения во внешний визуализатор графа.
-
-### Debug Notes (Milestone 11)
-*   **text_demo status:** Исправлено в процессе Milestone 12. Нативные ядра и оптимизированный бэкенд стабилизировали выполнение.
-*   **Инфраструктура:** Внедрен Fast Path для линейных тензоров, обходящий аксессоры.
+#### Phase 7: Logic Purity & Intrinsic Inputs
+- [ ] **Index Node Elimination:** Полное удаление `MF_NODE_INDEX` из компилятора и `MF_OP_INDEX` из ISA. Перевод всех существующих графов на использование узлов `Input`.
+- [ ] **Intrinsic Naming Convention:** Внедрение соглашения об именах для автоматического определения `SPATIAL` идентичности. Порты `u_FragX`, `u_FragY`, `u_FragZ` автоматически получают шаг 1 и привязываются к генераторам координат.
+- [ ] **Manifest-Driven Generators:** Расширение формата `.mfapp`. Возможность явно указать тип генератора для входного порта (например, `generator: "index", axis: 0`).
+- [ ] **Loader Synthesis:** Доработка `mf_loader.c` для автоматического создания виртуальных ресурсов-генераторов, если граф требует `u_Frag...` входы, но они не описаны в манифесте.
+- [ ] **Subgraph Universality:** Обеспечение полной поддержки любых "координатных" входов в подграфах без нарушения их чистоты (purity).
 
 ---
 
-## Completed Phases (Archive)
+## Completed Milestones (Summary)
 
-### Milestone 10: Standard Library & ISA Consolidation (Jan 2026)
-- **Explicit Import System:** Added `"imports"` field and search paths (Prelude).
-- **Default Ports:** Automated port mapping for single-input/single-output subgraphs.
-- **Decomposition:** Moved `Mean`, `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` to JSON. (Note: native restoration in Milestone 12).
-- **ISA Cleanup:** Grouped instructions into Atomic, Reduction, Accel, and Memory categories.
-- **Core Expansion:** Added `XOR` and `SIZE` primitives.
+*   **Milestone 12: Intelligence & Performance:** Автоматическая детекция транзиентных ресурсов, оптимизация размера инструкций, ускорение горячего цикла бэкенда и внедрение нативных математических ядер. Стабилизация системы типов и переход на Port-Aware разрешение.
+*   **Milestone 11: Hardening & Memory Safety:** Внедрены защищенные итераторы, Atomic Kill Switch и детальные отчеты об ошибках в ядрах. Реализована модель STEP_N.
+---
+## Archive (Detailed Task History)
 
-### Milestone 9: Advanced Compilation (Jan 2026)
-- **Instruction Fusion:** Implemented `FMA` detection and fusion pass.
-- **Advanced Lowering:** Automated `MEAN` decomposition into `SUM/DIV`.
-- **Register Allocation:** Implemented **Liveness Analysis** and register reuse (Buffer Aliasing).
-- **Task System:** Full support for multi-domain execution and automated task-splitting.
+<details>
+<summary>Expand for full history of completed tasks</summary>
 
-### Milestone 8: Compiler Consolidation (Dec 2025)
-- **Metadata-Driven:** Unified operation definitions using X-Macros.
-- **Type Inference:** Automated shape/type propagation rules.
+### Milestone 12: Intelligence & Performance
+- [x] **Auto-Transient Detection:** Темпоральный анализ графа для экономии памяти.
+- [x] **Instruction Slimming:** Оптимизация размера байт-кода.
+- [x] **Worker Baking:** Минимизация накладных расходов в бэкенде.
+- [x] **Native Math Kernels:** SmoothStep, Mix и др. в нативном C.
+- [x] **Frame Arena:** Линейная аллокация временных объектов.
+- [x] **IR Sanitization:** Гарантированное обнуление структур IR.
+- [x] **Absolute Type Inference:** Строгий вывод типов.
+- [x] **Port-Aware Resolution:** Поиск источников данных по именам портов.
+- [x] **Op Resilience:** Поддержка I32 для генераторов и сохранение identity в бинарном формате.
 
-### Milestones 1-7: Foundation & Pixel Engine (2024-2025)
-- **Core VM:** High-performance interpreted VM with SoA memory model.
-- **Pipeline:** Explicit Manifest-driven execution (`.mfapp`).
-- **Pixel Math:** SDF-based rendering engine with anti-aliasing.
-- **Compiler:** Modular pass-based architecture.
-- **Host:** Cross-platform SDL2 and Headless drivers.
+### Milestone 11: Hardening & Memory Safety
+- [x] **Protected Iterators:** Внедрен `end_ptr` в `mf_tensor_iter`.
+- [x] **Atomic Kill Switch:** Глобальный флаг ошибки в `mf_engine`.
+- [x] **Kernel Crash Report:** Стандартизированный формат вывода ошибок.
+- [x] **Stride-Based Instruction Layout:** Массив `strides[4]` в `mf_instruction`.
+- [x] **Compiler Stride Inference:** Расчет линейных шагов в `mf_pass_analyze`.
+- [x] **Unified Kernel Execution:** Удаление проверок `size > 1` в пользу безусловного инкремента.
+- [x] **Register Aliasing Fix:** Отслеживание максимального размера регистра в `mf_codegen.c`.
+- [x] **Dynamic Index Context:** Обновление `u_FragX/Y` для каждого элемента.
+- [x] **Safe Gather & NaN Protection:** Защита от NaN/Inf и OOB в Gather.
+- [x] **Explicit Reduction ISA:** Разделение ADD и REDUCE_SUM.
+
+### Milestone 10: Standard Library & ISA Consolidation
+- [x] Explicit Import System
+- [x] Default Ports mapping
+- [x] ISA Category grouping
+- [x] XOR and SIZE primitives
+
+### Milestone 9: Advanced Compilation
+- [x] Instruction Fusion (FMA)
+- [x] MEAN decomposition
+- [x] Liveness-based Register Allocation (Buffer Aliasing)
+- [x] Multi-domain Task System
+
+### Milestone 8: Compiler Consolidation
+- [x] X-Macros metadata
+- [x] Automated shape/type propagation
+
+### Milestones 1-7: Foundation
+- [x] Core VM (SoA model)
+- [x] Manifest-driven Pipeline (.mfapp)
+- [x] SDF Rendering engine
+- [x] Cross-platform Host
+</details>
