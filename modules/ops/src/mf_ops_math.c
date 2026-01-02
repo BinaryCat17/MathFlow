@@ -37,6 +37,58 @@ MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmax
 
 MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc), f32, f32)
 
+// --- Vector Math ---
+
+static inline f32 _vec_dot_impl(mf_accessor_f32* it_a, mf_accessor_f32* it_b, size_t len) {
+    f32 sum = 0;
+    for (size_t j = 0; j < len; ++j) {
+        sum += mf_accessor_f32_get(it_a) * mf_accessor_f32_get(it_b);
+        mf_accessor_f32_advance(it_a, 1);
+        mf_accessor_f32_advance(it_b, 1);
+    }
+    return sum;
+}
+
+static inline f32 _vec_len_sq_impl(mf_accessor_f32* it_a, size_t len) {
+    f32 sum = 0;
+    for (size_t j = 0; j < len; ++j) {
+        f32 v = mf_accessor_f32_get(it_a);
+        sum += v * v;
+        mf_accessor_f32_advance(it_a, 1);
+    }
+    return sum;
+}
+
+MF_KERNEL_VECTOR_REDUCE(dot, _vec_dot_impl(&it_a, &it_b, vec_len))
+MF_KERNEL_VECTOR_REDUCE(length, sqrtf(_vec_len_sq_impl(&it_a, vec_len)))
+
+static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    mf_tensor* dst = &ctx->registers[inst->dest_idx];
+    mf_tensor* a = &ctx->registers[inst->src1_idx];
+    
+    MF_CHECK_COMMON(ctx, dst, a);
+    if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return;
+    MF_CHECK_DST_DATA(ctx, dst);
+
+    size_t vec_len = a->info.shape[a->info.ndim - 1];
+    size_t out_count = mf_tensor_count(dst) / vec_len;
+    
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
+
+    for (size_t i = 0; i < out_count; ++i) {
+        mf_accessor_f32 it_calc = it_a;
+        f32 len = sqrtf(_vec_len_sq_impl(&it_calc, vec_len));
+        f32 inv_len = (len > 1e-6f) ? (1.0f / len) : 0.0f;
+
+        for (size_t j = 0; j < vec_len; ++j) {
+            mf_accessor_f32_set(&it_dst, mf_accessor_f32_get(&it_a) * inv_len);
+            mf_accessor_f32_advance(&it_a, 1);
+            mf_accessor_f32_advance(&it_dst, 1);
+        }
+    }
+}
+
 static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     mf_tensor* dst = &ctx->registers[inst->dest_idx];
     mf_tensor* e = &ctx->registers[inst->src1_idx]; // Edges [2] or Scalar
@@ -88,115 +140,6 @@ static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     }
 }
 
-static inline f32 _vec_dot(mf_accessor_f32* it_a, mf_accessor_f32* it_b, size_t len) {
-    f32 sum = 0;
-    for (size_t j = 0; j < len; ++j) {
-        sum += mf_accessor_f32_get(it_a) * mf_accessor_f32_get(it_b);
-        mf_accessor_f32_advance(it_a, 1);
-        mf_accessor_f32_advance(it_b, 1);
-    }
-    return sum;
-}
-
-static inline f32 _vec_len_sq(mf_accessor_f32* it_a, size_t len) {
-    f32 sum = 0;
-    for (size_t j = 0; j < len; ++j) {
-        f32 v = mf_accessor_f32_get(it_a);
-        sum += v * v;
-        mf_accessor_f32_advance(it_a, 1);
-    }
-    return sum;
-}
-
-static void op_dot(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* a = &ctx->registers[inst->src1_idx];
-    mf_tensor* b = &ctx->registers[inst->src2_idx];
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-    MF_CHECK_INPUT(ctx, b);
-    
-    dst->info.dtype = MF_DTYPE_F32;
-    if (a->info.ndim > 1) {
-        if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim - 1)) return;
-    } else {
-        u32 scalar_shape[] = {1};
-        if (!mf_exec_ctx_resize_tensor(ctx, dst, scalar_shape, 1)) return;
-    }
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    size_t vec_len = a->info.shape[a->info.ndim - 1];
-    size_t out_count = mf_tensor_count(dst);
-    
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
-    mf_accessor_f32 it_b = mf_accessor_f32_begin(b);
-    i32 st0 = MF_GET_STRIDE_D(inst);
-
-    for (size_t i = 0; i < out_count; ++i) {
-        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(_vec_dot(&it_a, &it_b, vec_len)));
-        mf_accessor_f32_advance(&it_dst, st0);
-    }
-}
-
-static void op_length(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* a = &ctx->registers[inst->src1_idx];
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-    
-    dst->info.dtype = MF_DTYPE_F32;
-    if (a->info.ndim > 1) {
-        if (!mf_exec_ctx_resize_tensor(ctx, dst, a->info.shape, a->info.ndim - 1)) return;
-    } else {
-        u32 scalar_shape[] = {1};
-        if (!mf_exec_ctx_resize_tensor(ctx, dst, scalar_shape, 1)) return;
-    }
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    size_t vec_len = a->info.shape[a->info.ndim - 1];
-    size_t out_count = mf_tensor_count(dst);
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
-    i32 st0 = MF_GET_STRIDE_D(inst);
-
-    for (size_t i = 0; i < out_count; ++i) {
-        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(sqrtf(_vec_len_sq(&it_a, vec_len))));
-        mf_accessor_f32_advance(&it_dst, st0);
-    }
-}
-
-static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* a = &ctx->registers[inst->src1_idx];
-    
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, a);
-    
-    dst->info.dtype = MF_DTYPE_F32;
-    if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    size_t vec_len = a->info.shape[a->info.ndim - 1];
-    size_t out_count = mf_tensor_count(dst) / vec_len;
-    
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
-
-    for (size_t i = 0; i < out_count; ++i) {
-        mf_accessor_f32 it_calc = it_a;
-        f32 len = sqrtf(_vec_len_sq(&it_calc, vec_len));
-        f32 inv_len = (len > 1e-6f) ? (1.0f / len) : 0.0f;
-
-        for (size_t j = 0; j < vec_len; ++j) {
-            mf_accessor_f32_set(&it_dst, mf_accessor_f32_get(&it_a) * inv_len);
-            mf_accessor_f32_advance(&it_a, 1);
-            mf_accessor_f32_advance(&it_dst, 1);
-        }
-    }
-}
 
 // --- Reduction ---
 

@@ -72,6 +72,40 @@ static inline f32 mf_utils_get_scalar_f32(const mf_tensor* t) {
 
 #define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
 
+#define MF_CHECK_COMMON(ctx, dst, s1) \
+    MF_CHECK_DST_VIEW(ctx, dst); \
+    MF_CHECK_INPUT(ctx, s1); \
+    dst->info.dtype = MF_DTYPE_F32;
+
+#define MF_RESOLVE_VEC_SHAPE(ctx, dst, src, ndim_offset) \
+    if ((src)->info.ndim > 0) { \
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, (src)->info.shape, (src)->info.ndim + (ndim_offset))) return; \
+    } else { \
+        u32 scalar_shape[] = {1}; \
+        if (!mf_exec_ctx_resize_tensor(ctx, dst, scalar_shape, 1)) return; \
+    } \
+    MF_CHECK_DST_DATA(ctx, dst);
+
+#define MF_KERNEL_VECTOR_REDUCE(NAME, EXPR) \
+static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
+    mf_tensor* dst = &ctx->registers[inst->dest_idx]; \
+    mf_tensor* a = &ctx->registers[inst->src1_idx]; \
+    mf_tensor* b = (inst->src2_idx > 0) ? &ctx->registers[inst->src2_idx] : NULL; \
+    MF_CHECK_COMMON(ctx, dst, a); \
+    if (b) MF_CHECK_INPUT(ctx, b); \
+    MF_RESOLVE_VEC_SHAPE(ctx, dst, a, -1); \
+    size_t vec_len = a->info.shape[a->info.ndim - 1]; \
+    size_t out_count = mf_tensor_count(dst); \
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst); \
+    mf_accessor_f32 it_a = mf_accessor_f32_begin(a); \
+    mf_accessor_f32 it_b = b ? mf_accessor_f32_begin(b) : it_a; \
+    i32 st0 = MF_GET_STRIDE_D(inst); \
+    for (size_t i = 0; i < out_count; ++i) { \
+        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(EXPR)); \
+        mf_accessor_f32_advance(&it_dst, st0); \
+    } \
+}
+
 #define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
 static void op_##NAME(mf_exec_ctx* ctx, const struct mf_instruction* inst) { \
     mf_tensor* dst = &ctx->registers[inst->dest_idx]; \

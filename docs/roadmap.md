@@ -24,7 +24,7 @@
 - [x] **Stride Promotion:** Замена `i8` на `i32` в `mf_instruction` для предотвращения переполнений.
 - [x] **Explicit Domain Tracking:** Внедрение флага `is_spatial` в IR для надежного вычисления страйдов.
 - [x] **Dual Type Masks:** Разделение `type_mask` на `input_mask` и `output_mask` для защиты от некорректного вывода типов.
-- [ ] **Math Kernel Consolidation:** Рефакторинг `mf_ops_math.c` для удаления дублирования в векторных операциях.
+- [x] **Math Kernel Consolidation:** Рефакторинг `mf_ops_math.c` для удаления дублирования в векторных операциях.
 - [x] **Strict Shape Validation:** Добавление прохода валидации, который проверяет совместимость всех узлов в задаче до запуска.
 - [x] **Strict DType Propagation:** Исправлен баг перезаписи типа при бродкастинге.
 - [x] **Provider-based Indices:** Пространственные индексы реализованы через `Input` узлы.
