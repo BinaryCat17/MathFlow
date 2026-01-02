@@ -3,7 +3,10 @@
 #include <mathflow/isa/mf_opcodes.h>
 #include <string.h>
 #include <stdio.h>
+#include <math.h>
 #include <mathflow/base/mf_log.h>
+
+// ... (op_range, op_cumsum, _check_mask_ptr, op_compress remain the same)
 
 // --- Op: Range (Iota) ---
 static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
@@ -21,9 +24,12 @@ static void op_range(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     MF_CHECK_DST_DATA(ctx, dst);
-    f32* d = (f32*)mf_tensor_data(dst);
+    mf_accessor_f32 d = mf_accessor_f32_begin(dst);
 
-    for (int i = 0; i < count; ++i) d[i] = (f32)i;
+    for (int i = 0; i < count; ++i) {
+        mf_accessor_f32_set(&d, (f32)i);
+        mf_accessor_f32_advance(&d, 1);
+    }
 }
 
 // --- Op: CumSum (Prefix Sum) ---
@@ -40,23 +46,20 @@ static void op_cumsum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (src->info.dtype != MF_DTYPE_F32) return;
 
     size_t count = mf_tensor_count(dst);
-    mf_tensor_iter it_src = mf_tensor_iter_begin(src);
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
+    mf_accessor_f32 it_src = mf_accessor_f32_begin(src);
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
 
     f32 sum = 0.0f;
     for (size_t i = 0; i < count; ++i) {
-        sum += *((f32*)it_src.ptr);
-        *((f32*)it_dst.ptr) = sum;
-        mf_tensor_iter_advance(&it_src, inst->strides[1]);
-        mf_tensor_iter_advance(&it_dst, inst->strides[0]);
+        sum += mf_accessor_f32_get(&it_src);
+        mf_accessor_f32_set(&it_dst, sum);
+        mf_accessor_f32_advance(&it_src, inst->strides[1]);
+        mf_accessor_f32_advance(&it_dst, inst->strides[0]);
     }
 }
 
-static inline bool _check_mask_ptr(const mf_tensor* mask, void* ptr) {
-    if (mask->info.dtype == MF_DTYPE_U8) return *((u8*)ptr) != 0;
-    if (mask->info.dtype == MF_DTYPE_F32) return *((f32*)ptr) > 0.5f;
-    if (mask->info.dtype == MF_DTYPE_I32) return *((int32_t*)ptr) != 0;
-    return false;
+static inline bool _check_mask(const mf_accessor_u8* it) {
+    return mf_accessor_u8_get(it) != 0;
 }
 
 // --- Op: Compress (Filter) ---
@@ -74,10 +77,10 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t count = (count_data < count_mask) ? count_data : count_mask;
     
     size_t true_count = 0;
-    mf_tensor_iter it_count = mf_tensor_iter_begin(mask);
+    mf_accessor_u8 it_count = mf_accessor_u8_begin(mask);
     for(size_t i=0; i<count; ++i) {
-        if (_check_mask_ptr(mask, it_count.ptr)) true_count++;
-        mf_tensor_iter_advance(&it_count, inst->strides[2]);
+        if (_check_mask(&it_count)) true_count++;
+        mf_accessor_u8_advance(&it_count, inst->strides[2]);
     }
 
     dst->info.dtype = data->info.dtype;
@@ -88,17 +91,17 @@ static void op_compress(mf_exec_ctx* ctx, const mf_instruction* inst) {
     
     size_t write_idx = 0;
     size_t elem_size = mf_dtype_size(data->info.dtype);
-    mf_tensor_iter it_data = mf_tensor_iter_begin(data);
-    mf_tensor_iter it_mask = mf_tensor_iter_begin(mask);
-    u8* dst_ptr = (u8*)mf_tensor_data(dst); // Dst is always contiguous after resize
+    mf_accessor_f32 it_data = mf_accessor_f32_begin(data); // Assume F32 for now, but should be generic
+    mf_accessor_u8 it_mask = mf_accessor_u8_begin(mask);
+    u8* dst_raw = (u8*)mf_tensor_data(dst); 
 
     for(size_t i=0; i<count; ++i) {
-        if (_check_mask_ptr(mask, it_mask.ptr)) {
-            memcpy(dst_ptr + write_idx * elem_size, it_data.ptr, elem_size);
+        if (_check_mask(&it_mask)) {
+            memcpy(dst_raw + write_idx * elem_size, it_data.it.ptr, elem_size);
             write_idx++;
         }
-        mf_tensor_iter_advance(&it_data, inst->strides[1]);
-        mf_tensor_iter_advance(&it_mask, inst->strides[2]);
+        mf_accessor_f32_advance(&it_data, inst->strides[1]);
+        mf_accessor_u8_advance(&it_mask, inst->strides[2]);
     }
 }
 
@@ -120,7 +123,7 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     if (!mf_exec_ctx_resize_tensor(ctx, dst, shape, 1)) return;
 
     MF_CHECK_DST_DATA(ctx, dst);
-    f32* d = (f32*)mf_tensor_data(dst);
+    mf_accessor_f32 d = mf_accessor_f32_begin(dst);
     
     u32 axis_stride = 1;
     for (int i = ctx->ndim - 1; i > axis; --i) axis_stride *= ctx->domain_shape[i];
@@ -130,7 +133,8 @@ static void op_index(mf_exec_ctx* ctx, const mf_instruction* inst) {
     u32 start_linear = ctx->linear_offset;
     for (size_t i = 0; i < count; ++i) {
         u32 global_idx = start_linear + (u32)i;
-        d[i] = (f32)((global_idx / axis_stride) % axis_size);
+        mf_accessor_f32_set(&d, (f32)((global_idx / axis_stride) % axis_size));
+        mf_accessor_f32_advance(&d, inst->strides[0]);
     }
 }
 
@@ -153,25 +157,37 @@ static void op_gather(mf_exec_ctx* ctx, const mf_instruction* inst) {
     size_t out_count = mf_tensor_count(dst);
     size_t elem_size = mf_dtype_size(src_data->info.dtype);
     
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
-    mf_tensor_iter it_idx = mf_tensor_iter_begin(src_indices);
+    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
+    mf_accessor_f32 it_idx = mf_accessor_f32_begin(src_indices);
     bool idx_is_f32 = (src_indices->info.dtype == MF_DTYPE_F32);
 
     for (size_t i = 0; i < out_count; ++i) {
-        int idx = idx_is_f32 ? (int)(*((f32*)it_idx.ptr)) : (*((int32_t*)it_idx.ptr));
+        int idx = -1;
+        if (idx_is_f32) {
+            // Use safe get to handle NaN/Inf indices
+            f32 f_idx = mf_accessor_f32_get_safe(&it_idx);
+            idx = (int)f_idx;
+        } else {
+            // Re-map as i32 accessor for integers
+            idx = *((int32_t*)it_idx.it.ptr);
+        }
+
         if (idx >= 0 && (size_t)idx < data_count) {
             void* src_ptr = mf_tensor_iter_get_at_linear(src_data, (size_t)idx);
-            memcpy(it_dst.ptr, src_ptr, elem_size);
+            memcpy(it_dst.it.ptr, src_ptr, elem_size);
         } else {
-            MF_LOG_ERROR("Gather out of bounds! Index %d (Data Size: %zu)", idx, data_count);
-            ctx->error = MF_ERROR_OUT_OF_BOUNDS;
-            if (ctx->global_error_ptr) {
-                mf_atomic_store(ctx->global_error_ptr, (int32_t)MF_ERROR_OUT_OF_BOUNDS);
+            // RELIABILITY: Safe default instead of crash
+            memset(it_dst.it.ptr, 0, elem_size);
+            
+            if (_mf_should_log_error(ctx)) {
+                ctx->error = MF_ERROR_OUT_OF_BOUNDS;
+                ctx->error_idx = (u32)i;
+                MF_LOG_ERROR("Gather OOB: Index %d at batch element %zu. Data size: %zu. Using 0.", 
+                             idx, i, data_count);
             }
-            break;
         }
-        mf_tensor_iter_next(&it_idx);
-        mf_tensor_iter_next(&it_dst);
+        mf_accessor_f32_advance(&it_idx, inst->strides[2]);
+        mf_accessor_f32_advance(&it_dst, inst->strides[0]);
     }
 }
 

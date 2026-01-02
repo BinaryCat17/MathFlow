@@ -18,10 +18,35 @@ static bool check_broadcast(mf_ir_node* node, const mf_tensor* a, const mf_tenso
     }
 
     char s_a[64], s_b[64];
-    mf_shape_format(&a->info, s_a, sizeof(s_a));
-    mf_shape_format(&b->info, s_b, sizeof(s_b));
+    mf_shape_format(&a->info, s_b, sizeof(s_b));
     MF_REPORT(node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
     return false;
+}
+
+static mf_identity infer_node_identity(mf_ir_node* node, mf_ir_node* s1, mf_ir_node* s2, mf_ir_node* s3, const mf_op_metadata* meta) {
+    if (node->type == MF_NODE_CONST) return MF_IDENTITY_CONSTANT;
+    if (node->type == MF_NODE_INDEX) return MF_IDENTITY_SPATIAL;
+    
+    // Inputs are usually Uniform (u_Time, etc.) unless they are bound to spatial resources.
+    // In our current host model, system inputs like Time/Mouse are UNIFORM.
+    if (node->type == MF_NODE_INPUT) return MF_IDENTITY_UNIFORM;
+
+    // Reductions (like Sum) effectively collapse spatial data into a single value.
+    if (meta->category == MF_OP_CAT_REDUCTION && meta->shape_rule == MF_SHAPE_SCALAR) {
+        return MF_IDENTITY_UNIFORM;
+    }
+
+    // Default propagation: result is as complex as the most complex input.
+    // Identity order: CONSTANT (1) < UNIFORM (2) < SPATIAL (3)
+    mf_identity id = MF_IDENTITY_CONSTANT;
+    mf_ir_node* srcs[] = { s1, s2, s3 };
+    for (int i = 0; i < 3; ++i) {
+        if (srcs[i]) {
+            mf_identity src_id = srcs[i]->out_shape.info.identity;
+            if (src_id > id) id = src_id;
+        }
+    }
+    return id;
 }
 
 bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag) {
@@ -31,12 +56,17 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
         const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
         
-        mf_ir_node* s1 = find_input_source(ir, (u32)(node - ir->nodes), 0);
-        mf_ir_node* s2 = find_input_source(ir, (u32)(node - ir->nodes), 1);
-        mf_ir_node* s3 = find_input_source(ir, (u32)(node - ir->nodes), 2);
+        u32 node_idx = (u32)(node - ir->nodes);
+        mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
+        mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
+        mf_ir_node* s3 = find_input_source(ir, node_idx, 2);
 
         mf_tensor* out = &node->out_shape;
-        // Keep existing shape info if available (e.g. from JSON)
+        
+        // --- 0. Identity Inference ---
+        out->info.identity = infer_node_identity(node, s1, s2, s3, meta);
+
+        // 1. Validate Types
         mf_dtype existing_dtype = out->info.dtype;
         if (out->info.ndim == 0 && out->info.shape[0] == 0) {
             memset(out, 0, sizeof(mf_tensor));
@@ -187,12 +217,38 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             case MF_OUT_FORCE_I32:       out->info.dtype = MF_DTYPE_I32; break;
         }
 
-        // 4. Finalize strides (contiguous)
-        int32_t stride = 1;
-        for (int k = out->info.ndim - 1; k >= 0; --k) {
-            out->info.strides[k] = stride;
-            stride *= (out->info.shape[k] > 0 ? out->info.shape[k] : 1);
+                // 4. Finalize strides (contiguous)
+
+                int32_t stride = 1;
+
+                // If identity is UNIFORM or CONSTANT, it should NOT step with the domain.
+
+                // Its "effective" stride for the execution model is 0.
+
+                // Note: internal strides of the tensor itself (e.g. for a 3x3 matrix uniform) 
+
+                // are still needed, but the compiler's STEP_N strides in codegen will use this info.
+
+                
+
+                for (int k = out->info.ndim - 1; k >= 0; --k) {
+
+                    out->info.strides[k] = stride;
+
+                    stride *= (out->info.shape[k] > 0 ? out->info.shape[k] : 1);
+
+                }
+
+        
+
+                MF_LOG_TRACE("Analyze: Node %u (%s) -> Identity: %d, Shape: [%d]", 
+
+                    node_idx, meta->name, out->info.identity, out->info.shape[0]);
+
+            }
+
+            return true;
+
         }
-    }
-    return true;
-}
+
+        

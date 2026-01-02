@@ -56,6 +56,11 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
         return NULL;
     }
 
+    // 2.5 Strict Architectural Validation
+    if (!mf_pass_validate(ir, sorted, sorted_count, diag)) {
+        return NULL;
+    }
+
     // 2a. Register Allocation (Liveness Analysis)
     if (!mf_pass_liveness(ir, sorted, sorted_count, diag)) {
         return NULL;

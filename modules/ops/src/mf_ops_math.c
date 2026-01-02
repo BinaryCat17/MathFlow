@@ -24,17 +24,17 @@ MF_KERNEL_UNARY(sqrt, sqrtf)
 
 // --- Min/Max/Clamp/Mix ---
 
-MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb))
+MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb), f32, f32)
 
-MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
+MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb), f32, f32)
 
-MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, fmaf(va, vb, vc))
+MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, MF_SAFE_F32(fmaf(va, vb, vc)), f32, f32)
 
-MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, fminf(fmaxf(va, vb), vc))
+MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)), f32, f32)
 
 // --- Reduction ---
 
-static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
+static void op_reduce_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE);
     mf_tensor* src = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
     
@@ -42,16 +42,18 @@ static void op_sum(mf_exec_ctx* ctx, const mf_instruction* inst) {
     MF_CHECK_INPUT(ctx, src);
     MF_CHECK_DST_DATA(ctx, dst);
     
-    size_t count = mf_tensor_count(src);
+    size_t count = (ctx->batch_size > 0) ? ctx->batch_size : mf_tensor_count(src);
     f32 sum = 0;
     
-    mf_tensor_iter it = mf_tensor_iter_begin(src);
+    mf_accessor_f32 it = mf_accessor_f32_begin(src);
     for (size_t i = 0; i < count; ++i) {
-        sum += *((f32*)it.ptr);
-        mf_tensor_iter_advance(&it, 1);
+        sum += mf_accessor_f32_get(&it);
+        mf_accessor_f32_advance(&it, inst->strides[1]);
     }
     
-    *((f32*)dst->buffer->data + dst->byte_offset / sizeof(f32)) = sum;
+    // Result is a scalar
+    mf_accessor_f32 out = mf_accessor_f32_begin(dst);
+    mf_accessor_f32_set(&out, sum);
 }
 
 void mf_ops_register_math(mf_op_func* table) {
@@ -71,5 +73,5 @@ void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_CLAMP] = op_clamp;
     table[MF_OP_POW] = op_pow;
     table[MF_OP_ATAN2] = op_atan2;
-    table[MF_OP_SUM] = op_sum;
+    table[MF_OP_SUM] = op_reduce_sum;
 }

@@ -105,8 +105,18 @@ static void worker_cleanup(void* thread_local_data, void* user_data) {
 static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t inst_idx) {
     char coords[128] = {0};
     int pos = 0;
+    
+    // Calculate exact coordinates of the failing element
+    u32 exact_linear = ctx->linear_offset + ctx->error_idx;
+    u32 temp_idx = exact_linear;
+    u32 exact_coords[MF_MAX_DIMS];
+    for (int i = ctx->ndim - 1; i >= 0; --i) {
+        exact_coords[i] = temp_idx % ctx->domain_shape[i];
+        temp_idx /= ctx->domain_shape[i];
+    }
+
     for (int d = 0; d < ctx->ndim; ++d) {
-        pos += sprintf(coords + pos, "%u%s", ctx->tile_offset[d], (d < ctx->ndim - 1) ? ", " : "");
+        pos += sprintf(coords + pos, "%u%s", exact_coords[d], (d < ctx->ndim - 1) ? ", " : "");
     }
 
     MF_LOG_FATAL("\n"
@@ -115,13 +125,13 @@ static void report_crash(mf_exec_ctx* ctx, const mf_instruction* inst, uint32_t 
                  "==================================================\n"
                  "  Instruction : #%u (Opcode: %s [%d])\n"
                  "  Registers   : D:%u, S1:%u, S2:%u, S3:%u, S4:%u\n"
-                 "  Domain Coord: [%s]\n"
-                 "  Linear Index: %u\n"
+                 "  Exact Coord : [%s]\n"
+                 "  Linear Index: %u (Batch Offset: %u)\n"
                  "  Error Type  : %s\n"
                  "==================================================",
                  inst_idx, mf_opcode_to_str(inst->opcode), inst->opcode, 
                  inst->dest_idx, inst->src1_idx, inst->src2_idx, inst->src3_idx, inst->src4_idx,
-                 coords, ctx->linear_offset,
+                 coords, exact_linear, ctx->error_idx,
                  mf_exec_error_to_str(ctx->error));
 }
 
@@ -338,6 +348,8 @@ static void mf_backend_cpu_dispatch(
     u8 reg_processed[MF_MAX_REGISTERS] = {0};
     memset(batch.strides, 0, sizeof(batch.strides));
 
+    bool has_reductions = false;
+
     // Initialize strides from instructions in the current range
     for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
         const mf_instruction* inst = &program->code[i];
@@ -350,20 +362,15 @@ static void mf_backend_cpu_dispatch(
                 batch.active_regs[batch.active_reg_count++] = reg_idx;
                 reg_processed[reg_idx] = 1;
             } else {
-                // If register is used multiple times, ensure we take the non-zero stride 
-                // (e.g. if used as both uniform and spatial)
                 if (inst->strides[r] > batch.strides[reg_idx]) {
                     batch.strides[reg_idx] = inst->strides[r];
                 }
             }
         }
-    }
 
-    // Refine reductions: only mark as REDUCTION (-1) if it's a SUM over a SPATIAL input
-    bool has_reductions = false;
-    for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
-        const mf_instruction* inst = &program->code[i];
-        if (inst->opcode == MF_OP_SUM) {
+        // Detect if this is a parallel reduction task (Explicit for SUM)
+        if (inst->opcode == MF_OP_REDUCE_SUM) {
+            // If the output is a scalar but input has spatial strides, it's a reduction
             if (batch.strides[inst->src1_idx] > 0) {
                 batch.strides[inst->dest_idx] = -1; // Flag for reduction
                 has_reductions = true;

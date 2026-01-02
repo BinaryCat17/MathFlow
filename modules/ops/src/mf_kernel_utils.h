@@ -1,13 +1,11 @@
 #ifndef MF_KERNEL_UTILS_H
 #define MF_KERNEL_UTILS_H
 
-#include <mathflow/isa/mf_exec_ctx.h>
-#include <mathflow/isa/mf_tensor.h>
 #include <mathflow/isa/mf_instruction.h>
 #include <mathflow/base/mf_math.h>
 #include "mf_ops_internal.h"
 #include <math.h>
-#include <mathflow/isa/mf_tensor_iter.h>
+#include <mathflow/isa/mf_accessor.h>
 #include <string.h>
 
 // --- Helper: Shape Resolution (Inline) ---
@@ -64,7 +62,9 @@ static inline f32 mf_utils_get_scalar_f32(const mf_tensor* t) {
 
 // --- Macros: Optimized Kernel Definitions ---
 
-#define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR) \
+#define MF_SAFE_F32(x) (isfinite(x) ? (x) : 0.0f)
+
+#define MF_KERNEL_BINARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
 static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
@@ -75,22 +75,21 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \
     if (!mf_utils_resolve_binary_shape(ctx, dst, a, b)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
-    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
     size_t sz_dst = mf_tensor_count(dst); \
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
-    mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
+    mf_accessor_##ACC_OUT it_dst = mf_accessor_##ACC_OUT##_begin(dst); \
+    mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
+    mf_accessor_##ACC_IN it_b = mf_accessor_##ACC_IN##_begin(b); \
     for(size_t i=0; i<sz_dst; ++i) { \
-        TYPE_IN va = *((TYPE_IN*)it_a.ptr); \
-        TYPE_IN vb = *((TYPE_IN*)it_b.ptr); \
-        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
-        mf_tensor_iter_advance(&it_b, inst->strides[2]); \
-        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
+        TYPE_IN va = mf_accessor_##ACC_IN##_get(&it_a); \
+        TYPE_IN vb = mf_accessor_##ACC_IN##_get(&it_b); \
+        mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
+        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
+        mf_accessor_##ACC_IN##_advance(&it_b, inst->strides[2]); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
     } \
 }
 
-#define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR) \
+#define MF_KERNEL_TERNARY_GENERIC(NAME, TYPE_A, TYPE_B, TYPE_C, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
 static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
@@ -103,25 +102,24 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     dst->info.dtype = MF_DTYPE_##DTYPE_OUT; \
     if (!mf_utils_resolve_ternary_shape(ctx, dst, a, b, c)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
-    size_t sz_a = mf_tensor_count(a); size_t sz_b = mf_tensor_count(b); \
-    size_t sz_c = mf_tensor_count(c); size_t sz_dst = mf_tensor_count(dst); \
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
-    mf_tensor_iter it_b = mf_tensor_iter_begin(b); \
-    mf_tensor_iter it_c = mf_tensor_iter_begin(c); \
+    size_t sz_dst = mf_tensor_count(dst); \
+    mf_accessor_##ACC_OUT it_dst = mf_accessor_##ACC_OUT##_begin(dst); \
+    mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
+    mf_accessor_##ACC_IN it_b = mf_accessor_##ACC_IN##_begin(b); \
+    mf_accessor_##ACC_IN it_c = mf_accessor_##ACC_IN##_begin(c); \
     for(size_t i=0; i<sz_dst; ++i) { \
-        TYPE_A va = *((TYPE_A*)it_a.ptr); \
-        TYPE_B vb = *((TYPE_B*)it_b.ptr); \
-        TYPE_C vc = *((TYPE_C*)it_c.ptr); \
-        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
-        mf_tensor_iter_advance(&it_b, inst->strides[2]); \
-        mf_tensor_iter_advance(&it_c, inst->strides[3]); \
-        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
+        TYPE_A va = mf_accessor_##ACC_IN##_get(&it_a); \
+        TYPE_B vb = mf_accessor_##ACC_IN##_get(&it_b); \
+        TYPE_C vc = mf_accessor_##ACC_IN##_get(&it_c); \
+        mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
+        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
+        mf_accessor_##ACC_IN##_advance(&it_b, inst->strides[2]); \
+        mf_accessor_##ACC_IN##_advance(&it_c, inst->strides[3]); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
     } \
 }
 
-#define MF_KERNEL_UNARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR) \
+#define MF_KERNEL_UNARY_GENERIC(NAME, TYPE_IN, TYPE_OUT, DTYPE_OUT, EXPR, ACC_IN, ACC_OUT) \
 static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     mf_tensor* dst = mf_exec_ctx_map_tensor(ctx, inst->dest_idx, MF_ACCESS_WRITE); \
     mf_tensor* a = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ); \
@@ -131,23 +129,23 @@ static void op_##NAME(mf_exec_ctx* ctx, const mf_instruction* inst) { \
     if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return; \
     MF_CHECK_DST_DATA(ctx, dst); \
     size_t sz_dst = mf_tensor_count(dst); \
-    mf_tensor_iter it_dst = mf_tensor_iter_begin(dst); \
-    mf_tensor_iter it_a = mf_tensor_iter_begin(a); \
+    mf_accessor_##ACC_OUT it_dst = mf_accessor_##ACC_OUT##_begin(dst); \
+    mf_accessor_##ACC_IN it_a = mf_accessor_##ACC_IN##_begin(a); \
     for(size_t i=0; i<sz_dst; ++i) { \
-        TYPE_IN v = *((TYPE_IN*)it_a.ptr); \
-        *((TYPE_OUT*)it_dst.ptr) = (TYPE_OUT)(EXPR); \
-        mf_tensor_iter_advance(&it_a, inst->strides[1]); \
-        mf_tensor_iter_advance(&it_dst, inst->strides[0]); \
+        TYPE_IN v = mf_accessor_##ACC_IN##_get(&it_a); \
+        mf_accessor_##ACC_OUT##_set(&it_dst, (TYPE_OUT)(EXPR)); \
+        mf_accessor_##ACC_IN##_advance(&it_a, inst->strides[1]); \
+        mf_accessor_##ACC_OUT##_advance(&it_dst, inst->strides[0]); \
     } \
 }
 
 // --- Specific Shortcuts ---
 
-#define MF_KERNEL_BINARY(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, (va OP vb))
-#define MF_KERNEL_BINARY_FUNC(NAME, FUNC) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, FUNC(va, vb))
-#define MF_KERNEL_UNARY(NAME, FUNC) MF_KERNEL_UNARY_GENERIC(NAME, f32, f32, F32, FUNC(v))
+#define MF_KERNEL_BINARY(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(va OP vb), f32, f32)
+#define MF_KERNEL_BINARY_FUNC(NAME, FUNC) MF_KERNEL_BINARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(FUNC(va, vb)), f32, f32)
+#define MF_KERNEL_UNARY(NAME, FUNC) MF_KERNEL_UNARY_GENERIC(NAME, f32, f32, F32, MF_SAFE_F32(FUNC(v)), f32, f32)
 
-#define MF_KERNEL_COMPARE(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, u8, U8, (va OP vb))
-#define MF_KERNEL_LOGIC(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, u8, u8, U8, (va OP vb))
+#define MF_KERNEL_COMPARE(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, f32, u8, U8, (va OP vb), f32, u8)
+#define MF_KERNEL_LOGIC(NAME, OP) MF_KERNEL_BINARY_GENERIC(NAME, u8, u8, U8, (va OP vb), u8, u8)
 
 #endif // MF_KERNEL_UTILS_H

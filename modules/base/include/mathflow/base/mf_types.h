@@ -44,6 +44,15 @@ typedef struct {
     uint32_t column;
 } mf_source_loc;
 
+// --- Data Identity (Broadcasting Nature) ---
+typedef enum {
+    MF_IDENTITY_UNKNOWN = 0,
+    MF_IDENTITY_CONSTANT,   // Never changes (baked in program)
+    MF_IDENTITY_UNIFORM,    // Changes per frame, but same for all domain elements (e.g. u_Time)
+    MF_IDENTITY_SPATIAL,    // Unique for every element in the domain (e.g. u_FragCoord)
+    MF_IDENTITY_REDUCTION,  // Special temporary identity for reduction results
+} mf_identity;
+
 // --- Data Types ---
 typedef enum {
     MF_DTYPE_UNKNOWN = 0,
@@ -57,6 +66,7 @@ typedef enum {
 // Describes the "Shape" of data, independent of storage.
 typedef struct {
     mf_dtype dtype;
+    mf_identity identity;
     uint8_t ndim; // Rank
     int32_t shape[MF_MAX_DIMS];
     int32_t strides[MF_MAX_DIMS]; // Steps in elements (not bytes) to next index

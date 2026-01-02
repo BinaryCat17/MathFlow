@@ -57,7 +57,16 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
         // Tensor Descriptor
         mf_tensor* t_desc = &prog->tensors[reg_idx];
-        t_desc->info = node->out_shape.info;
+        
+        // Register Aliasing Safety: Keep the info that requires the most memory.
+        // This ensures the engine allocates enough space for the largest node that uses this register.
+        mf_tensor tmp_current = { .info = t_desc->info };
+        size_t current_size = mf_tensor_size_bytes(&tmp_current);
+        size_t new_size = mf_tensor_size_bytes(&node->out_shape);
+        
+        if (new_size > current_size) {
+            t_desc->info = node->out_shape.info;
+        }
         
         mf_ir_node* s1 = find_input_source(ir, node_idx, 0);
         mf_ir_node* s2 = find_input_source(ir, node_idx, 1);
@@ -98,25 +107,28 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
             inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
-            // Calculate Strides relative to domain
+            // Calculate Strides relative to domain using Data Identity
             u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
             size_t dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
             
-            size_t n_out = mf_tensor_count(&node->out_shape);
-            if (meta->category != MF_OP_CAT_REDUCTION && meta->category != MF_OP_CAT_SPECIAL) {
-                n_out *= dom_count;
+            // Destination Stride
+            if (node->out_shape.info.identity == MF_IDENTITY_SPATIAL) {
+                size_t n_out = mf_tensor_count(&node->out_shape);
+                inst->strides[0] = mf_shape_calc_linear_stride(n_out * dom_count, dom_count);
+            } else {
+                inst->strides[0] = 0; // Uniforms/Constants don't step
             }
-            inst->strides[0] = mf_shape_calc_linear_stride(n_out, dom_count);
 
+            // Source Strides
             mf_ir_node* srcs[] = { s1, s2, s3, s4 };
             for (int s = 0; s < 4; ++s) {
                 if (srcs[s]) {
-                    size_t n_src = mf_tensor_count(&srcs[s]->out_shape);
-                    if (MF_OP_METADATA[srcs[s]->type].category != MF_OP_CAT_REDUCTION && 
-                        MF_OP_METADATA[srcs[s]->type].category != MF_OP_CAT_SPECIAL) {
-                        n_src *= dom_count;
+                    if (srcs[s]->out_shape.info.identity == MF_IDENTITY_SPATIAL) {
+                        size_t n_src = mf_tensor_count(&srcs[s]->out_shape);
+                        inst->strides[s + 1] = mf_shape_calc_linear_stride(n_src * dom_count, dom_count);
+                    } else {
+                        inst->strides[s + 1] = 0; // Broadcast
                     }
-                    inst->strides[s + 1] = mf_shape_calc_linear_stride(n_src, dom_count);
                 } else {
                     inst->strides[s + 1] = 0;
                 }

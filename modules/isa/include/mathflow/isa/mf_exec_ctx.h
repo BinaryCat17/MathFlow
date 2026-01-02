@@ -50,6 +50,7 @@ struct mf_exec_ctx {
     // N-Dimensional Context
     u8 ndim;
     u32 linear_offset;             // Linear start index of this tile
+    u32 error_idx;                 // Element index (relative to tile start) where error occurred
     u32 tile_offset[MF_MAX_DIMS];  // Start coords of this tile/batch
     u32 tile_size[MF_MAX_DIMS];    // Size of this tile/batch (active elements)
     u32 domain_shape[MF_MAX_DIMS]; // Total size of the execution domain

@@ -38,8 +38,9 @@ typedef enum {
     MF_OP_ATAN2 = 24,
     MF_OP_SQRT = 25,
     MF_OP_POW = 26,
-    MF_OP_SUM = 27,   // Sum(Input) -> Scalar
-    MF_OP_FMA = 29,   // Fused Multiply-Add: (src1 * src2) + src3
+    MF_OP_SUM = 27,          // Sum(Input) -> Scalar (Alias: REDUCE_SUM)
+    MF_OP_REDUCE_SUM = 27,
+    MF_OP_FMA = 29,          // Fused Multiply-Add: (src1 * src2) + src3
 
     // Linear Algebra
     MF_OP_MATMUL = 40,
