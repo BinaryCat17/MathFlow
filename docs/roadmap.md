@@ -9,7 +9,7 @@
 
 ## Active Development
 
-### Milestone 11: Hardening & Memory Safety (In Progress)
+### Milestone 11: Hardening & Memory Safety (Completed)
 
 #### Phase 1: Defense & Visibility
 - [x] **Protected Iterators:** Внедрить `end_ptr` в `mf_tensor_iter`. Любая попытка доступа за пределы диапазона должна вызывать `MF_LOG_FATAL`. Реализовать проверку как для линейного обхода, так и для случайного доступа.
@@ -33,25 +33,22 @@
 - [x] **Strict Static Analysis:** Реализовать pass валидации скомпилированной программы, который проверяет совместимость типов и доменов инструкций ПЕРЕД отправкой на выполнение.
 - [x] **Broadcast Identity:** Внедрить в ISA явную маркировку регистров (Constant, Spatial, Uniform). Это исключит ошибки при аллокации временной памяти в бэкенде.
 
-### Milestone 12: Intelligence & Performance
+### Milestone 12: Intelligence & Performance (In Progress)
 
 #### Phase 5: Automatic Optimization & Slimming
-- [ ] **Auto-Transient Detection:** Внедрить в `mf_engine` темпоральный анализ графа. Если ресурс не имеет зависимости от предыдущего кадра, он автоматически помечается как `Transient` и использует только один буфер вместо двух (экономия памяти и устранение лага в 1 кадр).
-- [ ] **Instruction Slimming:** Убрать `strides` из структуры `mf_instruction`. Использовать `Identity` регистра для определения шага в рантайме. Это уменьшит размер байт-кода в 2 раза и улучшит Cache Locality.
-- [ ] **Worker Baking:** Оптимизировать горячий цикл бэкенда. Перед запуском задачи подготавливать плоский массив указателей и шагов для всех операндов, чтобы минимизировать накладные расходы внутри `cpu_worker_job`.
-- [ ] **Native Math Kernels:** Перенести `SmoothStep`, `Mix`, `Length`, `Normalize` и `Dot` из JSON-библиотек обратно в нативный C (`mf_ops_math.c`). Это даст прирост производительности в 10-50 раз для графических задач.
-- [ ] **Frame Arena:** Полностью перевести аллокацию временных объектов в рантайме на линейную арену, которая сбрасывается раз в кадр.
+- [x] **Auto-Transient Detection:** Внедрить в `mf_engine` темпоральный анализ графа. Если ресурс не имеет зависимости от предыдущего кадра, он автоматически помечается как `Transient` и использует только один буфер вместо двух (экономия памяти и устранение лага в 1 кадр).
+- [x] **Instruction Slimming:** Убрать `strides` из структуры `mf_instruction`. Использовать `Identity` регистра для определения шага в рантайме. Это уменьшит размер байт-кода в 2 раза и улучшит Cache Locality.
+- [x] **Worker Baking:** Оптимизировать горячий цикл бэкенда. Перед запуском задачи подготавливать плоский массив указателей и шагов для всех операндов, чтобы минимизировать накладные расходы внутри `cpu_worker_job`.
+- [x] **Native Math Kernels:** Перенести `SmoothStep`, `Mix`, `Length`, `Normalize` и `Dot` из JSON-библиотек обратно в нативный C (`mf_ops_math.c`). Это даст прирост производительности в 10-50 раз для графических задач.
+- [x] **Frame Arena:** Полностью перевести аллокацию временных объектов в рантайме на линейную арену, которая сбрасывается раз в кадр. (Реализовано через worker temp arenas).
 
 #### Phase 6: Introspection & Debugging
 - [ ] **Reference Interpreter:** Создать эталонный однопоточный бэкенд-интерпретатор для отладки сложной математики.
 - [ ] **Visual Debugger Bridge:** Подготовить API для передачи состояния выполнения во внешний визуализатор графа.
 
 ### Debug Notes (Milestone 11)
-*   **text_demo status:** Крашится на первом кадре (Инструкция #20: `GATHER`).
-*   **Ошибка:** `OUT_OF_BOUNDS`, индекс `-2147483648`. Это результат `(int)NaN`.
-*   **Локация:** Подграф `render_text.json`. Регистры `D:21, S1:14, S2:21`. 
-*   **Контекст:** Проблема в расчете `charcode` или `base_idx`. Нужно проверить `Clamp` узлы в `render_text.json`, возможно они не спасают от `NaN`.
-*   **Инфраструктура:** Исправлены баги в `mf_tensor_iter` (скаляры больше не «шагают») и `backend_cpu` (темпы теперь всегда имеют размер батча).
+*   **text_demo status:** Исправлено в процессе Milestone 12. Нативные ядра и оптимизированный бэкенд стабилизировали выполнение.
+*   **Инфраструктура:** Внедрен Fast Path для линейных тензоров, обходящий аксессоры.
 
 ---
 
@@ -60,7 +57,7 @@
 ### Milestone 10: Standard Library & ISA Consolidation (Jan 2026)
 - **Explicit Import System:** Added `"imports"` field and search paths (Prelude).
 - **Default Ports:** Automated port mapping for single-input/single-output subgraphs.
-- **Decomposition:** Moved `Mean`, `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` to JSON.
+- **Decomposition:** Moved `Mean`, `Dot`, `Length`, `Normalize`, `Mix`, and `SmoothStep` to JSON. (Note: native restoration in Milestone 12).
 - **ISA Cleanup:** Grouped instructions into Atomic, Reduction, Accel, and Memory categories.
 - **Core Expansion:** Added `XOR` and `SIZE` primitives.
 

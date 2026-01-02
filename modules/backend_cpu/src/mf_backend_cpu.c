@@ -28,6 +28,16 @@ typedef struct {
 } mf_backend_cpu_state;
 
 typedef struct {
+    mf_op_func op;
+    const mf_instruction* inst;
+    mf_tensor* d;
+    mf_tensor* s1;
+    mf_tensor* s2;
+    mf_tensor* s3;
+    mf_tensor* s4;
+} mf_cpu_baked_instr;
+
+typedef struct {
     int thread_idx;
     mf_exec_ctx ctx;
     mf_arena temp_arena; 
@@ -144,39 +154,19 @@ static f32 get_val(mf_tensor* t) {
     return 0;
 }
 
-static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_program* program, mf_op_func* op_table, const mf_cpu_parallel_batch* batch) {
-    const mf_instruction* code = program->code;
-    const uint32_t end_inst = batch->start_inst + batch->inst_count;
-    
-    for (uint32_t i = batch->start_inst; i < end_inst; ++i) {
+static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, const mf_cpu_baked_instr* baked, u32 count) {
+    for (uint32_t i = 0; i < count; ++i) {
         // Stop if local error OR global error detected by another thread
         if (ctx->error != MF_ERROR_NONE) break;
         if (batch->main_state && mf_atomic_load((mf_atomic_i32*)&batch->main_state->error_code) != 0) break;
         if (ctx->global_error_ptr && mf_atomic_load(ctx->global_error_ptr) != 0) break;
 
-        const mf_instruction* inst = &code[i];
-        
-        if (ctx->linear_offset == 0) {
-            f32 v_s1 = 0, v_s2 = 0, v_s3 = 0, v_s4 = 0;
-            mf_tensor* t1 = mf_exec_ctx_map_tensor(ctx, inst->src1_idx, MF_ACCESS_READ);
-            mf_tensor* t2 = mf_exec_ctx_map_tensor(ctx, inst->src2_idx, MF_ACCESS_READ);
-            mf_tensor* t3 = mf_exec_ctx_map_tensor(ctx, inst->src3_idx, MF_ACCESS_READ);
-            mf_tensor* t4 = mf_exec_ctx_map_tensor(ctx, inst->src4_idx, MF_ACCESS_READ);
-            if (t1) v_s1 = get_val(t1);
-            if (t2) v_s2 = get_val(t2);
-            if (t3) v_s3 = get_val(t3);
-            if (t4) v_s4 = get_val(t4);
-            MF_LOG_DEBUG("Exec #%u: %s (D:%u, S1:%u[%.2f], S2:%u[%.2f], S3:%u[%.2f], S4:%u[%.2f])", 
-                i, mf_opcode_to_str(inst->opcode), inst->dest_idx, 
-                inst->src1_idx, v_s1, inst->src2_idx, v_s2, inst->src3_idx, v_s3, inst->src4_idx, v_s4);
-        }
-
-        mf_op_func op = op_table[inst->opcode];
-        if (op) {
-            op(ctx, inst);
+        const mf_cpu_baked_instr* bi = &baked[i];
+        if (bi->op) {
+            bi->op(ctx, bi->inst);
             
             if (ctx->error != MF_ERROR_NONE) {
-                report_crash(ctx, inst, i);
+                report_crash(ctx, bi->inst, batch->start_inst + i);
                 break;
             }
         }
@@ -292,7 +282,20 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
 
     prepare_registers(state, batch, start_idx, count);
 
-    mf_cpu_exec(&state->ctx, batch->program, batch->op_table, batch);
+    // --- BAKING STAGE ---
+    mf_cpu_baked_instr* baked = MF_ARENA_PUSH(&state->reg_arena, mf_cpu_baked_instr, batch->inst_count);
+    for (u32 i = 0; i < batch->inst_count; ++i) {
+        const mf_instruction* inst = &batch->program->code[batch->start_inst + i];
+        baked[i].inst = inst;
+        baked[i].op = batch->op_table[inst->opcode];
+        baked[i].d  = &state->ctx.registers[inst->dest_idx];
+        baked[i].s1 = (inst->src1_idx < reg_count) ? &state->ctx.registers[inst->src1_idx] : NULL;
+        baked[i].s2 = (inst->src2_idx < reg_count) ? &state->ctx.registers[inst->src2_idx] : NULL;
+        baked[i].s3 = (inst->src3_idx < reg_count) ? &state->ctx.registers[inst->src3_idx] : NULL;
+        baked[i].s4 = (inst->src4_idx < reg_count) ? &state->ctx.registers[inst->src4_idx] : NULL;
+    }
+
+    mf_cpu_exec(&state->ctx, batch, baked, batch->inst_count);
     
     if (state->ctx.error != MF_ERROR_NONE && batch->main_state) {
         mf_atomic_store(&batch->main_state->error_code, (int32_t)state->ctx.error);
