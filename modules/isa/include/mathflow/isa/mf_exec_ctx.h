@@ -37,10 +37,10 @@ static inline const char* mf_exec_error_to_str(mf_exec_error err) {
  * Created on the stack or per-thread. Points to data in mf_state or tiled buffers.
  */
 struct mf_exec_ctx {
-    // View of Registers (Can point to persistent state or local thread-local tensors)
-    mf_tensor* registers;
-    u32 register_count;
-
+    // Flat Execution Registry (Zero-Overhead Access)
+    void* reg_ptrs[MF_MAX_REGISTERS];           // Base pointers for registers
+    mf_type_info reg_info[MF_MAX_REGISTERS];    // Metadata for registers
+    
     // Optional allocator for temporary allocations during execution
     mf_allocator* allocator; 
     
@@ -59,16 +59,19 @@ struct mf_exec_ctx {
     mf_exec_error error;
     mf_atomic_i32* global_error_ptr;
     
+    // Sync Support (for multi-pass ops like CumSum)
+    int sync_pass;
+    void* sync_data;
+    u32 job_idx;
+
     // User Data
     void* user_data;
 };
 
 // --- Execution Context API (Inlined) ---
 
-static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, u32 reg_count, mf_allocator* allocator) {
+static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_allocator* allocator) {
     memset(ctx, 0, sizeof(mf_exec_ctx));
-    ctx->registers = registers;
-    ctx->register_count = reg_count;
     ctx->allocator = allocator;
     ctx->ndim = 1; // Default
     ctx->tile_size[0] = 1;
@@ -77,19 +80,13 @@ static inline void mf_exec_ctx_init(mf_exec_ctx* ctx, mf_tensor* registers, u32 
     ctx->global_error_ptr = NULL;
 }
 
-static inline mf_tensor* mf_exec_ctx_map_tensor(mf_exec_ctx* ctx, u16 idx, mf_access_mode mode) {
-    (void)mode;
-    if (idx >= ctx->register_count) return NULL;
-    return &ctx->registers[idx];
-}
-
 static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor, const int32_t* new_shape, uint8_t new_ndim) {
     if (!tensor) return false;
     
     int32_t resolved_shape[MF_MAX_DIMS];
     if (new_ndim > 0) {
         for (int i = 0; i < new_ndim; ++i) resolved_shape[i] = new_shape[i];
-        if (resolved_shape[0] <= 0 && ctx->batch_size > 0) {
+        if (resolved_shape[0] <= 0 && ctx && ctx->batch_size > 0) {
             resolved_shape[0] = (int32_t)ctx->batch_size;
         }
     }
@@ -97,8 +94,8 @@ static inline bool mf_exec_ctx_resize_tensor(mf_exec_ctx* ctx, mf_tensor* tensor
     mf_type_info info;
     mf_type_info_init_contiguous(&info, tensor->info.dtype, (new_ndim > 0) ? resolved_shape : new_shape, new_ndim);
 
-    if (!mf_tensor_resize(tensor, ctx->allocator, &info)) {
-        ctx->error = MF_ERROR_OOM;
+    if (!mf_tensor_resize(tensor, (ctx ? ctx->allocator : NULL), &info)) {
+        if (ctx) ctx->error = MF_ERROR_OOM;
         return false;
     }
     return true;

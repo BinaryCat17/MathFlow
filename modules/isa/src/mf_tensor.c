@@ -1,5 +1,4 @@
 #include <mathflow/isa/mf_tensor.h>
-#include <mathflow/isa/mf_tensor_iter.h>
 #include <mathflow/base/mf_log.h>
 #include <string.h>
 
@@ -88,17 +87,11 @@ bool mf_tensor_copy_data(mf_tensor* dst, const mf_tensor* src) {
 
     if (mf_tensor_is_contiguous(dst) && mf_tensor_is_contiguous(src)) {
         memcpy(dst_ptr, src_ptr, count * elem_size);
-    } else {
-        mf_tensor_iter it_dst = mf_tensor_iter_begin(dst);
-        mf_tensor_iter it_src = mf_tensor_iter_begin(src);
-        for (size_t i = 0; i < count; ++i) {
-            memcpy(it_dst.ptr, it_src.ptr, elem_size);
-            mf_tensor_iter_next(&it_dst);
-            mf_tensor_iter_next(&it_src);
-        }
+        return true;
     }
     
-    return true;
+    MF_LOG_ERROR("Tensor Copy: Non-contiguous tensors are no longer supported for direct copy. Use specialized kernels.");
+    return false;
 }
 
 void mf_tensor_view(mf_tensor* dst, const mf_tensor* src) {
@@ -201,29 +194,36 @@ void mf_tensor_print(const char* name, const mf_tensor* t) {
     
     size_t count = mf_tensor_count(t);
     size_t limit = count > 16 ? 16 : count;
-    mf_tensor_iter it = mf_tensor_iter_begin(t);
+    
+    if (!mf_tensor_is_contiguous(t)) {
+        printf("(Non-contiguous, printing first %zu bytes as hex): ", limit * mf_dtype_size(t->info.dtype));
+        u8* b = (u8*)data_ptr;
+        for(size_t i=0; i<limit; ++i) printf("%02x ", b[i]);
+        printf("\n");
+        return;
+    }
 
     if (t->info.dtype == MF_DTYPE_F32) {
+        f32* p = (f32*)data_ptr;
         printf("F32: {");
         for(size_t i=0; i<limit; ++i) {
-            printf("%.2f%s", *((f32*)it.ptr), i < limit-1 ? ", " : "");
-            mf_tensor_iter_next(&it);
+            printf("%.2f%s", p[i], i < limit-1 ? ", " : "");
         }
         if (count > limit) printf("... (+%zu)", count - limit);
         printf("}\n");
     } else if (t->info.dtype == MF_DTYPE_I32) {
+        int32_t* p = (int32_t*)data_ptr;
         printf("I32: {");
         for(size_t i=0; i<limit; ++i) {
-            printf("%d%s", *((int32_t*)it.ptr), i < limit-1 ? ", " : "");
-            mf_tensor_iter_next(&it);
+            printf("%d%s", p[i], i < limit-1 ? ", " : "");
         }
         if (count > limit) printf("... (+%zu)", count - limit);
         printf("}\n");
     } else if (t->info.dtype == MF_DTYPE_U8) {
+        u8* p = (u8*)data_ptr;
         printf("Bool: {");
         for(size_t i=0; i<limit; ++i) {
-            printf("%s%s", *((u8*)it.ptr) ? "true" : "false", i < limit-1 ? ", " : "");
-            mf_tensor_iter_next(&it);
+            printf("%s%s", p[i] ? "true" : "false", i < limit-1 ? ", " : "");
         }
         printf("}\n");
     }

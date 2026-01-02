@@ -112,6 +112,8 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
         mf_bin_tensor_desc desc = {0};
         desc.dtype = (u8)t->info.dtype;
         desc.ndim = t->info.ndim;
+        desc.builtin_id = prog->builtin_ids[i];
+        desc.builtin_axis = prog->builtin_axes[i];
         void* data_ptr = mf_tensor_data(t);
         desc.is_constant = (data_ptr != NULL);
         if (t->info.ndim > 0) {

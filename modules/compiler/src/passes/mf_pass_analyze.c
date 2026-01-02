@@ -56,49 +56,192 @@ static const mf_compile_port* find_port(const mf_compile_contract* contract, con
 }
 
 bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, const mf_compile_contract* contract, mf_compiler_diag* diag) {
+
+    // --- 0. Pre-pass: Initialize shapes from contract ---
+
+    // This is vital because inputs/outputs define the domain for other nodes.
+
     for (size_t i = 0; i < count; ++i) {
+
         mf_ir_node* node = sorted_nodes[i];
+
+        if (node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
+
+            const mf_compile_port* cp = find_port(contract, node->id, (node->type == MF_NODE_INPUT));
+
+            if (cp) {
+
+                node->out_shape.info.dtype = cp->dtype;
+
+                node->out_shape.info.ndim = cp->ndim;
+
+                memcpy(node->out_shape.info.shape, cp->shape, sizeof(int32_t) * MF_MAX_DIMS);
+
+                mf_shape_calc_strides(&node->out_shape.info);
+
+                
+
+                node->builtin_id = cp->builtin_id;
+
+                node->builtin_axis = cp->builtin_axis;
+
+            }
+
+        }
+
+    }
+
+
+
+    for (size_t i = 0; i < count; ++i) {
+
+        mf_ir_node* node = sorted_nodes[i];
+
         if (node->type == MF_NODE_UNKNOWN || node->type >= MF_NODE_COUNT) continue;
 
-        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
-        
-        u32 node_idx = (u32)(node - ir->nodes);
-        mf_ir_node* s1 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[0]);
-        mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
-        mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]);
 
-        mf_tensor* out = &node->out_shape;
+
+        const mf_op_metadata* meta = &MF_OP_METADATA[node->type];
+
         
+
+                u32 node_idx = (u32)(node - ir->nodes);
+
+        
+
+                mf_ir_node* s1 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[0]);
+
+        
+
+                mf_ir_node* s2 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[1]);
+
+        
+
+                mf_ir_node* s3 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[2]);
+
+        
+
+                mf_ir_node* s4 = mf_ir_find_input_by_name(ir, node_idx, meta->ports[3]);
+
+        
+
+        
+
+        
+
+                mf_tensor* out = &node->out_shape;
+
+        
+
+        
+
+        
+
         char s_before[64] = "unknown";
+
         mf_shape_format(&out->info, s_before, sizeof(s_before));
 
+
+
         // --- 1. Resolve Output Shape First ---
+
         switch (meta->shape_rule) {
+
             case MF_SHAPE_SPECIAL:
+
                 if (node->type == MF_NODE_CONST) {
+
                     node->out_shape = node->constant;
+
                 } else if (node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
-                    const mf_compile_port* cp = find_port(contract, node->id, (node->type == MF_NODE_INPUT));
-                    if (cp) {
-                        out->info.dtype = cp->dtype;
-                        out->info.ndim = cp->ndim;
-                        memcpy(out->info.shape, cp->shape, sizeof(int32_t) * MF_MAX_DIMS);
-                    } else if (node->type == MF_NODE_INPUT) {
-                        if (s1) {
+
+                    // Already partially filled in pre-pass, but resolve dynamic types/shapes here
+
+                                        if (node->type == MF_NODE_INPUT) {
+
+                                                                    if (node->builtin_id == MF_BUILTIN_INDEX) {
+
+                                                                        // Index nodes always follow their domain shape
+
+                                                                        u32 dom_node_idx = node->domain_node_idx;
+
+                                                                        
+
+                                                                        // If shape is not yet set (ndim == 0), try to inherit from domain
+
+                                                                        if (out->info.ndim == 0) {
+
+                                                                            // If no explicit domain, try to find the first Output node to use as domain
+
+                                                                            if (dom_node_idx == UINT32_MAX) {
+
+                                                                                for (u32 j = 0; j < (u32)ir->node_count; ++j) {
+
+                                                                                    if (ir->nodes[j].type == MF_NODE_OUTPUT) {
+
+                                                                                        dom_node_idx = j;
+
+                                                                                        break;
+
+                                                                                    }
+
+                                                                                }
+
+                                                                            }
+
+                                            
+
+                                                                            if (dom_node_idx != UINT32_MAX && dom_node_idx != node_idx) {
+
+                                                                                out->info = ir->nodes[dom_node_idx].out_shape.info;
+
+                                                                            }
+
+                                                                        }
+
+                                                                        
+
+                                                                        if (out->info.dtype == MF_DTYPE_UNKNOWN) out->info.dtype = MF_DTYPE_F32;
+
+                                                                    } else if (s1 && out->info.ndim == 0) {
+
                             // Inlined input port - adopt shape from caller
+
                             out->info = s1->out_shape.info;
-                        } else {
-                            // Fallback to internal constant if no contract binding and no source link
-                            out->info.dtype = node->constant.info.dtype;
-                            out->info.ndim = node->constant.info.ndim;
-                            memcpy(out->info.shape, node->constant.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
+
+                        } else if (out->info.ndim == 0) {
+
+                            // Fallback to internal constant
+
+                            out->info = node->constant.info;
+
                         }
-                    } else if (node->type == MF_NODE_OUTPUT && s1) {
-                        // Output adopts shape from its input if not explicitly bound
-                        out->info = s1->out_shape.info;
-                    }
-                }
-                break;
+
+                                                                                } else if (node->type == MF_NODE_OUTPUT) {
+
+                                                                                    // Output adopts shape from its input if not explicitly bound in contract
+
+                                                                                    if (out->info.ndim == 0 && s1) {
+
+                                                                                        out->info = s1->out_shape.info;
+
+                                                                                    }
+
+                                                                                    
+
+                                                                                    // Inherit domain: use S1's domain, or S1 itself if it has no domain
+
+                                                                                    if (node->domain_node_idx == UINT32_MAX && s1) {
+
+                                                                                        node->domain_node_idx = (s1->domain_node_idx == UINT32_MAX) ? (u32)(s1 - ir->nodes) : s1->domain_node_idx;
+
+                                                                                    }
+
+                                                                                }
+
+                                    }
+
+                                    break;
 
             case MF_SHAPE_SAME_AS_S1:
                 if (s1) {
@@ -240,8 +383,8 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         mf_shape_calc_strides(&out->info);
 
         // Inferred Linear Strides (For VM execution)
-        u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
-        size_t task_dom_count = mf_tensor_count(&ir->nodes[dom_node_idx].out_shape);
+        u32 actual_dom_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
+        size_t task_dom_count = mf_tensor_count(&ir->nodes[actual_dom_idx].out_shape);
 
         // Explicit Spatial Tracking
         node->is_spatial = (task_dom_count > 1);
@@ -251,6 +394,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         node->strides[1] = s1 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s1->out_shape), task_dom_count) : 0;
         node->strides[2] = s2 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s2->out_shape), task_dom_count) : 0;
         node->strides[3] = s3 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s3->out_shape), task_dom_count) : 0;
+        node->strides[4] = s4 ? (i32)mf_shape_calc_linear_stride(mf_tensor_count(&s4->out_shape), task_dom_count) : 0;
 
         char s_shape[64];
         mf_shape_format(&out->info, s_shape, sizeof(s_shape));

@@ -4,8 +4,6 @@
 #include "mf_ops_internal.h"
 #include <string.h>
 
-typedef struct mf_tensor mf_tensor;
-
 // --- Comparison ---
 MF_KERNEL_COMPARE(less, <)
 MF_KERNEL_COMPARE(greater, >)
@@ -19,54 +17,29 @@ MF_KERNEL_LOGIC(and, &&)
 MF_KERNEL_LOGIC(or, ||)
 MF_KERNEL_LOGIC(xor, !=)
 
-MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v, u8, u8)
+MF_KERNEL_UNARY_GENERIC(not, u8, u8, U8, !v)
 
 // --- Selection ---
 static void op_select(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* cond = &ctx->registers[inst->src1_idx];
-    mf_tensor* true_val = &ctx->registers[inst->src2_idx];
-    mf_tensor* false_val = &ctx->registers[inst->src3_idx];
+    size_t sz = ctx->batch_size;
     
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, cond);
-    MF_CHECK_INPUT(ctx, true_val);
-    MF_CHECK_INPUT(ctx, false_val);
-    
-    dst->info.dtype = true_val->info.dtype; 
-    if (!mf_utils_resolve_ternary_shape(ctx, dst, cond, true_val, false_val)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    size_t sz_dst = mf_tensor_count(dst);
-    size_t esize = mf_dtype_size(dst->info.dtype);
-
-    mf_tensor_iter it_c = mf_tensor_iter_begin(cond);
-    mf_tensor_iter it_t = mf_tensor_iter_begin(true_val);
-    mf_tensor_iter_begin(false_val); // Wait, false_val was missing in the original code's iterator start? No, it's there below.
-    mf_tensor_iter it_f = mf_tensor_iter_begin(false_val);
-    mf_tensor_iter it_d = mf_tensor_iter_begin(dst);
-
-    bool cond_is_f32 = (cond->info.dtype == MF_DTYPE_F32);
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    u8*  c_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
+    f32* t_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
+    f32* f_ptr = (f32*)ctx->reg_ptrs[inst->src3_idx];
 
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
     i32 st2 = MF_GET_STRIDE_S2(inst);
     i32 st3 = MF_GET_STRIDE_S3(inst);
 
-    for(size_t i=0; i<sz_dst; ++i) {
-        bool condition = false;
-        if (cond_is_f32) {
-            condition = (*((f32*)it_c.ptr) != 0.0f);
-        } else {
-            condition = (*((u8*)it_c.ptr) != 0);
-        }
+    for (size_t i = 0; i < sz; ++i) {
+        *d_ptr = (*c_ptr) ? (*t_ptr) : (*f_ptr);
         
-        memcpy(it_d.ptr, condition ? it_t.ptr : it_f.ptr, esize);
-
-        mf_tensor_iter_advance(&it_c, st1);
-        mf_tensor_iter_advance(&it_t, st2);
-        mf_tensor_iter_advance(&it_f, st3);
-        mf_tensor_iter_advance(&it_d, st0);
+        c_ptr += st1;
+        t_ptr += st2;
+        f_ptr += st3;
+        d_ptr += st0;
     }
 }
 

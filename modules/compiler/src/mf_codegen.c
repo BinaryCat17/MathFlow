@@ -6,35 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static void parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
-    if (!provider || provider[0] == '\0') {
-        *out_builtin_id = MF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-        return;
-    }
-
-    if (strncmp(provider, "host.index", 10) == 0) {
-        *out_builtin_id = MF_BUILTIN_INDEX;
-        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
-            *out_builtin_axis = (u8)atoi(provider + 11);
-        } else {
-            *out_builtin_axis = 0;
-        }
-    } else if (strcmp(provider, "host.time") == 0) {
-        *out_builtin_id = MF_BUILTIN_TIME;
-        *out_builtin_axis = 0;
-    } else if (strcmp(provider, "host.resolution") == 0) {
-        *out_builtin_id = MF_BUILTIN_RESOLUTION;
-        *out_builtin_axis = 0;
-    } else if (strcmp(provider, "host.mouse") == 0) {
-        *out_builtin_id = MF_BUILTIN_MOUSE;
-        *out_builtin_axis = 0;
-    } else {
-        *out_builtin_id = MF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-    }
-}
-
 bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, size_t sorted_count, mf_arena* arena) {
     // 0. Find max register index allocated by liveness pass
     u16 max_reg = 0;
@@ -61,6 +32,12 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, prog->meta.tensor_count);
     memset(prog->tensors, 0, sizeof(mf_tensor) * prog->meta.tensor_count);
 
+    prog->builtin_ids = MF_ARENA_PUSH(arena, uint8_t, prog->meta.tensor_count);
+    memset(prog->builtin_ids, 0, prog->meta.tensor_count);
+
+    prog->builtin_axes = MF_ARENA_PUSH(arena, uint8_t, prog->meta.tensor_count);
+    memset(prog->builtin_axes, 0, prog->meta.tensor_count);
+
     mf_instruction* instrs = MF_ARENA_PUSH(arena, mf_instruction, ir->node_count * 3);
     mf_task* tasks = MF_ARENA_PUSH(arena, mf_task, ir->node_count + 1);
     
@@ -81,14 +58,13 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             sym->name[MF_MAX_SYMBOL_NAME - 1] = '\0';
             sym->name_hash = mf_fnv1a_hash(sym->name);
             sym->register_idx = reg_idx;
+            sym->builtin_id = node->builtin_id;
+            sym->builtin_axis = node->builtin_axis;
             if (node->provider) {
                 strncpy(sym->provider, node->provider, MF_MAX_SYMBOL_NAME - 1);
                 sym->provider[MF_MAX_SYMBOL_NAME - 1] = '\0';
-                parse_provider(node->provider, &sym->builtin_id, &sym->builtin_axis);
             } else {
                 sym->provider[0] = '\0';
-                sym->builtin_id = MF_BUILTIN_NONE;
-                sym->builtin_axis = 0;
             }
             sym->flags = (node->type == MF_NODE_INPUT) ? MF_SYMBOL_FLAG_INPUT : 
                          (node->type == MF_NODE_OUTPUT) ? MF_SYMBOL_FLAG_OUTPUT : 0;
@@ -96,6 +72,10 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
         // Tensor Descriptor
         mf_tensor* t_desc = &prog->tensors[reg_idx];
+        if (node->builtin_id != MF_BUILTIN_NONE) {
+            prog->builtin_ids[reg_idx] = (uint8_t)node->builtin_id;
+            prog->builtin_axes[reg_idx] = (uint8_t)node->builtin_axis;
+        }
         
         // Register Aliasing Safety: Keep the info that requires the most memory.
         // This ensures the engine allocates enough space for the largest node that uses this register.
@@ -150,7 +130,10 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             inst->src3_idx = s3 ? s3->out_reg_idx : 0;
             inst->src4_idx = s4 ? s4->out_reg_idx : 0;
 
-            memcpy(inst->strides, node->strides, sizeof(i32) * 4);
+            inst->line = node->loc.line;
+            inst->column = node->loc.column;
+
+            memcpy(inst->strides, node->strides, sizeof(i32) * 8);
 
             if (inst->opcode == MF_OP_SUM && inst->strides[1] > 0) {
                 inst->strides[0] = -1; // Reduction flag

@@ -21,9 +21,10 @@ typedef struct mf_instruction {
     u16 src3_idx;
     u16 src4_idx;
     
-    // Linear strides for [Dest, Src1, Src2, Src3]
-    // 0 = Constant/Uniform, 1 = Spatial/Linear, -1 = Reduction
-    i32 strides[4]; 
+    i32 strides[8]; // [0]=dest, [1..7]=sources
+    
+    u32 line;
+    u32 column;
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

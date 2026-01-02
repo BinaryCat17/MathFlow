@@ -100,8 +100,21 @@ typedef enum {
 } mf_opcode;
 
 /**
+ * @brief Runtime metadata for an operation.
+ */
+typedef struct {
+    const char* name;
+    const char* ports[4]; // Names of input ports (src1, src2, src3, src4)
+} mf_runtime_op_metadata;
+
+/**
  * @brief Returns a human-readable name for a given opcode.
  */
 const char* mf_opcode_to_str(u16 opcode);
+
+/**
+ * @brief Returns runtime metadata for a given opcode.
+ */
+const mf_runtime_op_metadata* mf_get_op_metadata(u16 opcode);
 
 #endif // MF_OPCODES_H

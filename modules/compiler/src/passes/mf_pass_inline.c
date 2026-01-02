@@ -75,54 +75,75 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
             const char* last_input_raw_id = NULL;
             const char* last_output_raw_id = NULL;
 
+            // Inheritance context
+            u32 parent_domain_idx = node->domain_node_idx;
+            u32 mapped_domain_idx = UINT32_MAX;
+            if (parent_domain_idx != UINT32_MAX) {
+                const char* dom_id = src->nodes[parent_domain_idx].id;
+                mf_map_get(&global_map, dom_id, &mapped_domain_idx);
+            }
+
+            u32* child_to_dst_map = MF_ARENA_PUSH(arena, u32, child_ir.node_count);
+            for (size_t k = 0; k < child_ir.node_count; ++k) child_to_dst_map[k] = UINT32_MAX;
+
+            // First pass: Allocate IDs and indices
             for (size_t k = 0; k < child_ir.node_count; ++k) {
                 mf_ir_node* c_node = &child_ir.nodes[k];
+                if (c_node->type == MF_NODE_OUTPUT) continue;
+                
                 const char* raw_id = child_raw_ids[k];
                 char* new_id = mf_arena_sprintf(arena, "%s::%s", node->id, raw_id);
+                c_node->id = new_id;
+                
+                child_to_dst_map[k] = current_idx;
+                mf_map_put(&global_map, new_id, current_idx);
+                current_idx++;
                 
                 if (c_node->type == MF_NODE_INPUT) {
                     char port_key[128];
                     snprintf(port_key, 128, "%s:i:%s", node->id, raw_id); 
-                    
-                    c_node->id = new_id;
-                    mf_map_put(&global_map, new_id, current_idx);
-                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), current_idx); 
-                    
+                    mf_map_put(&port_map, mf_arena_strdup(arena, port_key), child_to_dst_map[k]); 
                     input_count++;
                     last_input_raw_id = raw_id;
+                }
+            }
 
-                    APPEND_NODE(*c_node);
-                    current_idx++;
+            // Second pass: Map domains and Append
+            for (size_t k = 0; k < child_ir.node_count; ++k) {
+                mf_ir_node* c_node = &child_ir.nodes[k];
+                if (c_node->type == MF_NODE_OUTPUT) {
+                     // Handle output port registration (no node added)
+                     u32 provider_node_idx = 0;
+                     bool found = false;
+                     for (size_t l = 0; l < child_ir.link_count; ++l) {
+                         if (child_ir.links[l].dst_node_idx == (u32)k) {
+                             provider_node_idx = child_ir.links[l].src_node_idx;
+                             found = true;
+                             break;
+                         }
+                     }
+                     if (found) {
+                         char port_key[128];
+                         snprintf(port_key, 128, "%s:o:%s", node->id, child_raw_ids[k]);
+                         const char* provider_raw_id = child_raw_ids[provider_node_idx];
+                         char* provider_id = mf_arena_sprintf(arena, "%s::%s", node->id, provider_raw_id);
+                         mf_map_put_ptr(&port_map, mf_arena_strdup(arena, port_key), provider_id);
+                         output_count++;
+                         last_output_raw_id = child_raw_ids[k];
+                     }
+                     continue;
                 }
-                else if (c_node->type == MF_NODE_OUTPUT) {
-                    u32 provider_node_idx = 0;
-                    bool found = false;
-                    for (size_t l = 0; l < child_ir.link_count; ++l) {
-                        if (child_ir.links[l].dst_node_idx == (u32)k) {
-                            provider_node_idx = child_ir.links[l].src_node_idx;
-                            found = true;
-                            break;
-                        }
-                    }
 
-                    if (found) {
-                        char port_key[128];
-                        snprintf(port_key, 128, "%s:o:%s", node->id, raw_id);
-                        const char* provider_raw_id = child_raw_ids[provider_node_idx];
-                        char* provider_id = mf_arena_sprintf(arena, "%s::%s", node->id, provider_raw_id);
-                        
-                        mf_map_put_ptr(&port_map, mf_arena_strdup(arena, port_key), provider_id);
-                        
-                        output_count++;
-                        last_output_raw_id = raw_id;
-                    }
+                // Domain Mapping
+                if (c_node->domain_node_idx != UINT32_MAX) {
+                    // Map domain from child IR to new indices
+                    c_node->domain_node_idx = child_to_dst_map[c_node->domain_node_idx];
+                } else {
+                    // Inherit from parent Call node
+                    c_node->domain_node_idx = mapped_domain_idx;
                 }
-                else {
-                    c_node->id = new_id;
-                    mf_map_put(&global_map, new_id, current_idx);
-                    APPEND_NODE(*c_node);
-                    current_idx++;
-                }
+
+                APPEND_NODE(*c_node);
             }
 
             // Register default ports if unambiguous

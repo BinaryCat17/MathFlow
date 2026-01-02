@@ -6,7 +6,7 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 13       // Added Builtin IDs for symbols
+#define MF_BINARY_VERSION 14       // Added Direct Builtin Mapping
 
 #define MF_MAX_SYMBOL_NAME 64
 
@@ -40,15 +40,13 @@ typedef struct {
     uint8_t dtype;       // mf_dtype
     uint8_t ndim;        // Rank
     uint8_t is_constant; // 1 if data follows, 0 if uninitialized buffer
-    uint8_t reserved;    // Padding
+    uint8_t builtin_id;  // mf_builtin_id (0 if none)
+    uint8_t builtin_axis; // Axis for indexed providers (e.g. host.index.N)
+    uint8_t reserved[3]; // Padding
     
     int32_t shape[MF_MAX_DIMS];
     
     uint64_t data_size;  // Size in bytes of the initial data (0 if not constant)
-    // In file: Raw data follows immediately after this struct if is_constant=1?
-    // Better: All descriptors first, then all raw data blob. 
-    // So we need offset? Or just implicit order.
-    // Let's use implicit order to simplify reading.
 } mf_bin_tensor_desc;
 
 // File Header for .bin files
@@ -75,6 +73,9 @@ typedef struct mf_program {
     // When VM loads this, it clones these tensors into its own memory pool.
     mf_tensor* tensors; 
     
+    uint8_t* builtin_ids;  // Array of mf_builtin_id per tensor
+    uint8_t* builtin_axes; // Array of builtin axis per tensor
+
     mf_bin_symbol* symbols;
     mf_task* tasks;
 } mf_program;

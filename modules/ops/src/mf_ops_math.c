@@ -6,9 +6,6 @@
 #include "mf_ops_internal.h"
 #include <math.h>
 
-// Forward decls for clean types
-typedef struct mf_tensor mf_tensor;
-
 // --- Arithmetic ---
 MF_KERNEL_BINARY(add, +)
 MF_KERNEL_BINARY(sub, -)
@@ -27,97 +24,117 @@ MF_KERNEL_UNARY(sqrt, sqrtf)
 
 // --- Min/Max/Clamp/Mix ---
 
-MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb), f32, f32)
+MF_KERNEL_BINARY_GENERIC(min, f32, f32, F32, (va < vb ? va : vb))
 
-MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb), f32, f32)
+MF_KERNEL_BINARY_GENERIC(max, f32, f32, F32, (va > vb ? va : vb))
 
-MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, MF_SAFE_F32(fmaf(va, vb, vc)), f32, f32)
+MF_KERNEL_TERNARY_GENERIC(fma, f32, f32, f32, f32, F32, MF_SAFE_F32(fmaf(va, vb, vc)))
 
-MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)), f32, f32)
+MF_KERNEL_TERNARY_GENERIC(clamp, f32, f32, f32, f32, F32, MF_SAFE_F32(fminf(fmaxf(va, vb), vc)))
 
-MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc), f32, f32)
+MF_KERNEL_TERNARY_GENERIC(mix, f32, f32, f32, f32, F32, MF_SAFE_F32(va * (1.0f - vc) + vb * vc))
 
 // --- Vector Math ---
 
-static inline f32 _vec_dot_impl(mf_accessor_f32* it_a, mf_accessor_f32* it_b, size_t len) {
+static inline f32 _vec_dot_impl(f32* a_ptr, f32* b_ptr, size_t len) {
     f32 sum = 0;
     for (size_t j = 0; j < len; ++j) {
-        sum += mf_accessor_f32_get(it_a) * mf_accessor_f32_get(it_b);
-        mf_accessor_f32_advance(it_a, 1);
-        mf_accessor_f32_advance(it_b, 1);
+        sum += a_ptr[j] * b_ptr[j];
     }
     return sum;
 }
 
-static inline f32 _vec_len_sq_impl(mf_accessor_f32* it_a, size_t len) {
+static inline f32 _vec_len_sq_impl(f32* a_ptr, size_t len) {
     f32 sum = 0;
     for (size_t j = 0; j < len; ++j) {
-        f32 v = mf_accessor_f32_get(it_a);
+        f32 v = a_ptr[j];
         sum += v * v;
-        mf_accessor_f32_advance(it_a, 1);
     }
     return sum;
 }
 
-MF_KERNEL_VECTOR_REDUCE(dot, _vec_dot_impl(&it_a, &it_b, vec_len))
-MF_KERNEL_VECTOR_REDUCE(length, sqrtf(_vec_len_sq_impl(&it_a, vec_len)))
+static void op_dot(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
+    size_t vec_len = a_info->shape[a_info->ndim - 1];
+    size_t sz = ctx->batch_size;
+    
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    f32* b_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
+    
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
+    i32 st2 = MF_GET_STRIDE_S2(inst);
+    
+    for (size_t i = 0; i < sz; ++i) {
+        *d_ptr = MF_SAFE_F32(_vec_dot_impl(a_ptr, b_ptr, vec_len));
+        a_ptr += st1;
+        b_ptr += st2;
+        d_ptr += st0;
+    }
+}
+
+static void op_length(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
+    size_t vec_len = a_info->shape[a_info->ndim - 1];
+    size_t sz = ctx->batch_size;
+    
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
+
+    for (size_t i = 0; i < sz; ++i) {
+        *d_ptr = MF_SAFE_F32(sqrtf(_vec_len_sq_impl(a_ptr, vec_len)));
+        a_ptr += st1;
+        d_ptr += st0;
+    }
+}
 
 static void op_normalize(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* a = &ctx->registers[inst->src1_idx];
+    const mf_type_info* a_info = &ctx->reg_info[inst->src1_idx];
+    size_t vec_len = a_info->shape[a_info->ndim - 1];
+    size_t sz = ctx->batch_size;
     
-    MF_CHECK_COMMON(ctx, dst, a);
-    if (!mf_utils_resolve_unary_shape(ctx, dst, a)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    size_t vec_len = a->info.shape[a->info.ndim - 1];
-    size_t out_count = mf_tensor_count(dst) / vec_len;
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
     
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_a = mf_accessor_f32_begin(a);
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
 
-    for (size_t i = 0; i < out_count; ++i) {
-        mf_accessor_f32 it_calc = it_a;
-        f32 len = sqrtf(_vec_len_sq_impl(&it_calc, vec_len));
+    for (size_t i = 0; i < sz; ++i) {
+        f32 len = sqrtf(_vec_len_sq_impl(a_ptr, vec_len));
         f32 inv_len = (len > 1e-6f) ? (1.0f / len) : 0.0f;
 
         for (size_t j = 0; j < vec_len; ++j) {
-            mf_accessor_f32_set(&it_dst, mf_accessor_f32_get(&it_a) * inv_len);
-            mf_accessor_f32_advance(&it_a, 1);
-            mf_accessor_f32_advance(&it_dst, 1);
+            d_ptr[j] = a_ptr[j] * inv_len;
         }
+        a_ptr += st1;
+        d_ptr += st0;
     }
 }
 
 static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* e = &ctx->registers[inst->src1_idx]; // Edges [2] or Scalar
-    mf_tensor* x = &ctx->registers[inst->src2_idx];
+    size_t sz = ctx->batch_size;
     
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, e);
-    MF_CHECK_INPUT(ctx, x);
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    f32* x_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
+    f32* e_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    const mf_type_info* e_info = &ctx->reg_info[inst->src1_idx];
 
-    dst->info.dtype = MF_DTYPE_F32;
-    if (!mf_utils_resolve_unary_shape(ctx, dst, x)) return;
-    MF_CHECK_DST_DATA(ctx, dst);
-
-    size_t sz = mf_tensor_count(dst);
-    mf_accessor_f32 it_dst = mf_accessor_f32_begin(dst);
-    mf_accessor_f32 it_x = mf_accessor_f32_begin(x);
-    mf_accessor_f32 it_e = mf_accessor_f32_begin(e);
-
-    // Smoothstep has 2 edges. If e has 2 elements, we use them. If 1, we assume [0, e].
+    // Smoothstep has 2 edges.
     f32 e0 = 0.0f;
     f32 e1 = 1.0f;
     
-    size_t e_count = mf_tensor_count(e);
+    size_t e_count = 1;
+    for(int i=0; i<e_info->ndim; ++i) e_count *= e_info->shape[i];
+
     if (e_count >= 2) {
-        e0 = mf_accessor_f32_get(&it_e);
-        mf_accessor_f32_advance(&it_e, 1);
-        e1 = mf_accessor_f32_get(&it_e);
+        e0 = e_ptr[0];
+        e1 = e_ptr[1];
     } else if (e_count == 1) {
-        e1 = mf_accessor_f32_get(&it_e);
+        e1 = e_ptr[0];
     }
 
     f32 span = e1 - e0;
@@ -127,16 +144,15 @@ static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     i32 st2 = MF_GET_STRIDE_S2(inst);
 
     for (size_t i = 0; i < sz; ++i) {
-        f32 val = mf_accessor_f32_get(&it_x);
+        f32 val = *x_ptr;
         f32 t = (val - e0) / span;
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
         
-        f32 res = t * t * (3.0f - 2.0f * t);
-        mf_accessor_f32_set(&it_dst, MF_SAFE_F32(res));
+        *d_ptr = MF_SAFE_F32(t * t * (3.0f - 2.0f * t));
         
-        mf_accessor_f32_advance(&it_x, st2);
-        mf_accessor_f32_advance(&it_dst, st0);
+        x_ptr += st2;
+        d_ptr += st0;
     }
 }
 
@@ -144,29 +160,22 @@ static void op_smoothstep(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
 // --- Reduction ---
 
 static void op_reduce_sum(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
-    mf_tensor* dst = &ctx->registers[inst->dest_idx];
-    mf_tensor* src = &ctx->registers[inst->src1_idx];
+    const mf_type_info* src_info = &ctx->reg_info[inst->src1_idx];
+    size_t sz = ctx->batch_size;
     
-    MF_CHECK_DST_VIEW(ctx, dst);
-    MF_CHECK_INPUT(ctx, src);
-    MF_CHECK_DST_DATA(ctx, dst);
-    
-    size_t count = (ctx->batch_size > 0) ? ctx->batch_size : mf_tensor_count(src);
     f32 sum = 0;
-    
-    mf_accessor_f32 it = mf_accessor_f32_begin(src);
+    f32* s_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
     i32 st1 = MF_GET_STRIDE_S1(inst);
 
-    for (size_t i = 0; i < count; ++i) {
-        sum += mf_accessor_f32_get(&it);
-        mf_accessor_f32_advance(&it, st1);
+    for (size_t i = 0; i < sz; ++i) {
+        sum += *s_ptr;
+        s_ptr += st1;
     }
     
     // Result is a scalar
-    mf_accessor_f32 out = mf_accessor_f32_begin(dst);
-    mf_accessor_f32_set(&out, sum);
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    *d_ptr = sum;
 }
-
 void mf_ops_register_math(mf_op_func* table) {
     table[MF_OP_ADD] = op_add;
     table[MF_OP_SUB] = op_sub;

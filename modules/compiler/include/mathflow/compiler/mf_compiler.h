@@ -58,6 +58,8 @@ typedef struct {
     mf_tensor constant; 
 
     const char* provider; // Optional: "host.index", etc.
+    u16 builtin_id;      // mf_builtin_id (parsed from provider)
+    u8 builtin_axis;     // For host.index.N
 
     // Sub-Graph Data
     const char* sub_graph_path; // For MF_NODE_CALL
@@ -100,6 +102,8 @@ typedef struct {
     mf_dtype dtype;
     uint8_t ndim;
     int32_t shape[MF_MAX_DIMS];
+    u16 builtin_id;      // mf_builtin_id
+    u8 builtin_axis;     // axis for index
 } mf_compile_port;
 
 typedef struct {

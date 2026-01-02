@@ -276,7 +276,27 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
         if (!parse_node_attributes(dst, src->data, base_path, arena, diag)) return false;
     }
 
-    // 2. Process Links
+    // 2. Process Domains (Must happen after all nodes are in the map)
+    for (size_t i = 0; i < ast->node_count; ++i) {
+        mf_ast_node* src = &ast->nodes[i];
+        mf_ir_node* dst = &out_ir->nodes[i];
+        dst->domain_node_idx = UINT32_MAX; // Default
+
+        if (src->data) {
+            const mf_json_value* v_domain = mf_json_get_field(src->data, "domain");
+            if (v_domain && v_domain->type == MF_JSON_VAL_STRING) {
+                u32 dom_idx;
+                if (mf_map_get(&map, v_domain->as.s, &dom_idx)) {
+                    dst->domain_node_idx = dom_idx;
+                } else {
+                    mf_compiler_diag_report(diag, dst->loc, "Domain node '%s' not found for node '%s'", v_domain->as.s, dst->id);
+                    return false;
+                }
+            }
+        }
+    }
+
+    // 3. Process Links
     out_ir->link_count = ast->link_count;
     out_ir->link_cap = ast->link_count;
     out_ir->links = MF_ARENA_PUSH(arena, mf_ir_link, ast->link_count);

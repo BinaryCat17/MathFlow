@@ -1,52 +1,36 @@
 #include <mathflow/isa/mf_opcodes.h>
+#include <mathflow/isa/mf_op_defs.h>
+#include <stddef.h>
+#include <stdbool.h>
+
+static mf_runtime_op_metadata OP_METADATA[MF_OP_LIMIT] = {0};
+static bool op_metadata_initialized = false;
+
+static void init_op_metadata() {
+    if (op_metadata_initialized) return;
+
+#define MF_OP(suffix, op_name, opcode, cat, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4) \
+    if ((int)opcode < MF_OP_LIMIT) { \
+        OP_METADATA[(int)opcode].name = op_name; \
+        OP_METADATA[(int)opcode].ports[0] = p1; \
+        OP_METADATA[(int)opcode].ports[1] = p2; \
+        OP_METADATA[(int)opcode].ports[2] = p3; \
+        OP_METADATA[(int)opcode].ports[3] = p4; \
+    }
+    MF_OP_LIST
+#undef MF_OP
+
+    op_metadata_initialized = true;
+}
 
 const char* mf_opcode_to_str(u16 opcode) {
-    switch (opcode) {
-        case MF_OP_NOOP:      return "NOOP";
-        case MF_OP_ADD:       return "ADD";
-        case MF_OP_SUB:       return "SUB";
-        case MF_OP_MUL:       return "MUL";
-        case MF_OP_DIV:       return "DIV";
-        case MF_OP_MIN:       return "MIN";
-        case MF_OP_MAX:       return "MAX";
-        case MF_OP_ABS:       return "ABS";
-        case MF_OP_CLAMP:     return "CLAMP";
-        case MF_OP_STEP:      return "STEP";
-        case MF_OP_FLOOR:     return "FLOOR";
-        case MF_OP_CEIL:      return "CEIL";
-        case MF_OP_SIN:       return "SIN";
-        case MF_OP_COS:       return "COS";
-        case MF_OP_ATAN2:     return "ATAN2";
-        case MF_OP_SQRT:      return "SQRT";
-        case MF_OP_POW:       return "POW";
-        case MF_OP_SUM:       return "SUM";
-        case MF_OP_FMA:       return "FMA";
-        case MF_OP_MATMUL:    return "MATMUL";
-        case MF_OP_TRANSPOSE: return "TRANSPOSE";
-        case MF_OP_INVERSE:   return "INVERSE";
-        case MF_OP_DOT:       return "DOT";
-        case MF_OP_LENGTH:    return "LENGTH";
-        case MF_OP_NORMALIZE: return "NORMALIZE";
-        case MF_OP_MIX:       return "MIX";
-        case MF_OP_SMOOTHSTEP: return "SMOOTHSTEP";
-        case MF_OP_JOIN:      return "JOIN";
-        case MF_OP_LESS:      return "LESS";
-        case MF_OP_GREATER:   return "GREATER";
-        case MF_OP_EQUAL:     return "EQUAL";
-        case MF_OP_NEQUAL:    return "NEQUAL";
-        case MF_OP_LEQUAL:    return "LEQUAL";
-        case MF_OP_GEQUAL:    return "GEQUAL";
-        case MF_OP_AND:       return "AND";
-        case MF_OP_OR:        return "OR";
-        case MF_OP_XOR:       return "XOR";
-        case MF_OP_NOT:       return "NOT";
-        case MF_OP_SELECT:    return "SELECT";
-        case MF_OP_GATHER:    return "GATHER";
-        case MF_OP_CUMSUM:    return "CUMSUM";
-        case MF_OP_COMPRESS:  return "FILTER";
-        case MF_OP_COPY:      return "COPY";
-        case MF_OP_SLICE:     return "SLICE";
-        case MF_OP_RESHAPE:   return "RESHAPE";
-        default:              return "UNKNOWN";
-    }
+    init_op_metadata();
+    if (opcode >= MF_OP_LIMIT || !OP_METADATA[opcode].name) return "UNKNOWN";
+    return OP_METADATA[opcode].name;
+}
+
+const mf_runtime_op_metadata* mf_get_op_metadata(u16 opcode) {
+    init_op_metadata();
+    if (opcode >= MF_OP_LIMIT) return NULL;
+    return &OP_METADATA[opcode];
 }

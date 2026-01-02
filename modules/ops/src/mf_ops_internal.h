@@ -24,50 +24,6 @@ static inline bool _mf_should_log_error(mf_exec_ctx* ctx) {
     return true;
 }
 
-// Validates Input Tensor: Must be completely valid (Struct + Buffer + Data + non-zero size)
-#define MF_CHECK_INPUT(CTX, T) \
-    do { \
-        if (!(T) || !(T)->buffer || !(T)->buffer->data || (T)->buffer->size_bytes == 0) { \
-            if (_mf_should_log_error(CTX)) { \
-                int reg_idx = -1; \
-                if ((T) >= (CTX)->registers && (T) < (CTX)->registers + (CTX)->register_count) { \
-                    reg_idx = (int)((T) - (CTX)->registers); \
-                } \
-                MF_LOG_ERROR("Runtime Error: Invalid INPUT tensor access (Reg: %d, Unallocated, Null or Zero Size). Op execution aborted.", reg_idx); \
-            } \
-            (CTX)->error = MF_ERROR_RUNTIME; \
-            return; \
-        } \
-    } while(0)
-
-// Validates Destination View: The tensor handle itself must exist, but data can be null (pre-allocation)
-#define MF_CHECK_DST_VIEW(CTX, T) \
-    do { \
-        if (!(T)) { \
-            if (_mf_should_log_error(CTX)) { \
-                MF_LOG_ERROR("Runtime Error: Invalid DST tensor handle (NULL). Op execution aborted."); \
-            } \
-            (CTX)->error = MF_ERROR_RUNTIME; \
-            return; \
-        } \
-    } while(0)
-
-// Validates Destination Data: Must be called AFTER allocation/resize
-#define MF_CHECK_DST_DATA(CTX, T) \
-    do { \
-        if (!(T) || !(T)->buffer || !(T)->buffer->data || (T)->buffer->size_bytes == 0) { \
-            if (_mf_should_log_error(CTX)) { \
-                int reg_idx = -1; \
-                if ((T) >= (CTX)->registers && (T) < (CTX)->registers + (CTX)->register_count) { \
-                    reg_idx = (int)((T) - (CTX)->registers); \
-                } \
-                MF_LOG_ERROR("Runtime Error: Invalid DST tensor data (Reg: %d, Allocation failed or size is 0). Op execution aborted.", reg_idx); \
-            } \
-            (CTX)->error = MF_ERROR_OOM; \
-            return; \
-        } \
-    } while(0)
-
 // Generic Pointer Check
 #define MF_CHECK_PTR(CTX, PTR) \
     do { \

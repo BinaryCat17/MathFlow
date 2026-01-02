@@ -58,6 +58,8 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     }
 
     prog->tensors = MF_ARENA_PUSH(arena, mf_tensor, head->tensor_count);
+    prog->builtin_ids = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
+    prog->builtin_axes = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
     
     for (u32 i = 0; i < head->tensor_count; ++i) {
         mf_bin_tensor_desc* desc = (mf_bin_tensor_desc*)(data + offset);
@@ -65,6 +67,8 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         
         mf_tensor* t = &prog->tensors[i];
         mf_type_info_init_contiguous(&t->info, (mf_dtype)desc->dtype, desc->shape, desc->ndim);
+        prog->builtin_ids[i] = desc->builtin_id;
+        prog->builtin_axes[i] = desc->builtin_axis;
     }
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
@@ -145,6 +149,26 @@ static void _patch_ir_from_manifest(mf_graph_ir* ir, const mf_pipeline_kernel* k
     }
 }
 
+static void _parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
+    if (!provider || provider[0] == '\0') {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+        return;
+    }
+
+    if (strncmp(provider, "host.index", 10) == 0) {
+        *out_builtin_id = MF_BUILTIN_INDEX;
+        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
+            *out_builtin_axis = (u8)atoi(provider + 11);
+        } else {
+            *out_builtin_axis = 0;
+        }
+    } else {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+    }
+}
+
 static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const mf_pipeline_kernel* ker, const mf_pipeline_desc* pipe) {
     const char* ext = mf_path_get_ext(path);
     if (strcmp(ext, "json") == 0) {
@@ -160,18 +184,21 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
             contract.input_count = 0;
             contract.output_count = 0;
             
-            // First pass: Count bindings to allocate arrays
-            for (u32 b = 0; b < ker->binding_count; ++b) {
-                const char* port_name = ker->bindings[b].kernel_port;
-                // We need to know if it's input or output. 
-                // IR knows this, but we haven't matched them yet.
-                // Let's find the node in IR.
-                for (size_t n = 0; n < ir.node_count; ++n) {
-                    if (strcmp(ir.nodes[n].id, port_name) == 0) {
-                        if (ir.nodes[n].type == MF_NODE_INPUT) contract.input_count++;
-                        if (ir.nodes[n].type == MF_NODE_OUTPUT) contract.output_count++;
-                        break;
+            // First pass: Count bindings + implicit providers in IR
+            for (size_t n = 0; n < ir.node_count; ++n) {
+                mf_ir_node* node = &ir.nodes[n];
+                if (node->type != MF_NODE_INPUT && node->type != MF_NODE_OUTPUT) continue;
+                
+                bool in_manifest = false;
+                for (u32 b = 0; b < ker->binding_count; ++b) {
+                    if (strcmp(node->id, ker->bindings[b].kernel_port) == 0) {
+                        in_manifest = true; break;
                     }
+                }
+                
+                if (in_manifest || node->provider) {
+                    if (node->type == MF_NODE_INPUT) contract.input_count++;
+                    else contract.output_count++;
                 }
             }
 
@@ -180,35 +207,46 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
             
             u32 in_idx = 0;
             u32 out_idx = 0;
-            for (u32 b = 0; b < ker->binding_count; ++b) {
-                const char* port_name = ker->bindings[b].kernel_port;
-                const char* res_name = ker->bindings[b].global_resource;
-                
-                // Find resource in pipeline
-                mf_pipeline_resource* pr = NULL;
-                for (u32 r = 0; r < pipe->resource_count; ++r) {
-                    if (strcmp(res_name, pipe->resources[r].name) == 0) {
-                        pr = &pipe->resources[r];
-                        break;
+
+            // Second pass: Fill contract
+            for (size_t n = 0; n < ir.node_count; ++n) {
+                mf_ir_node* node = &ir.nodes[n];
+                if (node->type != MF_NODE_INPUT && node->type != MF_NODE_OUTPUT) continue;
+
+                mf_pipeline_binding* bind = NULL;
+                for (u32 b = 0; b < ker->binding_count; ++b) {
+                    if (strcmp(node->id, ker->bindings[b].kernel_port) == 0) {
+                        bind = &ker->bindings[b]; break;
                     }
                 }
-                if (!pr) continue;
 
-                for (size_t n = 0; n < ir.node_count; ++n) {
-                    if (strcmp(ir.nodes[n].id, port_name) == 0) {
-                        mf_compile_port* cp = NULL;
-                        if (ir.nodes[n].type == MF_NODE_INPUT) cp = &contract.inputs[in_idx++];
-                        else if (ir.nodes[n].type == MF_NODE_OUTPUT) cp = &contract.outputs[out_idx++];
-                        
-                        if (cp) {
-                            cp->name = port_name;
+                if (!bind && !node->provider) continue;
+
+                mf_compile_port* cp = NULL;
+                if (node->type == MF_NODE_INPUT) cp = &contract.inputs[in_idx++];
+                else cp = &contract.outputs[out_idx++];
+
+                cp->name = node->id;
+                
+                if (bind) {
+                    // Fill from manifest resource
+                    for (u32 r = 0; r < pipe->resource_count; ++r) {
+                        if (strcmp(bind->global_resource, pipe->resources[r].name) == 0) {
+                            mf_pipeline_resource* pr = &pipe->resources[r];
                             cp->dtype = pr->dtype;
                             cp->ndim = pr->ndim;
                             memcpy(cp->shape, pr->shape, sizeof(int32_t) * MF_MAX_DIMS);
-                            ir.nodes[n].provider = pr->provider;
+                            _parse_provider(pr->provider, &cp->builtin_id, &cp->builtin_axis);
+                            break;
                         }
-                        break;
                     }
+                } else if (node->provider) {
+                    // Fallback to provider defined in JSON
+                    _parse_provider(node->provider, &cp->builtin_id, &cp->builtin_axis);
+                    // Use internal shape/dtype for implicit inputs
+                    cp->dtype = node->constant.info.dtype;
+                    cp->ndim = node->constant.info.ndim;
+                    memcpy(cp->shape, node->constant.info.shape, sizeof(int32_t) * MF_MAX_DIMS);
                 }
             }
         }

@@ -17,6 +17,13 @@ typedef int16_t  i16;
 typedef int32_t  i32;
 typedef int64_t  i64;
 
+#if defined(_MSC_VER)
+#include <BaseTsd.h>
+typedef SSIZE_T ssize_t;
+#else
+#include <sys/types.h>
+#endif
+
 typedef float    f32;
 typedef double   f64;
 
@@ -36,6 +43,7 @@ typedef struct { f32 m[16]; } mf_mat4;
 typedef struct { f32 m[9]; } mf_mat3;
 
 #define MF_MAX_DIMS 8
+#define MF_MAX_REGISTERS 512
 
 // --- Source Tracking ---
 typedef struct {
@@ -103,10 +111,7 @@ typedef enum {
 // --- Builtin Identifiers ---
 typedef enum {
     MF_BUILTIN_NONE = 0,
-    MF_BUILTIN_INDEX,       // host.index (spatial index)
-    MF_BUILTIN_TIME,        // host.time
-    MF_BUILTIN_RESOLUTION,  // host.resolution
-    MF_BUILTIN_MOUSE,       // host.mouse
+    MF_BUILTIN_INDEX,       // spatial index (e.g. host.index)
     MF_BUILTIN_COUNT
 } mf_builtin_id;
 
