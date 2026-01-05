@@ -3,8 +3,10 @@
 
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/base/mf_utils.h>
+#include <mathflow/base/mf_json.h>
 
 // Utilities
+void mf_ir_parse_window_settings(const mf_json_value* root, mf_graph_ir* out_ir);
 mf_ir_node* find_input_source(mf_graph_ir* ir, u32 dst_node_idx, u32 dst_port);
 mf_ir_node* mf_ir_find_input_by_name(mf_graph_ir* ir, u32 dst_node_idx, const char* port_name);
 

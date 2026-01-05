@@ -25,6 +25,16 @@ bool mf_shape_is_scalar(const mf_type_info* info);
 void mf_shape_normalize(mf_type_info* info);
 
 /**
+ * @brief Calculates linear strides for a contiguous tensor based on its shape.
+ */
+void mf_shape_calc_strides(mf_type_info* info);
+
+/**
+ * @brief Formats a shape as a string (e.g. "[100, 200]").
+ */
+void mf_shape_format(const mf_type_info* info, char* buf, size_t size);
+
+/**
  * Checks if two shapes can be broadcasted and returns the result in 'out'.
  * Returns true if successful, false if shapes are incompatible.
  */

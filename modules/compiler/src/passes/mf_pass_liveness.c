@@ -1,6 +1,7 @@
 #include "../mf_passes.h"
 #include "../mf_compiler_internal.h"
 #include <mathflow/base/mf_log.h>
+#include <mathflow/base/mf_shape.h>
 #include <stdlib.h>
 #include <string.h>
 
