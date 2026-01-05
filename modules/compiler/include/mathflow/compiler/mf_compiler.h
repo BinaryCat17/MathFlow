@@ -76,6 +76,7 @@ typedef struct {
     mf_type_info out_info; // Predicted output shape and dtype
     i32 strides[5];       // Inferred linear strides [Dest, S1, S2, S3, S4]
     bool is_spatial;     // Explicitly tracked spatial status
+    uint8_t resource_flags; // MF_RESOURCE_FLAG_*
 } mf_ir_node;
 
 typedef struct {
@@ -96,6 +97,15 @@ typedef struct {
     mf_ir_link* links;
     size_t link_count;
     size_t link_cap;
+
+    // App Settings (Cartridge Metadata)
+    char app_title[MF_MAX_TITLE_NAME];
+    u32 window_width;
+    u32 window_height;
+    u32 num_threads;
+    u8 vsync;
+    u8 fullscreen;
+    u8 resizable;
 } mf_graph_ir;
 
 // --- Compiler Interface ---

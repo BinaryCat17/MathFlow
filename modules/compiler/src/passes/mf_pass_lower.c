@@ -106,10 +106,19 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
             const mf_json_value* v_shape = mf_json_get_field(data, "shape");
             const mf_json_value* v_dtype = mf_json_get_field(data, "dtype");
             const mf_json_value* v_provider = mf_json_get_field(data, "provider");
+            const mf_json_value* v_readonly = mf_json_get_field(data, "readonly");
+            const mf_json_value* v_persistent = mf_json_get_field(data, "persistent");
             
             if (v_provider && v_provider->type == MF_JSON_VAL_STRING) {
                 dst->provider = mf_arena_strdup(arena, v_provider->as.s);
                 _parse_provider(dst->provider, &dst->builtin_id, &dst->builtin_axis);
+            }
+
+            if (v_readonly && v_readonly->type == MF_JSON_VAL_BOOL && v_readonly->as.b) {
+                dst->resource_flags |= MF_RESOURCE_FLAG_READONLY;
+            }
+            if (v_persistent && v_persistent->type == MF_JSON_VAL_BOOL && v_persistent->as.b) {
+                dst->resource_flags |= MF_RESOURCE_FLAG_PERSISTENT;
             }
 
             if (dst->type == MF_NODE_INPUT && (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY)) {
@@ -165,6 +174,53 @@ bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, cons
     if (!ast) {
         MF_REPORT(diag, NULL, "Lowering Pass: AST is NULL");
         return false;
+    }
+
+    memset(out_ir, 0, sizeof(mf_graph_ir));
+
+    // --- Process Root App Settings (Cartridge Metadata) ---
+    const mf_json_value* root = ast->root;
+    if (root && root->type == MF_JSON_VAL_OBJECT) {
+        const mf_json_value* window = mf_json_get_field(root, "window");
+        if (window && window->type == MF_JSON_VAL_OBJECT) {
+            const mf_json_value* title = mf_json_get_field(window, "title");
+            if (title && title->type == MF_JSON_VAL_STRING) {
+                strncpy(out_ir->app_title, title->as.s, MF_MAX_TITLE_NAME - 1);
+            } else {
+                strncpy(out_ir->app_title, "MathFlow Cartridge", MF_MAX_TITLE_NAME - 1);
+            }
+            
+            const mf_json_value* w = mf_json_get_field(window, "width");
+            if (w && w->type == MF_JSON_VAL_NUMBER) out_ir->window_width = (u32)w->as.n;
+            else out_ir->window_width = 800;
+
+            const mf_json_value* h = mf_json_get_field(window, "height");
+            if (h && h->type == MF_JSON_VAL_NUMBER) out_ir->window_height = (u32)h->as.n;
+            else out_ir->window_height = 600;
+
+            const mf_json_value* vsync = mf_json_get_field(window, "vsync");
+            if (vsync && vsync->type == MF_JSON_VAL_BOOL) out_ir->vsync = vsync->as.b ? 1 : 0;
+            else out_ir->vsync = 1;
+
+            const mf_json_value* fs = mf_json_get_field(window, "fullscreen");
+            if (fs && fs->type == MF_JSON_VAL_BOOL) out_ir->fullscreen = fs->as.b ? 1 : 0;
+
+            const mf_json_value* resizable = mf_json_get_field(window, "resizable");
+            if (resizable && resizable->type == MF_JSON_VAL_BOOL) out_ir->resizable = resizable->as.b ? 1 : 0;
+            else out_ir->resizable = 1;
+        } else {
+            strncpy(out_ir->app_title, "MathFlow Cartridge", MF_MAX_TITLE_NAME - 1);
+            out_ir->window_width = 800;
+            out_ir->window_height = 600;
+            out_ir->vsync = 1;
+            out_ir->resizable = 1;
+        }
+
+        const mf_json_value* runtime = mf_json_get_field(root, "runtime");
+        if (runtime && runtime->type == MF_JSON_VAL_OBJECT) {
+            const mf_json_value* threads = mf_json_get_field(runtime, "threads");
+            if (threads && threads->type == MF_JSON_VAL_NUMBER) out_ir->num_threads = (u32)threads->as.n;
+        }
     }
 
     out_ir->node_count = ast->node_count;

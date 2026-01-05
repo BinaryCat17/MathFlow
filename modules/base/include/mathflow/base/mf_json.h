@@ -63,6 +63,7 @@ typedef struct {
     const char** imports;
     size_t import_count;
     const char* source_path;
+    const mf_json_value* root;
 } mf_ast_graph;
 
 // --- API ---

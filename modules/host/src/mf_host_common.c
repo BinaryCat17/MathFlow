@@ -83,6 +83,9 @@ int mf_host_app_init(mf_host_app* app, const mf_host_desc* desc) {
     bool loaded = false;
     if (desc->has_pipeline) {
         loaded = mf_loader_load_pipeline(app->engine, &desc->pipeline);
+        if (!loaded) MF_LOG_ERROR("Host: Failed to load pipeline");
+    } else {
+        MF_LOG_ERROR("Host: No pipeline defined in descriptor");
     }
 
     if (!loaded) {

@@ -1,0 +1,208 @@
+#include "mf_loader.h"
+#include <mathflow/compiler/mf_compiler.h>
+#include <mathflow/engine/mf_engine.h>
+#include <mathflow/host/mf_host_desc.h>
+#include <mathflow/base/mf_json.h>
+#include <mathflow/base/mf_utils.h>
+#include <mathflow/base/mf_log.h>
+#include <string.h>
+#include <stdlib.h>
+
+// --- Helpers ---
+
+static void _parse_window_settings(const mf_json_value* root, mf_host_desc* out_desc) {
+    const mf_json_value* window = mf_json_get_field(root, "window");
+    if (!window || window->type != MF_JSON_VAL_OBJECT) return;
+
+    const mf_json_value* title = mf_json_get_field(window, "title");
+    if (title && title->type == MF_JSON_VAL_STRING) {
+        if (out_desc->window_title) free((void*)out_desc->window_title);
+        out_desc->window_title = strdup(title->as.s);
+    }
+
+    const mf_json_value* w = mf_json_get_field(window, "width");
+    if (w && w->type == MF_JSON_VAL_NUMBER) out_desc->width = (int)w->as.n;
+
+    const mf_json_value* h = mf_json_get_field(window, "height");
+    if (h && h->type == MF_JSON_VAL_NUMBER) out_desc->height = (int)h->as.n;
+
+    const mf_json_value* resizable = mf_json_get_field(window, "resizable");
+    if (resizable && resizable->type == MF_JSON_VAL_BOOL) out_desc->resizable = resizable->as.b;
+
+    const mf_json_value* vsync = mf_json_get_field(window, "vsync");
+    if (vsync && vsync->type == MF_JSON_VAL_BOOL) out_desc->vsync = vsync->as.b;
+
+    const mf_json_value* fullscreen = mf_json_get_field(window, "fullscreen");
+    if (fullscreen && fullscreen->type == MF_JSON_VAL_BOOL) out_desc->fullscreen = fullscreen->as.b;
+}
+
+int mf_app_load_manifest(const char* path, mf_host_desc* out_desc) {
+    size_t arena_size = 1 * 1024 * 1024;
+    void* arena_mem = malloc(arena_size);
+    mf_arena arena; mf_arena_init(&arena, arena_mem, arena_size);
+    
+    char* json_str = mf_file_read(path, &arena);
+    if (!json_str) { free(arena_mem); return -1; }
+    
+    mf_json_value* root = mf_json_parse(json_str, &arena);
+    if (!root || root->type != MF_JSON_VAL_OBJECT) { free(arena_mem); return -2; }
+
+    // Common Host Defaults
+    out_desc->window_title = strdup("MathFlow App");
+    out_desc->width = 800; out_desc->height = 600;
+    out_desc->resizable = true; out_desc->vsync = true;
+    out_desc->num_threads = 0;
+    out_desc->has_pipeline = false;
+    memset(&out_desc->pipeline, 0, sizeof(out_desc->pipeline));
+
+    // Is it a Graph?
+    if (mf_json_get_field(root, "nodes")) {
+        MF_LOG_INFO("Host: Loading JSON graph with metadata: %s", path);
+        _parse_window_settings(root, out_desc);
+
+        out_desc->has_pipeline = true;
+        out_desc->pipeline.kernel_count = 1;
+        out_desc->pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+        out_desc->pipeline.kernels[0].id = strdup("main");
+        out_desc->pipeline.kernels[0].graph_path = strdup(path);
+        out_desc->pipeline.kernels[0].frequency = 1;
+        
+        free(arena_mem);
+        return 0;
+    }
+
+    // Otherwise treat as a Manifest
+    MF_LOG_INFO("Host: Loading Application Manifest: %s", path);
+    _parse_window_settings(root, out_desc);
+
+    char* base_dir = mf_path_get_dir(path, &arena);
+
+    const mf_json_value* runtime = mf_json_get_field(root, "runtime");
+    if (runtime && runtime->type == MF_JSON_VAL_OBJECT) {
+        const mf_json_value* threads = mf_json_get_field(runtime, "threads");
+        if (threads && threads->type == MF_JSON_VAL_NUMBER) out_desc->num_threads = (u32)threads->as.n;
+        
+        const mf_json_value* entry = mf_json_get_field(runtime, "entry");
+        if (entry && entry->type == MF_JSON_VAL_STRING && !mf_json_get_field(root, "pipeline")) {
+            out_desc->has_pipeline = true;
+            out_desc->pipeline.kernel_count = 1;
+            out_desc->pipeline.kernels = calloc(1, sizeof(mf_pipeline_kernel));
+            out_desc->pipeline.kernels[0].id = strdup("main");
+            char* path_entry = mf_path_join(base_dir, entry->as.s, &arena);
+            out_desc->pipeline.kernels[0].graph_path = strdup(path_entry);
+            out_desc->pipeline.kernels[0].frequency = 1;
+        }
+    }
+
+    const mf_json_value* pipeline = mf_json_get_field(root, "pipeline");
+    if (pipeline && pipeline->type == MF_JSON_VAL_OBJECT) {
+        out_desc->has_pipeline = true;
+        
+        const mf_json_value* resources = mf_json_get_field(pipeline, "resources");
+        if (resources && resources->type == MF_JSON_VAL_ARRAY) {
+            out_desc->pipeline.resource_count = (u32)resources->as.array.count;
+            out_desc->pipeline.resources = calloc(out_desc->pipeline.resource_count, sizeof(mf_pipeline_resource));
+            
+            for (size_t i = 0; i < resources->as.array.count; ++i) {
+                mf_pipeline_resource* pr = &out_desc->pipeline.resources[i];
+                const mf_json_value* res = &resources->as.array.items[i];
+                
+                const mf_json_value* name = mf_json_get_field(res, "name");
+                if (name && name->type == MF_JSON_VAL_STRING) pr->name = strdup(name->as.s);
+                
+                const mf_json_value* provider = mf_json_get_field(res, "provider");
+                if (provider && provider->type == MF_JSON_VAL_STRING) pr->provider = strdup(provider->as.s);
+                else pr->provider = NULL;
+
+                const mf_json_value* dtype = mf_json_get_field(res, "dtype");
+                if (dtype && dtype->type == MF_JSON_VAL_STRING) pr->dtype = mf_dtype_from_str(dtype->as.s);
+                
+                const mf_json_value* readonly = mf_json_get_field(res, "readonly");
+                if (readonly && readonly->type == MF_JSON_VAL_BOOL && readonly->as.b) pr->flags |= MF_RESOURCE_FLAG_READONLY;
+
+                const mf_json_value* shape = mf_json_get_field(res, "shape");
+                if (shape && shape->type == MF_JSON_VAL_ARRAY) {
+                    pr->ndim = (uint8_t)shape->as.array.count;
+                    if (pr->ndim > MF_MAX_DIMS) pr->ndim = MF_MAX_DIMS;
+                    for(int d=0; d < pr->ndim; ++d) {
+                        const mf_json_value* dim = &shape->as.array.items[d];
+                        if (dim->type == MF_JSON_VAL_NUMBER) pr->shape[d] = (int)dim->as.n;
+                    }
+                }
+            }
+        }
+
+        const mf_json_value* kernels = mf_json_get_field(pipeline, "kernels");
+        if (kernels && kernels->type == MF_JSON_VAL_ARRAY) {
+            out_desc->pipeline.kernel_count = (u32)kernels->as.array.count;
+            out_desc->pipeline.kernels = calloc(out_desc->pipeline.kernel_count, sizeof(mf_pipeline_kernel));
+
+            for (size_t i = 0; i < kernels->as.array.count; ++i) {
+                mf_pipeline_kernel* pk = &out_desc->pipeline.kernels[i];
+                const mf_json_value* ker = &kernels->as.array.items[i];
+                
+                const mf_json_value* id = mf_json_get_field(ker, "id");
+                if (id && id->type == MF_JSON_VAL_STRING) pk->id = strdup(id->as.s);
+
+                const mf_json_value* entry = mf_json_get_field(ker, "entry");
+                if (entry && entry->type == MF_JSON_VAL_STRING) {
+                    char* path_entry = mf_path_join(base_dir, entry->as.s, &arena);
+                    pk->graph_path = strdup(path_entry);
+                }
+
+                const mf_json_value* freq = mf_json_get_field(ker, "frequency");
+                if (freq && freq->type == MF_JSON_VAL_NUMBER) pk->frequency = (u32)freq->as.n;
+                else pk->frequency = 1;
+
+                const mf_json_value* bindings = mf_json_get_field(ker, "bindings");
+                if (bindings && bindings->type == MF_JSON_VAL_ARRAY) {
+                    pk->binding_count = (u32)bindings->as.array.count;
+                    pk->bindings = calloc(pk->binding_count, sizeof(mf_pipeline_binding));
+                    
+                    for (size_t b = 0; b < bindings->as.array.count; ++b) {
+                        mf_pipeline_binding* pb = &pk->bindings[b];
+                        const mf_json_value* bind = &bindings->as.array.items[b];
+                        
+                        const mf_json_value* port = mf_json_get_field(bind, "port");
+                        const mf_json_value* res = mf_json_get_field(bind, "resource");
+                        if (port && port->type == MF_JSON_VAL_STRING) pb->kernel_port = strdup(port->as.s);
+                        if (res && res->type == MF_JSON_VAL_STRING) pb->global_resource = strdup(res->as.s);
+                    }
+                }
+            }
+        }
+    }
+
+    const mf_json_value* assets = mf_json_get_field(root, "assets");
+    if (assets && assets->type == MF_JSON_VAL_ARRAY) {
+        out_desc->asset_count = (int)assets->as.array.count;
+        out_desc->assets = calloc(out_desc->asset_count, sizeof(mf_host_asset));
+        
+        for (size_t i = 0; i < assets->as.array.count; ++i) {
+            mf_host_asset* pa = &out_desc->assets[i];
+            const mf_json_value* asset = &assets->as.array.items[i];
+            
+            const mf_json_value* type = mf_json_get_field(asset, "type");
+            if (type && type->type == MF_JSON_VAL_STRING) {
+                if (strcmp(type->as.s, "image") == 0) pa->type = MF_ASSET_IMAGE;
+                else if (strcmp(type->as.s, "font") == 0) pa->type = MF_ASSET_FONT;
+            }
+            
+            const mf_json_value* res = mf_json_get_field(asset, "resource");
+            if (res && res->type == MF_JSON_VAL_STRING) pa->resource_name = strdup(res->as.s);
+            
+            const mf_json_value* path_asset = mf_json_get_field(asset, "path");
+            if (path_asset && path_asset->type == MF_JSON_VAL_STRING) {
+                char* full_path = mf_path_join(base_dir, path_asset->as.s, &arena);
+                pa->path = strdup(full_path);
+            }
+            
+            const mf_json_value* size = mf_json_get_field(asset, "size");
+            if (size && size->type == MF_JSON_VAL_NUMBER) pa->font_size = (float)size->as.n;
+            else pa->font_size = 32.0f;
+        }
+    }
+
+    free(arena_mem);
+    return 0;
+}

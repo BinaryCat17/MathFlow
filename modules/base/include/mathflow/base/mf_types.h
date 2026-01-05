@@ -101,6 +101,11 @@ static inline void mf_type_info_init_contiguous(mf_type_info* info, mf_dtype dty
  */
 mf_dtype mf_dtype_from_str(const char* s);
 
+// --- Resource Flags ---
+#define MF_RESOURCE_FLAG_READONLY   (1 << 0) // Cannot be bound to an Output port
+#define MF_RESOURCE_FLAG_PERSISTENT (1 << 1) // Force double-buffering (state)
+#define MF_RESOURCE_FLAG_TRANSIENT  (1 << 2) // Single-buffered (scratchpad)
+
 // --- Access Modes ---
 typedef enum {
     MF_ACCESS_READ = 0,

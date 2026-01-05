@@ -6,13 +6,14 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 16       // Phase 8.5: Backend Decoupling (Thin Instructions + Task Bindings)
+#define MF_BINARY_VERSION 17       // Phase 9: The Cartridge Model (App Header + Resource Templates)
 
 #define MF_MAX_SYMBOL_NAME 64
+#define MF_MAX_TITLE_NAME 128
 
-// Symbol Flags
-#define MF_SYMBOL_FLAG_INPUT  (1 << 0) // Read-Only (Bind to Front Buffer)
-#define MF_SYMBOL_FLAG_OUTPUT (1 << 1) // Write-Only (Bind to Back Buffer)
+// Symbol Flags (for Port Mapping)
+#define MF_SYMBOL_FLAG_INPUT  (1 << 6) // Read-Only (Bind to Front Buffer)
+#define MF_SYMBOL_FLAG_OUTPUT (1 << 7) // Write-Only (Bind to Back Buffer)
 
 // Tensor Flags
 #define MF_TENSOR_FLAG_CONSTANT   (1 << 0)
@@ -30,9 +31,10 @@ typedef struct {
     uint32_t name_hash; // FNV-1a
     uint32_t register_idx;
     uint32_t related_name_hash; // Hash of the Input symbol that drives this Output's shape (0 if none)
-    uint8_t flags;       // MF_SYMBOL_FLAG_*
+    uint8_t flags;       // MF_SYMBOL_FLAG_* | MF_RESOURCE_FLAG_*
     uint16_t builtin_id; // mf_builtin_id
     uint8_t builtin_axis; // For indexed providers like host.index.N
+    uint8_t reserved[1];
 } mf_bin_symbol;
 
 // Binding between a register and a task's domain
@@ -70,21 +72,32 @@ typedef struct {
     uint64_t data_size;  // Size in bytes of the initial data (0 if not constant)
 } mf_bin_tensor_desc;
 
-// File Header for .bin files
+// File Header for .bin/.mfc files
 typedef struct {
     u32 magic;             // 0x4D464C57
     u32 version;           // MF_BINARY_VERSION
     
+    // Program Stats
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
-    u32 symbol_count;      // Number of named I/O entries
+    u32 symbol_count;      // Number of named I/O entries (Resource Templates)
     u32 task_count;        // Number of execution tasks
     u32 binding_count;     // Total number of register bindings
     
     u32 reduction_scratch_size; // Elements needed for reductions
     u32 sync_scratch_size;      // Elements needed for sync operations
     
-    u32 reserved[3];       
+    // App Settings (Cartridge Metadata)
+    char app_title[MF_MAX_TITLE_NAME];
+    u32 window_width;
+    u32 window_height;
+    u32 num_threads;       // 0 = Auto
+    u8 vsync;              // 1 = Enabled
+    u8 fullscreen;         // 1 = Enabled
+    u8 resizable;          // 1 = Enabled
+    u8 reserved_flags[1];
+
+    u32 reserved[8];       
 } mf_bin_header;
 
 // In-memory representation

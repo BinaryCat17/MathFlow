@@ -1,0 +1,20 @@
+{
+    "window": {
+        "title": "Cartridge Test App",
+        "width": 1024,
+        "height": 768,
+        "vsync": true
+    },
+    "runtime": {
+        "threads": 4
+    },
+    "nodes": [
+        { "id": "u_Time", "type": "Input", "data": { "shape": [], "dtype": "F32", "provider": "host.time" } },
+        { "id": "SinTime", "type": "Sin", "data": { "domain": "u_Time" } },
+        { "id": "Out", "type": "Output", "data": { "shape": [1024, 768, 4], "dtype": "F32" } }
+    ],
+    "links": [
+        { "src": "u_Time", "dst": "SinTime" },
+        { "src": "SinTime", "dst": "Out" }
+    ]
+}

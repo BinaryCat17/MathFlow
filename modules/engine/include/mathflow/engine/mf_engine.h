@@ -58,6 +58,11 @@ mf_arena*       mf_engine_get_arena(mf_engine* engine);
  */
 void            mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs);
 
+/**
+ * @brief Binds one or more programs as a cartridge, automatically discovering resources from symbol templates.
+ */
+void            mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, uint32_t program_count);
+
 // --- Execution ---
 
 /**

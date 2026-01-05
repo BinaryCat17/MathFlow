@@ -345,6 +345,7 @@ mf_ast_graph* mf_json_parse_graph(const char* json_str, mf_arena* arena) {
     
     mf_ast_graph* graph = MF_ARENA_PUSH(arena, mf_ast_graph, 1);
     memset(graph, 0, sizeof(mf_ast_graph));
+    graph->root = root_val;
     
     const mf_json_value* nodes_val = mf_json_get_field(root_val, "nodes");
     if (nodes_val && nodes_val->type == MF_JSON_VAL_ARRAY) {
