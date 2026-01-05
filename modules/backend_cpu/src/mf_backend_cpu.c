@@ -152,9 +152,9 @@ static void format_tensor_debug(char* buf, const mf_exec_ctx* ctx, int reg_idx, 
         if (info->dtype == MF_DTYPE_F32) val = *(f32*)data;
         else if (info->dtype == MF_DTYPE_I32) val = (f32)*(int32_t*)data;
         else if (info->dtype == MF_DTYPE_U8) val = (f32)*(u8*)data;
-        sprintf(buf, "%-30s : Value: %-10.3f (%s)", tag, val, _dtype_to_str(info->dtype));
+        sprintf(buf, "%-30s : Value: %-10.3f (%s) Stride: %d", tag, val, _dtype_to_str(info->dtype), ctx->reg_strides[reg_idx]);
     } else {
-        sprintf(buf, "%-30s : Tensor[%-10s] (%s) Ptr: %p", tag, shape_str, _dtype_to_str(info->dtype), data);
+        sprintf(buf, "%-30s : Tensor[%-10s] (%s) Ptr: %p Stride: %d", tag, shape_str, _dtype_to_str(info->dtype), data, ctx->reg_strides[reg_idx]);
     }
 }
 

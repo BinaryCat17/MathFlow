@@ -6,7 +6,6 @@ add_library(mf_host_core STATIC
     src/mf_host_headless.c
     src/mf_host_common.c
     src/mf_loader.c
-    src/mf_manifest.c
     src/mf_assets.c
 )
 add_library(MathFlow::host_core ALIAS mf_host_core)

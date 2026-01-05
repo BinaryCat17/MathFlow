@@ -22,7 +22,10 @@ add_subdirectory(modules/host)
 
 # --- Apps ---
 add_subdirectory(apps/mf-runner)
-add_subdirectory(apps/mf-window) # This one already had its own CMakeLists.txt
+add_subdirectory(apps/mf-window)
+add_subdirectory(apps/mfc)
+
+# --- Tests ---
 
 # --- Installation ---
 # TODO: Setup install targets

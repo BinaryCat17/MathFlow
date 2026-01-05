@@ -94,7 +94,7 @@ static void apply_initial_data(mf_engine* engine) {
 
 // --- Public API ---
 
-void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, uint32_t count) {
+void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const char** names, uint32_t count) {
     if (!engine || !programs || count == 0) return;
 
     // 1. Discover Resources directly from Symbols
@@ -121,7 +121,7 @@ void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, uint32_t
     for (u32 k = 0; k < count; ++k) {
         mf_program* prog = programs[k];
         mf_kernel_inst* inst = &engine->kernels[k];
-        inst->id = mf_arena_strdup(&engine->arena, prog->meta.app_title[0] ? prog->meta.app_title : "kernel");
+        inst->id = mf_arena_strdup(&engine->arena, (names && names[k]) ? names[k] : "kernel");
         inst->id_hash = mf_fnv1a_hash(inst->id);
         inst->program = prog;
         inst->frequency = 1;

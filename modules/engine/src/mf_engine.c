@@ -320,11 +320,14 @@ void mf_engine_sync_resource(mf_engine* engine, const char* name) {
     if (idx == -1) return;
 
     mf_resource_inst* res = &engine->resources[idx];
-    if (res->buffers[0] && res->buffers[1] && res->buffers[0]->data && res->buffers[1]->data) {
-        size_t bytes = res->size_bytes;
-        u8 front = engine->front_idx;
-        u8 back = 1 - front;
-        memcpy(res->buffers[back]->data, res->buffers[front]->data, bytes);
+    if (res->buffers[0] && res->buffers[1] && res->buffers[0] != res->buffers[1]) {
+        if (res->buffers[0]->data && res->buffers[1]->data) {
+            size_t bytes = res->size_bytes;
+            u8 front = engine->front_idx;
+            u8 back = 1 - front;
+            // Sync from current front to back
+            memcpy(res->buffers[back]->data, res->buffers[front]->data, bytes);
+        }
     }
 }
 

@@ -1,0 +1,22 @@
+{
+    "window": {
+        "title": "Cartridge Test App",
+        "width": 1024,
+        "height": 768
+    },
+    "pipeline": {
+        "kernels": [
+            {
+                "id": "main",
+                "entry": "../../tests/unit/math/simple_math.json"
+            }
+        ]
+    },
+    "assets": [
+        {
+            "name": "test_blob",
+            "path": "../../README.md",
+            "type": "raw"
+        }
+    ]
+}

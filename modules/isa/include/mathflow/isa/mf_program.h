@@ -5,11 +5,21 @@
 #include "mf_instruction.h"
 #include "mf_tensor.h"
 
-#define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 17       // Phase 9: The Cartridge Model (App Header + Resource Templates)
+#define MF_BINARY_MAGIC   0x4D464C57 // "MFLW"
+#define MF_BINARY_VERSION 20         // Phase 9: The Cartridge Model (Container Format)
 
 #define MF_MAX_SYMBOL_NAME 64
 #define MF_MAX_TITLE_NAME 128
+#define MF_MAX_SECTIONS    16
+
+// Section Types
+typedef enum {
+    MF_SECTION_PROGRAM  = 0x01, // Compiled MathFlow Bytecode
+    MF_SECTION_PIPELINE = 0x02, // Execution schedule and resource bindings (JSON)
+    MF_SECTION_IMAGE    = 0x03, // Embedded Texture (Raw or Compressed)
+    MF_SECTION_FONT     = 0x04, // Embedded SDF Font Data
+    MF_SECTION_RAW      = 0x05, // Arbitrary data blob
+} mf_section_type;
 
 // Symbol Flags (for Port Mapping)
 #define MF_SYMBOL_FLAG_INPUT  (1 << 6) // Read-Only (Bind to Front Buffer)
@@ -23,6 +33,38 @@
 
 // Binding Flags
 #define MF_BINDING_FLAG_REDUCTION (1 << 0)
+
+// --- Cartridge Container (Level 0) ---
+
+typedef struct {
+    char name[MF_MAX_SYMBOL_NAME];
+    uint32_t type;   // mf_section_type
+    uint32_t offset; // Offset from start of file
+    uint32_t size;   // Size in bytes
+    uint32_t reserved[4];
+} mf_section_header;
+
+typedef struct {
+    u32 magic;             // 0x4D464C57
+    u32 version;           // MF_BINARY_VERSION
+    
+    // App Settings
+    char app_title[MF_MAX_TITLE_NAME];
+    u32 window_width;
+    u32 window_height;
+    u32 num_threads;       // 0 = Auto
+    u8 vsync;              // 1 = Enabled
+    u8 fullscreen;         // 1 = Enabled
+    u8 resizable;          // 1 = Enabled
+    u8 reserved_flags[1];
+
+    u32 section_count;
+    mf_section_header sections[MF_MAX_SECTIONS];
+
+    u32 reserved[8];       
+} mf_cartridge_header;
+
+// --- Program Section (Level 1) ---
 
 // Map Name -> Register Index
 typedef struct {
@@ -57,7 +99,6 @@ typedef struct {
 } mf_task;
 
 // Metadata for a single tensor in the binary file
-// Followed immediately by shape data? No, fixed max dims.
 typedef struct {
     uint8_t dtype;       // mf_dtype
     uint8_t ndim;        // Rank
@@ -72,12 +113,8 @@ typedef struct {
     uint64_t data_size;  // Size in bytes of the initial data (0 if not constant)
 } mf_bin_tensor_desc;
 
-// File Header for .bin/.mfc files
+// Header for a PROGRAM section
 typedef struct {
-    u32 magic;             // 0x4D464C57
-    u32 version;           // MF_BINARY_VERSION
-    
-    // Program Stats
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
     u32 symbol_count;      // Number of named I/O entries (Resource Templates)
@@ -87,20 +124,10 @@ typedef struct {
     u32 reduction_scratch_size; // Elements needed for reductions
     u32 sync_scratch_size;      // Elements needed for sync operations
     
-    // App Settings (Cartridge Metadata)
-    char app_title[MF_MAX_TITLE_NAME];
-    u32 window_width;
-    u32 window_height;
-    u32 num_threads;       // 0 = Auto
-    u8 vsync;              // 1 = Enabled
-    u8 fullscreen;         // 1 = Enabled
-    u8 resizable;          // 1 = Enabled
-    u8 reserved_flags[1];
-
     u32 reserved[8];       
 } mf_bin_header;
 
-// In-memory representation
+// In-memory representation of a single program
 typedef struct mf_program {
     mf_bin_header meta;
     

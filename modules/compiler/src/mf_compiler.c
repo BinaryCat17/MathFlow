@@ -73,8 +73,7 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
 
     // 3. Allocate Program Structure
     mf_program* prog = MF_ARENA_PUSH(arena, mf_program, 1);
-    prog->meta.magic = MF_BINARY_MAGIC;
-    prog->meta.version = MF_BINARY_VERSION;
+    memset(&prog->meta, 0, sizeof(mf_bin_header));
 
     // 4. Emit Code (Tensors, Instructions, State)
     if (!mf_codegen_emit(prog, ir, sorted, sorted_count, arena)) {
@@ -86,10 +85,9 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
     return prog;
 }
 
-bool mf_compile_save_program(const mf_program* prog, const char* path) {
-    FILE* f = fopen(path, "wb");
-    if (!f) return false;
-
+static size_t _write_program(const mf_program* prog, FILE* f) {
+    size_t start = ftell(f);
+    
     // 1. Header
     fwrite(&prog->meta, sizeof(mf_bin_header), 1, f);
     
@@ -142,6 +140,60 @@ bool mf_compile_save_program(const mf_program* prog, const char* path) {
             fwrite(data_ptr, 1, sz, f);
         }
     }
+
+    return ftell(f) - start;
+}
+
+bool mf_compile_save_program(const mf_program* prog, const char* path) {
+    mf_section_desc desc = { "main", MF_SECTION_PROGRAM, prog, 0 };
+    return mf_compile_save_cartridge(path, NULL, &desc, 1);
+}
+
+bool mf_compile_save_cartridge(const char* path, const mf_graph_ir* ir, const mf_section_desc* sections, u32 section_count) {
+    FILE* f = fopen(path, "wb");
+    if (!f) return false;
+
+    mf_cartridge_header cart = {0};
+    cart.magic = MF_BINARY_MAGIC;
+    cart.version = MF_BINARY_VERSION;
+    
+    if (ir) {
+        strncpy(cart.app_title, ir->app_title, MF_MAX_TITLE_NAME - 1);
+        cart.window_width = ir->window_width;
+        cart.window_height = ir->window_height;
+        cart.num_threads = ir->num_threads;
+        cart.vsync = ir->vsync;
+        cart.fullscreen = ir->fullscreen;
+        cart.resizable = ir->resizable;
+    } else {
+        strncpy(cart.app_title, "MathFlow Cartridge", MF_MAX_TITLE_NAME - 1);
+        cart.window_width = 800;
+        cart.window_height = 600;
+        cart.resizable = 1;
+    }
+
+    cart.section_count = section_count;
+    for (u32 i = 0; i < section_count; ++i) {
+        strncpy(cart.sections[i].name, sections[i].name, MF_MAX_SYMBOL_NAME - 1);
+        cart.sections[i].type = sections[i].type;
+    }
+
+    // Write header placeholder
+    fwrite(&cart, sizeof(mf_cartridge_header), 1, f);
+
+    for (u32 i = 0; i < section_count; ++i) {
+        cart.sections[i].offset = (uint32_t)ftell(f);
+        if (sections[i].type == MF_SECTION_PROGRAM) {
+            cart.sections[i].size = (uint32_t)_write_program((const mf_program*)sections[i].data, f);
+        } else {
+            fwrite(sections[i].data, 1, sections[i].size, f);
+            cart.sections[i].size = sections[i].size;
+        }
+    }
+
+    // Rewrite header with correct offsets and sizes
+    fseek(f, 0, SEEK_SET);
+    fwrite(&cart, sizeof(mf_cartridge_header), 1, f);
 
     fclose(f);
     return true;

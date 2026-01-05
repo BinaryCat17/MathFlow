@@ -61,7 +61,7 @@ void            mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_des
 /**
  * @brief Binds one or more programs as a cartridge, automatically discovering resources from symbol templates.
  */
-void            mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, uint32_t program_count);
+void            mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const char** names, uint32_t program_count);
 
 // --- Execution ---
 

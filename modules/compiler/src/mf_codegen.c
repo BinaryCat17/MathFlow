@@ -19,15 +19,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
 
     prog->meta.tensor_count = (u32)max_reg + 1 + extra_tensor_count; 
     
-    // --- Copy App Settings (Cartridge Metadata) ---
-    strncpy(prog->meta.app_title, ir->app_title, MF_MAX_TITLE_NAME - 1);
-    prog->meta.window_width = ir->window_width;
-    prog->meta.window_height = ir->window_height;
-    prog->meta.num_threads = ir->num_threads;
-    prog->meta.vsync = ir->vsync;
-    prog->meta.fullscreen = ir->fullscreen;
-    prog->meta.resizable = ir->resizable;
-
     u32 symbol_count = 0;
     for (size_t i = 0; i < ir->node_count; ++i) {
         if (ir->nodes[i].id && strcmp(ir->nodes[i].id, "unknown") != 0) symbol_count++;
@@ -95,7 +86,9 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             // Transfer resource flags from IR node
             sym->flags |= (node->resource_flags & (MF_RESOURCE_FLAG_READONLY | MF_RESOURCE_FLAG_PERSISTENT | MF_RESOURCE_FLAG_TRANSIENT));
 
-            prog->tensor_flags[reg_idx] |= MF_TENSOR_FLAG_ALIAS;
+            if (node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
+                prog->tensor_flags[reg_idx] |= MF_TENSOR_FLAG_ALIAS;
+            }
         }
 
         mf_type_info* t_info = &prog->tensor_infos[reg_idx];

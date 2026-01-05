@@ -108,6 +108,31 @@ typedef struct {
     u8 resizable;
 } mf_graph_ir;
 
+// --- Manifest Interface ---
+
+typedef struct {
+    const char* id;
+    const char* path;
+} mf_compiler_kernel_desc;
+
+typedef struct {
+    const char* name;
+    const char* path;
+    uint32_t type; // mf_section_type
+} mf_compiler_asset_desc;
+
+typedef struct {
+    mf_graph_ir app_ir;
+    mf_compiler_kernel_desc* kernels;
+    u32 kernel_count;
+    mf_compiler_asset_desc* assets;
+    u32 asset_count;
+    const char* raw_json;
+    u32 raw_json_size;
+} mf_compiler_manifest;
+
+bool mf_compiler_load_manifest(const char* path, mf_compiler_manifest* out_manifest, mf_arena* arena);
+
 // --- Compiler Interface ---
 
 // 1. Parse JSON -> IR
@@ -118,5 +143,15 @@ mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag)
 
 // 3. Save Program
 bool mf_compile_save_program(const mf_program* prog, const char* path);
+
+// 4. Save Cartridge (Container for multiple programs and assets)
+typedef struct {
+    const char* name;
+    uint32_t type; // mf_section_type
+    const void* data;
+    uint32_t size;
+} mf_section_desc;
+
+bool mf_compile_save_cartridge(const char* path, const mf_graph_ir* ir, const mf_section_desc* sections, u32 section_count);
 
 #endif // MF_COMPILER_H
