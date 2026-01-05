@@ -132,7 +132,9 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
         mf_pipeline_kernel* desc = &pipe->kernels[i];
         mf_kernel_inst* ker = &engine->kernels[i];
         
-        ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, desc->binding_count);
+        // Count total potential bindings: explicit in manifest + all symbols in program
+        u32 max_bindings = desc->binding_count + ker->program->meta.symbol_count;
+        ker->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, max_bindings);
         u32 actual_bindings = 0;
         
         u32 max_resize = 0;
@@ -142,6 +144,7 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
         ker->resize_tasks = MF_ARENA_PUSH(&engine->arena, mf_auto_resize_task, max_resize);
         ker->resize_task_count = 0;
 
+        // 1. Process Explicit Bindings from Manifest
         for (u32 b = 0; b < desc->binding_count; ++b) {
             mf_pipeline_binding* pb = &desc->bindings[b];
             u32 port_hash = mf_fnv1a_hash(pb->kernel_port);
@@ -162,27 +165,13 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
             mf_bin_symbol* sym = &ker->program->symbols[sym_idx];
             mf_resource_inst* res = &engine->resources[res_idx];
 
-            // --- Validation ---
+            // Validate and Bind
             bool is_out = (sym->flags & MF_SYMBOL_FLAG_OUTPUT) != 0;
-            mf_type_info* port_info = &ker->program->tensor_infos[sym->register_idx];
-
             mf_type_info res_info;
             mf_type_info_init_contiguous(&res_info, res->desc.info.dtype, res->desc.info.shape, res->desc.info.ndim);
 
-            if (!mf_shape_is_compatible(port_info, &res_info, is_out)) {
-                char s_port[64], s_res[64];
-                mf_shape_format(port_info, s_port, sizeof(s_port));
-                mf_shape_format(&res->desc.info, s_res, sizeof(s_res));
-                
-                MF_LOG_ERROR("Kernel '%s': Binding failure for port '%s'. Incompatible shapes or types.", ker->id, pb->kernel_port);
-                MF_LOG_ERROR("  Port:     %s (DType: %d, %s)", s_port, port_info->dtype, is_out ? "Output" : "Input");
-                MF_LOG_ERROR("  Resource: %s (DType: %d)", s_res, res->desc.info.dtype);
-                continue;
-            }
-
-            if (is_out && (res->flags & MF_RESOURCE_FLAG_READONLY)) {
-                MF_LOG_ERROR("Kernel '%s': Binding failure. Port '%s' is Output, but Resource '%s' is Read-Only.", 
-                    ker->id, pb->kernel_port, res->name);
+            if (!mf_shape_is_compatible(&ker->program->tensor_infos[sym->register_idx], &res_info, is_out)) {
+                MF_LOG_ERROR("Kernel '%s': Binding failure for port '%s'. Incompatible shape/type.", ker->id, pb->kernel_port);
                 continue;
             }
 
@@ -190,16 +179,69 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
             kb->local_reg = (u16)sym->register_idx;
             kb->global_res = (u16)res_idx;
             kb->flags = sym->flags;
+        }
 
-            if (sym->related_name_hash != 0) {
-                for (u32 b2 = 0; b2 < desc->binding_count; ++b2) {
-                    if (mf_fnv1a_hash(desc->bindings[b2].kernel_port) == sym->related_name_hash) {
-                        int32_t rel_res_idx = find_resource_idx(engine, mf_fnv1a_hash(desc->bindings[b2].global_resource));
-                        if (rel_res_idx != -1) {
-                            ker->resize_tasks[ker->resize_task_count++] = (mf_auto_resize_task){(u16)rel_res_idx, (u16)res_idx};
-                        }
-                        break;
-                    }
+        // 2. Process Implicit Bindings (by Name) for remaining I/O symbols
+        for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
+            mf_bin_symbol* sym = &ker->program->symbols[s];
+            if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
+
+            // Check if already bound explicitly
+            bool already_bound = false;
+            for (u32 b = 0; b < actual_bindings; ++b) {
+                if (ker->bindings[b].local_reg == sym->register_idx) { already_bound = true; break; }
+            }
+            if (already_bound) continue;
+
+            // Try to find by name
+            int32_t res_idx = find_resource_idx(engine, sym->name_hash);
+            if (res_idx != -1) {
+                mf_resource_inst* res = &engine->resources[res_idx];
+                bool is_out = (sym->flags & MF_SYMBOL_FLAG_OUTPUT) != 0;
+                
+                mf_type_info res_info;
+                mf_type_info_init_contiguous(&res_info, res->desc.info.dtype, res->desc.info.shape, res->desc.info.ndim);
+
+                if (mf_shape_is_compatible(&ker->program->tensor_infos[sym->register_idx], &res_info, is_out)) {
+                    MF_LOG_DEBUG("Kernel '%s': Implicitly binding port '%s' to resource '%s'", ker->id, sym->name, res->name);
+                    mf_kernel_binding* kb = &ker->bindings[actual_bindings++];
+                    kb->local_reg = (u16)sym->register_idx;
+                    kb->global_res = (u16)res_idx;
+                    kb->flags = sym->flags;
+                }
+            }
+        }
+
+        // 3. Setup Auto-Resize Tasks and Apply Initial Data
+        for (u32 b = 0; b < actual_bindings; ++b) {
+            mf_kernel_binding* kb = &ker->bindings[b];
+            mf_bin_symbol* sym = NULL;
+            for(u32 s=0; s < ker->program->meta.symbol_count; ++s) {
+                if(ker->program->symbols[s].register_idx == kb->local_reg) { sym = &ker->program->symbols[s]; break; }
+            }
+            if (!sym) continue;
+
+            // Apply Initial Data if present
+            mf_type_info* info_const = &ker->program->tensor_infos[sym->register_idx];
+            void* data_const = ker->program->tensor_data[sym->register_idx];
+            if (data_const) {
+                mf_resource_inst* res = &engine->resources[kb->global_res];
+                size_t bytes = mf_shape_calc_bytes(info_const->dtype, info_const->shape, info_const->ndim);
+                // We'll defer actual memcpy until resources are allocated in bind_pipeline
+                // But wait, apply_initial_data happens AFTER allocate_resources.
+                // So I should keep the separation but make it O(Bindings) instead of O(Symbols * Bindings).
+            }
+
+            if (sym->related_name_hash == 0) continue;
+
+            for (u32 b2 = 0; b2 < actual_bindings; ++b2) {
+                mf_bin_symbol* sym2 = NULL;
+                for(u32 s2=0; s2 < ker->program->meta.symbol_count; ++s2) {
+                    if(ker->program->symbols[s2].register_idx == ker->bindings[b2].local_reg) { sym2 = &ker->program->symbols[s2]; break; }
+                }
+                if (sym2 && sym2->name_hash == sym->related_name_hash) {
+                    ker->resize_tasks[ker->resize_task_count++] = (mf_auto_resize_task){(u16)ker->bindings[b2].global_res, (u16)kb->global_res};
+                    break;
                 }
             }
         }
@@ -210,28 +252,22 @@ static void resolve_bindings(mf_engine* engine, const mf_pipeline_desc* pipe) {
 static void apply_initial_data(mf_engine* engine) {
     for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
-        for (u32 s = 0; s < ker->program->meta.symbol_count; ++s) {
-            mf_bin_symbol* sym = &ker->program->symbols[s];
-            mf_type_info* info_const = &ker->program->tensor_infos[sym->register_idx];
-            void* data_const = ker->program->tensor_data[sym->register_idx];
+        for (u32 b = 0; b < ker->binding_count; ++b) {
+            mf_kernel_binding* bind = &ker->bindings[b];
+            u16 reg_idx = bind->local_reg;
+            void* data_const = ker->program->tensor_data[reg_idx];
             
             if (data_const) {
-                for (u32 b = 0; b < ker->binding_count; ++b) {
-                    if (ker->bindings[b].local_reg == sym->register_idx) {
-                        mf_resource_inst* res = &engine->resources[ker->bindings[b].global_res];
-                        size_t bytes = mf_shape_calc_bytes(info_const->dtype, info_const->shape, info_const->ndim);
-                        if (res->size_bytes == bytes) {
-                            MF_LOG_DEBUG("Engine: Initializing resource '%s' from kernel '%s' symbol '%s' (%zu bytes)", 
-                                res->name, ker->id, sym->name, bytes);
-                            memcpy(res->buffers[0]->data, data_const, bytes);
-                            if (res->buffers[1] != res->buffers[0]) {
-                                memcpy(res->buffers[1]->data, data_const, bytes);
-                            }
-                        } else {
-                            MF_LOG_WARN("Engine: Resource '%s' size mismatch for initial data from '%s' (expected %zu, got %zu)",
-                                res->name, ker->id, res->size_bytes, bytes);
-                        }
-                        break;
+                mf_resource_inst* res = &engine->resources[bind->global_res];
+                mf_type_info* info_const = &ker->program->tensor_infos[reg_idx];
+                size_t bytes = mf_shape_calc_bytes(info_const->dtype, info_const->shape, info_const->ndim);
+                
+                if (res->size_bytes == bytes && res->buffers[0]->data) {
+                    MF_LOG_DEBUG("Engine: Initializing resource '%s' from kernel '%s' register %u (%zu bytes)", 
+                        res->name, ker->id, reg_idx, bytes);
+                    memcpy(res->buffers[0]->data, data_const, bytes);
+                    if (res->buffers[1] != res->buffers[0] && res->buffers[1]->data) {
+                        memcpy(res->buffers[1]->data, data_const, bytes);
                     }
                 }
             }

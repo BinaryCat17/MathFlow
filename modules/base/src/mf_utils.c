@@ -259,6 +259,28 @@ bool mf_map_get_ptr(mf_str_map* map, const char* key, void** out_ptr) {
     return false;
 }
 
+void mf_provider_parse(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
+    if (!provider || provider[0] == '\0') {
+        *out_builtin_id = 0; // MF_BUILTIN_NONE
+        if (out_builtin_axis) *out_builtin_axis = 0;
+        return;
+    }
+
+    if (strncmp(provider, "host.index", 10) == 0) {
+        *out_builtin_id = 1; // MF_BUILTIN_INDEX
+        if (out_builtin_axis) {
+            if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
+                *out_builtin_axis = (u8)atoi(provider + 11);
+            } else {
+                *out_builtin_axis = 0;
+            }
+        }
+    } else {
+        *out_builtin_id = 0; // MF_BUILTIN_NONE
+        if (out_builtin_axis) *out_builtin_axis = 0;
+    }
+}
+
 mf_dtype mf_dtype_from_str(const char* s) {
     if (!s) return MF_DTYPE_F32;
     

@@ -12,7 +12,6 @@
 typedef struct mf_state {
     mf_tensor* registers;
     uint8_t* ownership_flags; // [register_count] 1 if owned, 0 if view
-    const char** providers;   // [register_count] Virtual resource providers (e.g. "host.index")
     size_t register_count;
     mf_allocator* allocator;
     

@@ -14,7 +14,7 @@
 #define MF_GEN_AUTO(_op, _ke, _ar) MF_KERNEL_AUTO(_op, _ke, _ar)
 #define MF_GEN_MANUAL(...)
 
-#define MF_OP(_s, _n, _op, _cat, _in, _out, _tr, _sr, _ar, _p1, _p2, _p3, _p4, _kt, _ke, _arity) \
+#define MF_OP(_s, _n, _op, _cat, _strat, _in, _out, _tr, _sr, _ar, _p1, _p2, _p3, _p4, _kt, _ke, _arity) \
     MF_GEN_##_kt(_op, _ke, _arity)
 
 MF_OP_LIST
@@ -47,16 +47,16 @@ void op_DOT(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
     
-    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
-    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
-    f32* b_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
+    u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
+    u8* a_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
+    u8* b_ptr = (u8*)ctx->reg_ptrs[inst->src2_idx];
     
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
     i32 st2 = MF_GET_STRIDE_S2(inst);
     
     for (size_t i = 0; i < sz; ++i) {
-        *d_ptr = MF_SAFE_F32(_vec_dot_impl(a_ptr, b_ptr, vec_len));
+        *(f32*)d_ptr = MF_SAFE_F32(_vec_dot_impl((f32*)a_ptr, (f32*)b_ptr, vec_len));
         a_ptr += st1;
         b_ptr += st2;
         d_ptr += st0;
@@ -68,14 +68,14 @@ void op_LENGTH(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
     
-    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
-    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
+    u8* a_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
     
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for (size_t i = 0; i < sz; ++i) {
-        *d_ptr = MF_SAFE_F32(sqrtf(_vec_len_sq_impl(a_ptr, vec_len)));
+        *(f32*)d_ptr = MF_SAFE_F32(sqrtf(_vec_len_sq_impl((f32*)a_ptr, vec_len)));
         a_ptr += st1;
         d_ptr += st0;
     }
@@ -86,18 +86,20 @@ void op_NORMALIZE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t vec_len = a_info->shape[a_info->ndim - 1];
     size_t sz = ctx->batch_size;
     
-    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
-    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
+    u8* a_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
     
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for (size_t i = 0; i < sz; ++i) {
-        f32 len = sqrtf(_vec_len_sq_impl(a_ptr, vec_len));
+        f32 len = sqrtf(_vec_len_sq_impl((f32*)a_ptr, vec_len));
         f32 inv_len = (len > 1e-6f) ? (1.0f / len) : 0.0f;
 
+        f32* d_f32 = (f32*)d_ptr;
+        f32* a_f32 = (f32*)a_ptr;
         for (size_t j = 0; j < vec_len; ++j) {
-            d_ptr[j] = a_ptr[j] * inv_len;
+            d_f32[j] = a_f32[j] * inv_len;
         }
         a_ptr += st1;
         d_ptr += st0;
@@ -107,9 +109,9 @@ void op_NORMALIZE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
 void op_SMOOTHSTEP(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t sz = ctx->batch_size;
     
-    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
-    f32* x_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
-    f32* e_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
+    u8* x_ptr = (u8*)ctx->reg_ptrs[inst->src2_idx];
+    u8* e_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
     const mf_type_info* e_info = &ctx->reg_info[inst->src1_idx];
 
     f32 e0 = 0.0f;
@@ -119,10 +121,10 @@ void op_SMOOTHSTEP(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     for(int i=0; i<e_info->ndim; ++i) e_count *= e_info->shape[i];
 
     if (e_count >= 2) {
-        e0 = e_ptr[0];
-        e1 = e_ptr[1];
+        e0 = ((f32*)e_ptr)[0];
+        e1 = ((f32*)e_ptr)[1];
     } else if (e_count == 1) {
-        e1 = e_ptr[0];
+        e1 = ((f32*)e_ptr)[0];
     }
 
     f32 span = e1 - e0;
@@ -132,12 +134,12 @@ void op_SMOOTHSTEP(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     i32 st2 = MF_GET_STRIDE_S2(inst);
 
     for (size_t i = 0; i < sz; ++i) {
-        f32 val = *x_ptr;
+        f32 val = *(f32*)x_ptr;
         f32 t = (val - e0) / span;
         if (t < 0.0f) t = 0.0f;
         if (t > 1.0f) t = 1.0f;
         
-        *d_ptr = MF_SAFE_F32(t * t * (3.0f - 2.0f * t));
+        *(f32*)d_ptr = MF_SAFE_F32(t * t * (3.0f - 2.0f * t));
         
         x_ptr += st2;
         d_ptr += st0;
@@ -151,11 +153,11 @@ void op_SUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t sz = ctx->batch_size;
     
     f32 sum = 0;
-    f32* s_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
+    u8* s_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
     i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for (size_t i = 0; i < sz; ++i) {
-        sum += *s_ptr;
+        sum += *(f32*)s_ptr;
         s_ptr += st1;
     }
     

@@ -12,7 +12,7 @@
 #define MF_GEN_AUTO(_op, _ke, _ar) MF_KERNEL_AUTO(_op, _ke, _ar)
 #define MF_GEN_MANUAL(...)
 
-#define MF_OP(_s, _n, _op, _cat, _in, _out, _tr, _sr, _ar, _p1, _p2, _p3, _p4, _kt, _ke, _arity) \
+#define MF_OP(_s, _n, _op, _cat, _strat, _in, _out, _tr, _sr, _ar, _p1, _p2, _p3, _p4, _kt, _ke, _arity) \
     MF_GEN_##_kt(_op, _ke, _arity)
 
 MF_OP_LIST

@@ -5,12 +5,14 @@
         { "id": "4", "type": "Const", "data": {"value": 2.0} },
 
         { "id": "3", "type": "Add" },
-        { "id": "5", "type": "Mul" }
+        { "id": "5", "type": "Mul" },
+        { "id": "out", "type": "Output" }
     ],
     "links": [
         { "src": "1", "src_port": "out", "dst": "3", "dst_port": "a" },
         { "src": "2", "src_port": "out", "dst": "3", "dst_port": "b" },
         { "src": "3", "src_port": "out", "dst": "5", "dst_port": "a" },
-        { "src": "4", "src_port": "out", "dst": "5", "dst_port": "b" }
+        { "src": "4", "src_port": "out", "dst": "5", "dst_port": "b" },
+        { "src": "5", "src_port": "out", "dst": "out", "dst_port": "in" }
     ]
 }

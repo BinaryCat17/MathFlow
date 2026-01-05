@@ -6,13 +6,22 @@
 #include "mf_tensor.h"
 
 #define MF_BINARY_MAGIC 0x4D464C57 // "MFLW"
-#define MF_BINARY_VERSION 14       // Added Direct Builtin Mapping
+#define MF_BINARY_VERSION 16       // Phase 8.5: Backend Decoupling (Thin Instructions + Task Bindings)
 
 #define MF_MAX_SYMBOL_NAME 64
 
 // Symbol Flags
 #define MF_SYMBOL_FLAG_INPUT  (1 << 0) // Read-Only (Bind to Front Buffer)
 #define MF_SYMBOL_FLAG_OUTPUT (1 << 1) // Write-Only (Bind to Back Buffer)
+
+// Tensor Flags
+#define MF_TENSOR_FLAG_CONSTANT   (1 << 0)
+#define MF_TENSOR_FLAG_REDUCTION  (1 << 1)
+#define MF_TENSOR_FLAG_GENERATOR  (1 << 2)
+#define MF_TENSOR_FLAG_ALIAS      (1 << 3) // Bound to external resource (Input/Output)
+
+// Binding Flags
+#define MF_BINDING_FLAG_REDUCTION (1 << 0)
 
 // Map Name -> Register Index
 typedef struct {
@@ -26,12 +35,23 @@ typedef struct {
     uint8_t builtin_axis; // For indexed providers like host.index.N
 } mf_bin_symbol;
 
+// Binding between a register and a task's domain
+typedef struct {
+    uint16_t reg_idx;
+    uint16_t flags;      // MF_BINDING_FLAG_*
+    int32_t byte_stride; // Pre-calculated: stride * sizeof(dtype)
+} mf_bin_task_binding;
+
 // A single execution unit within a program (e.g. for a specific Output shape)
 typedef struct {
     uint32_t start_inst;
     uint32_t inst_count;
     uint32_t domain_reg; // Index of the register that defines the execution domain (usually an Output)
-    uint32_t reserved;
+    uint8_t strategy;    // mf_dispatch_strategy
+    uint8_t reserved[3];
+    
+    uint32_t binding_offset; // Offset into global binding table
+    uint32_t binding_count;  // Number of registers used in this task
 } mf_task;
 
 // Metadata for a single tensor in the binary file
@@ -42,7 +62,8 @@ typedef struct {
     uint8_t is_constant; // 1 if data follows, 0 if uninitialized buffer
     uint8_t builtin_id;  // mf_builtin_id (0 if none)
     uint8_t builtin_axis; // Axis for indexed providers (e.g. host.index.N)
-    uint8_t reserved[3]; // Padding
+    uint8_t flags;       // MF_TENSOR_FLAG_*
+    uint8_t reserved[2]; // Padding
     
     int32_t shape[MF_MAX_DIMS];
     
@@ -52,14 +73,18 @@ typedef struct {
 // File Header for .bin files
 typedef struct {
     u32 magic;             // 0x4D464C57
-    u32 version;           // 7
+    u32 version;           // MF_BINARY_VERSION
     
     u32 instruction_count; 
     u32 tensor_count;      // Total number of registers/tensors
     u32 symbol_count;      // Number of named I/O entries
     u32 task_count;        // Number of execution tasks
+    u32 binding_count;     // Total number of register bindings
     
-    u32 reserved[6];       
+    u32 reduction_scratch_size; // Elements needed for reductions
+    u32 sync_scratch_size;      // Elements needed for sync operations
+    
+    u32 reserved[3];       
 } mf_bin_header;
 
 // In-memory representation
@@ -74,9 +99,11 @@ typedef struct mf_program {
     
     uint8_t* builtin_ids;  // Array of mf_builtin_id per tensor
     uint8_t* builtin_axes; // Array of builtin axis per tensor
+    uint8_t* tensor_flags; // Array of tensor flags
 
     mf_bin_symbol* symbols;
     mf_task* tasks;
+    mf_bin_task_binding* bindings;
 } mf_program;
 
 #endif // MF_PROGRAM_H

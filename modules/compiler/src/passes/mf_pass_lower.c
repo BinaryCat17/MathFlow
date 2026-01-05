@@ -47,6 +47,9 @@ static void parse_const_tensor(const mf_json_value* val, const mf_json_value* no
                 shape[i] = (int32_t)j_shape->as.array.items[i].as.n;
             }
         }
+    } else if (val->type == MF_JSON_VAL_ARRAY) {
+        ndim = 1;
+        shape[0] = (int32_t)val->as.array.count;
     }
 
     mf_type_info_init_contiguous(info, dtype, shape, ndim);
@@ -74,6 +77,26 @@ static bool lower_node(const mf_json_value* node_val, mf_ir_node* ir_node, mf_ar
     // I need to read more of this file to find where parse_const_tensor is called.
 }
 
+static void _parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
+    if (!provider || provider[0] == '\0') {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+        return;
+    }
+
+    if (strncmp(provider, "host.index", 10) == 0) {
+        *out_builtin_id = MF_BUILTIN_INDEX;
+        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
+            *out_builtin_axis = (u8)atoi(provider + 11);
+        } else {
+            *out_builtin_axis = 0;
+        }
+    } else {
+        *out_builtin_id = MF_BUILTIN_NONE;
+        *out_builtin_axis = 0;
+    }
+}
+
 static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, const char* base_path, mf_arena* arena, mf_compiler_diag* diag) {
     if (!data) return true;
 
@@ -86,6 +109,7 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
             
             if (v_provider && v_provider->type == MF_JSON_VAL_STRING) {
                 dst->provider = mf_arena_strdup(arena, v_provider->as.s);
+                _parse_provider(dst->provider, &dst->builtin_id, &dst->builtin_axis);
             }
 
             if (dst->type == MF_NODE_INPUT && (!v_shape || v_shape->type != MF_JSON_VAL_ARRAY)) {

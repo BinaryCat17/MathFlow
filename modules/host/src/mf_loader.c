@@ -61,10 +61,17 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         offset += sizeof(mf_task) * head->task_count;
     }
 
+    prog->bindings = MF_ARENA_PUSH(arena, mf_bin_task_binding, head->binding_count);
+    if (head->binding_count > 0) {
+        memcpy(prog->bindings, data + offset, sizeof(mf_bin_task_binding) * head->binding_count);
+        offset += sizeof(mf_bin_task_binding) * head->binding_count;
+    }
+
     prog->tensor_infos = MF_ARENA_PUSH(arena, mf_type_info, head->tensor_count);
     prog->tensor_data = MF_ARENA_PUSH(arena, void*, head->tensor_count);
     prog->builtin_ids = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
     prog->builtin_axes = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
+    prog->tensor_flags = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
     
     for (u32 i = 0; i < head->tensor_count; ++i) {
         mf_bin_tensor_desc* desc = (mf_bin_tensor_desc*)(data + offset);
@@ -73,12 +80,14 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
         mf_type_info_init_contiguous(&prog->tensor_infos[i], (mf_dtype)desc->dtype, desc->shape, desc->ndim);
         prog->builtin_ids[i] = desc->builtin_id;
         prog->builtin_axes[i] = desc->builtin_axis;
+        prog->tensor_flags[i] = desc->flags;
     }
 
     size_t desc_start_offset = sizeof(mf_bin_header) + 
                                sizeof(mf_instruction) * head->instruction_count +
                                sizeof(mf_bin_symbol) * head->symbol_count +
-                               sizeof(mf_task) * head->task_count;
+                               sizeof(mf_task) * head->task_count +
+                               sizeof(mf_bin_task_binding) * head->binding_count;
 
     size_t data_start_offset = desc_start_offset + sizeof(mf_bin_tensor_desc) * head->tensor_count;
     offset = data_start_offset;
@@ -102,31 +111,9 @@ static mf_program* _load_binary(const char* path, mf_arena* arena) {
     return prog;
 }
 
-// --- Internal Helpers ---
-
-static void _parse_provider(const char* provider, u16* out_builtin_id, u8* out_builtin_axis) {
-    if (!provider || provider[0] == '\0') {
-        *out_builtin_id = MF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-        return;
-    }
-
-    if (strncmp(provider, "host.index", 10) == 0) {
-        *out_builtin_id = MF_BUILTIN_INDEX;
-        if (provider[10] == '.' && provider[11] >= '0' && provider[11] <= '9') {
-            *out_builtin_axis = (u8)atoi(provider + 11);
-        } else {
-            *out_builtin_axis = 0;
-        }
-    } else {
-        *out_builtin_id = MF_BUILTIN_NONE;
-        *out_builtin_axis = 0;
-    }
-}
-
 // --- Graph/Program Loading ---
 
-static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const mf_pipeline_kernel* ker, const mf_pipeline_desc* pipe) {
+static mf_program* load_prog_from_file(mf_arena* arena, const char* path) {
     const char* ext = mf_path_get_ext(path);
     if (strcmp(ext, "json") == 0) {
         mf_compiler_diag diag;
@@ -135,75 +122,8 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
         mf_graph_ir ir = {0};
         if (!mf_compile_load_json(path, &ir, arena, &diag)) return NULL;
         
-        // Build Contract from Manifest
-        mf_compile_contract contract = {0};
-        if (ker && pipe) {
-            contract.input_count = 0;
-            contract.output_count = 0;
-            
-            for (size_t n = 0; n < ir.node_count; ++n) {
-                mf_ir_node* node = &ir.nodes[n];
-                if (node->type != MF_NODE_INPUT && node->type != MF_NODE_OUTPUT) continue;
-                
-                bool in_manifest = false;
-                for (u32 b = 0; b < ker->binding_count; ++b) {
-                    if (strcmp(node->id, ker->bindings[b].kernel_port) == 0) {
-                        in_manifest = true; break;
-                    }
-                }
-                
-                if (in_manifest || node->provider) {
-                    if (node->type == MF_NODE_INPUT) contract.input_count++;
-                    else contract.output_count++;
-                }
-            }
-
-            contract.inputs = MF_ARENA_PUSH(arena, mf_compile_port, contract.input_count);
-            contract.outputs = MF_ARENA_PUSH(arena, mf_compile_port, contract.output_count);
-            
-            u32 in_idx = 0;
-            u32 out_idx = 0;
-
-            for (size_t n = 0; n < ir.node_count; ++n) {
-                mf_ir_node* node = &ir.nodes[n];
-                if (node->type != MF_NODE_INPUT && node->type != MF_NODE_OUTPUT) continue;
-
-                mf_pipeline_binding* bind = NULL;
-                for (u32 b = 0; b < ker->binding_count; ++b) {
-                    if (strcmp(node->id, ker->bindings[b].kernel_port) == 0) {
-                        bind = &ker->bindings[b]; break;
-                    }
-                }
-
-                if (!bind && !node->provider) continue;
-
-                mf_compile_port* cp = NULL;
-                if (node->type == MF_NODE_INPUT) cp = &contract.inputs[in_idx++];
-                else cp = &contract.outputs[out_idx++];
-
-                cp->name = node->id;
-                
-                if (bind) {
-                    for (u32 r = 0; r < pipe->resource_count; ++r) {
-                        if (strcmp(bind->global_resource, pipe->resources[r].name) == 0) {
-                            mf_pipeline_resource* pr = &pipe->resources[r];
-                            cp->dtype = pr->dtype;
-                            cp->ndim = pr->ndim;
-                            memcpy(cp->shape, pr->shape, sizeof(int32_t) * MF_MAX_DIMS);
-                            _parse_provider(pr->provider, &cp->builtin_id, &cp->builtin_axis);
-                            break;
-                        }
-                    }
-                } else if (node->provider) {
-                    _parse_provider(node->provider, &cp->builtin_id, &cp->builtin_axis);
-                    cp->dtype = node->const_info.dtype;
-                    cp->ndim = node->const_info.ndim;
-                    memcpy(cp->shape, node->const_info.shape, sizeof(int32_t) * MF_MAX_DIMS);
-                }
-            }
-        }
-
-        mf_program* prog = mf_compile(&ir, &contract, arena, &diag);
+        // Autonomous Compilation: Compiler uses metadata from JSON (or subgraphs)
+        mf_program* prog = mf_compile(&ir, arena, &diag);
         
         if (!prog && diag.has_error) {
             for (u32 e = 0; e < diag.error_count; ++e) {
@@ -219,55 +139,6 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
         return _load_binary(path, arena);
     }
     return NULL;
-}
-
-static void _synthesize_raw_pipeline(mf_arena* arena, mf_pipeline_desc* out_pipe, mf_program** programs) {
-    u32 total_ext = 0;
-    for (u32 k = 0; k < out_pipe->kernel_count; ++k) {
-        for (u32 s = 0; s < programs[k]->meta.symbol_count; ++s) {
-            if (programs[k]->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) {
-                total_ext++;
-            }
-        }
-    }
-
-    mf_pipeline_resource* res = MF_ARENA_PUSH(arena, mf_pipeline_resource, total_ext);
-    mf_pipeline_kernel* kernels_copy = MF_ARENA_PUSH(arena, mf_pipeline_kernel, out_pipe->kernel_count);
-    memcpy(kernels_copy, out_pipe->kernels, sizeof(mf_pipeline_kernel) * out_pipe->kernel_count);
-
-    u32 res_idx = 0;
-    for (u32 k = 0; k < out_pipe->kernel_count; ++k) {
-        mf_pipeline_kernel* pk = &kernels_copy[k];
-        
-        u32 k_ext = 0;
-        for (u32 s = 0; s < programs[k]->meta.symbol_count; ++s) {
-            if (programs[k]->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) k_ext++;
-        }
-        
-        pk->binding_count = 0;
-        pk->bindings = MF_ARENA_PUSH(arena, mf_pipeline_binding, k_ext);
-
-        for (u32 s = 0; s < programs[k]->meta.symbol_count; ++s) {
-            mf_bin_symbol* sym = &programs[k]->symbols[s];
-            if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
-
-            mf_type_info* info = &programs[k]->tensor_infos[sym->register_idx];
-            res[res_idx].name = strdup(sym->name);
-            res[res_idx].dtype = info->dtype;
-            res[res_idx].ndim = info->ndim;
-            res[res_idx].flags = (sym->flags & MF_SYMBOL_FLAG_INPUT) ? MF_RESOURCE_FLAG_READONLY : 0;
-            memcpy(res[res_idx].shape, info->shape, sizeof(int32_t) * MF_MAX_DIMS);
-
-            pk->bindings[pk->binding_count].kernel_port = strdup(sym->name);
-            pk->bindings[pk->binding_count].global_resource = strdup(sym->name);
-            pk->binding_count++;
-            res_idx++;
-        }
-    }
-
-    out_pipe->resource_count = total_ext;
-    out_pipe->resources = res;
-    out_pipe->kernels = kernels_copy;
 }
 
 // --- Manifest Parsing (.mfapp) ---
@@ -508,7 +379,7 @@ bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe) {
     mf_program** programs = malloc(sizeof(mf_program*) * pipe->kernel_count);
     
     for (u32 i = 0; i < pipe->kernel_count; ++i) {
-        programs[i] = load_prog_from_file(arena, pipe->kernels[i].graph_path, &pipe->kernels[i], pipe);
+        programs[i] = load_prog_from_file(arena, pipe->kernels[i].graph_path);
         if (!programs[i]) {
             MF_LOG_ERROR("Loader: Failed to load kernel program %s", pipe->kernels[i].graph_path);
             free(programs);
@@ -516,14 +387,48 @@ bool mf_loader_load_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe) {
         }
     }
 
+    // --- Automatic Resource Discovery (For Raw Graphs or Unspecified Resources) ---
     mf_pipeline_desc final_pipe = *pipe;
-    if (pipe->resource_count == 0 && pipe->kernel_count > 0) {
-        _synthesize_raw_pipeline(arena, &final_pipe, programs);
+    if (pipe->resource_count == 0) {
+        u32 discovery_count = 0;
+        for (u32 k = 0; k < pipe->kernel_count; ++k) {
+            discovery_count += programs[k]->meta.symbol_count;
+        }
+        
+        final_pipe.resources = calloc(discovery_count, sizeof(mf_pipeline_resource));
+        u32 actual_resources = 0;
+
+        for (u32 k = 0; k < pipe->kernel_count; ++k) {
+            mf_program* prog = programs[k];
+            for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
+                mf_bin_symbol* sym = &prog->symbols[s];
+                if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
+
+                // Check if already added
+                bool exists = false;
+                for (u32 r = 0; r < actual_resources; ++r) {
+                    if (strcmp(final_pipe.resources[r].name, sym->name) == 0) { exists = true; break; }
+                }
+                if (exists) continue;
+
+                mf_pipeline_resource* pr = &final_pipe.resources[actual_resources++];
+                pr->name = sym->name;
+                pr->dtype = prog->tensor_infos[sym->register_idx].dtype;
+                pr->ndim = prog->tensor_infos[sym->register_idx].ndim;
+                memcpy(pr->shape, prog->tensor_infos[sym->register_idx].shape, sizeof(int32_t) * MF_MAX_DIMS);
+                if (sym->provider[0]) pr->provider = sym->provider;
+            }
+        }
+        final_pipe.resource_count = actual_resources;
     }
 
     mf_engine_bind_pipeline(engine, &final_pipe, programs);
-    free(programs);
+    
+    if (pipe->resource_count == 0 && final_pipe.resources) {
+        free(final_pipe.resources);
+    }
 
+    free(programs);
     return true;
 }
 

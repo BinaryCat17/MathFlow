@@ -7,16 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char* _dtype_name(mf_dtype type) {
-    switch(type) {
-        case MF_DTYPE_F32: return "F32";
-        case MF_DTYPE_I32: return "I32";
-        case MF_DTYPE_U8:  return "U8";
-        case MF_DTYPE_UNKNOWN: return "Unknown";
-        default: return "Invalid";
-    }
-}
-
 static bool check_broadcast(mf_ir_node* node, const mf_type_info* a, const mf_type_info* b, mf_type_info* out, mf_compiler_diag* diag) {
     if (mf_shape_broadcast(a, b, out)) return true;
     char s_a[64], s_b[64];
@@ -26,31 +16,17 @@ static bool check_broadcast(mf_ir_node* node, const mf_type_info* a, const mf_ty
     return false;
 }
 
-static const mf_compile_port* find_port(const mf_compile_contract* contract, const char* name, bool is_input) {
-    if (!contract || !name) return NULL;
-    uint32_t count = is_input ? contract->input_count : contract->output_count;
-    mf_compile_port* ports = is_input ? contract->inputs : contract->outputs;
-    for (uint32_t i = 0; i < count; ++i) {
-        if (ports[i].name && strcmp(ports[i].name, name) == 0) return &ports[i];
-    }
-    return NULL;
-}
-
-bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, const mf_compile_contract* contract, mf_compiler_diag* diag) {
-    // 0. Pre-pass: Contract binding
+bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, mf_compiler_diag* diag) {
+    // 0. Pre-pass: Port & Constant Initialization
     for (size_t i = 0; i < count; ++i) {
         mf_ir_node* node = sorted_nodes[i];
+        
         if (node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
-            const mf_compile_port* cp = find_port(contract, node->id, (node->type == MF_NODE_INPUT));
-            if (cp) {
-                node->out_info.dtype = cp->dtype;
-                node->out_info.ndim = cp->ndim;
-                memcpy(node->out_info.shape, cp->shape, sizeof(int32_t) * MF_MAX_DIMS);
-                mf_shape_normalize(&node->out_info); // Normalize contract shapes
-                node->builtin_id = cp->builtin_id;
-                node->builtin_axis = cp->builtin_axis;
-            }
+            // Autonomous mode: use info already in node (from JSON or defaults)
+            node->out_info = node->const_info;
+            mf_shape_normalize(&node->out_info);
         }
+
         if (node->type == MF_NODE_CONST) {
             mf_shape_normalize(&node->const_info);
             node->out_info = node->const_info;

@@ -53,6 +53,12 @@ typedef enum {
     MF_ACCESS_SPECIAL,      // Handled by compiler (Const, Input, Call)
 } mf_access_pattern;
 
+typedef enum {
+    MF_STRATEGY_DEFAULT,         // Simple parallel execution
+    MF_STRATEGY_REDUCTION,       // Partial result per thread -> Final merge
+    MF_STRATEGY_TWO_PASS_SYNC,   // Two passes with a barrier (e.g. CumSum)
+} mf_dispatch_strategy;
+
 #include "mf_ops_db.inc"
 
 #endif // MF_OP_DEFS_H

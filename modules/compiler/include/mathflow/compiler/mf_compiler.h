@@ -29,7 +29,7 @@ void mf_compiler_diag_report(mf_compiler_diag* diag, mf_source_loc loc, const ch
 typedef enum {
     MF_NODE_UNKNOWN = 0,
     
-#define MF_OP(suffix, name, op_suffix, cat, in_mask, out_mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) MF_NODE_##suffix,
+#define MF_OP(suffix, name, op_suffix, cat, strat, in_mask, out_mask, out_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) MF_NODE_##suffix,
     MF_OP_LIST
 #undef MF_OP
 
@@ -40,6 +40,7 @@ typedef struct {
     const char* name;
     u16 opcode;
     mf_op_category category;
+    mf_dispatch_strategy strategy;
     u32 input_mask;
     u32 output_mask;
     mf_out_rule out_rule;
@@ -99,27 +100,11 @@ typedef struct {
 
 // --- Compiler Interface ---
 
-typedef struct {
-    const char* name;
-    mf_dtype dtype;
-    uint8_t ndim;
-    int32_t shape[MF_MAX_DIMS];
-    u16 builtin_id;      // mf_builtin_id
-    u8 builtin_axis;     // axis for index
-} mf_compile_port;
-
-typedef struct {
-    mf_compile_port* inputs;
-    uint32_t input_count;
-    mf_compile_port* outputs;
-    uint32_t output_count;
-} mf_compile_contract;
-
 // 1. Parse JSON -> IR
 bool mf_compile_load_json(const char* json_path, mf_graph_ir* out_ir, mf_arena* arena, mf_compiler_diag* diag);
 
-// 2. IR -> Program
-mf_program* mf_compile(mf_graph_ir* ir, const mf_compile_contract* contract, mf_arena* arena, mf_compiler_diag* diag);
+// 2. IR -> Program (Autonomous Compilation)
+mf_program* mf_compile(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag);
 
 // 3. Save Program
 bool mf_compile_save_program(const mf_program* prog, const char* path);

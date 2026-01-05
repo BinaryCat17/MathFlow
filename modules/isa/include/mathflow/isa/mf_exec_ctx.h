@@ -39,6 +39,7 @@ static inline const char* mf_exec_error_to_str(mf_exec_error err) {
 struct mf_exec_ctx {
     // Flat Execution Registry (Zero-Overhead Access)
     void* reg_ptrs[MF_MAX_REGISTERS];           // Base pointers for registers
+    int32_t reg_strides[MF_MAX_REGISTERS];      // Pre-calculated byte strides for current task
     mf_type_info reg_info[MF_MAX_REGISTERS];    // Metadata for registers
     
     // Optional allocator for temporary allocations during execution

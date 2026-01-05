@@ -29,6 +29,7 @@
         { "src": "check_price", "src_port": "out", "dst": "filter_logic", "dst_port": "b" },
         { "src": "filter_logic", "src_port": "out", "dst": "calc_final", "dst_port": "cond" },
         { "src": "calc_tax", "src_port": "out", "dst": "calc_final", "dst_port": "true" },
+        { "src": "threshold", "src_port": "out", "dst": "calc_final", "dst_port": "false" },
         { "src": "calc_final", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
     ]
 }

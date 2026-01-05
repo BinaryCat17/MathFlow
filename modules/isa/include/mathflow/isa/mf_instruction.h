@@ -20,10 +20,8 @@ typedef struct mf_instruction {
     u16 src3_idx;
     u16 src4_idx;
     
-    i32 strides[8]; // [0]=dest, [1..7]=sources
-    
-    u32 line;
-    u32 column;
+    u16 line;
+    u16 column;
 } mf_instruction;
 
 #endif // MF_INSTRUCTION_H

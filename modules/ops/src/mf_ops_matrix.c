@@ -15,9 +15,9 @@ void op_MATMUL(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const int32_t K = a_info->shape[a_info->ndim - 1];
     const int32_t N = b_info->shape[b_info->ndim - 1];
 
-    f32* base_a = (f32*)ctx->reg_ptrs[inst->src1_idx];
-    f32* base_b = (f32*)ctx->reg_ptrs[inst->src2_idx];
-    f32* base_c = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    u8* base_a = (u8*)ctx->reg_ptrs[inst->src1_idx];
+    u8* base_b = (u8*)ctx->reg_ptrs[inst->src2_idx];
+    u8* base_c = (u8*)ctx->reg_ptrs[inst->dest_idx];
 
     const i32 st_batch_a = MF_GET_STRIDE_S1(inst);
     const i32 st_batch_b = MF_GET_STRIDE_S2(inst);
@@ -33,9 +33,9 @@ void op_MATMUL(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     const size_t batch_size = ctx->batch_size;
 
     for (size_t b = 0; b < batch_size; ++b) {
-        f32* curr_a = base_a + b * st_batch_a;
-        f32* curr_b = base_b + b * st_batch_b;
-        f32* curr_c = base_c + b * st_batch_c;
+        f32* curr_a = (f32*)(base_a + b * st_batch_a);
+        f32* curr_b = (f32*)(base_b + b * st_batch_b);
+        f32* curr_c = (f32*)(base_c + b * st_batch_c);
 
         for (int32_t r = 0; r < M; r++) {
             for (int32_t c = 0; c < N; c++) { 
@@ -106,11 +106,11 @@ void op_JOIN(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     
     size_t sz_a = ctx->batch_size;
     
-    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
-    f32* a_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
-    f32* b_ptr = (f32*)ctx->reg_ptrs[inst->src2_idx];
-    f32* c_ptr = (components >= 3) ? (f32*)ctx->reg_ptrs[inst->src3_idx] : NULL;
-    f32* d_in_ptr = (components >= 4) ? (f32*)ctx->reg_ptrs[inst->src4_idx] : NULL;
+    u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
+    u8* a_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
+    u8* b_ptr = (u8*)ctx->reg_ptrs[inst->src2_idx];
+    u8* c_ptr = (components >= 3) ? (u8*)ctx->reg_ptrs[inst->src3_idx] : NULL;
+    u8* d_in_ptr = (components >= 4) ? (u8*)ctx->reg_ptrs[inst->src4_idx] : NULL;
 
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
@@ -119,10 +119,10 @@ void op_JOIN(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     i32 st4 = MF_GET_STRIDE_S4(inst);
 
     for (size_t i = 0; i < sz_a; ++i) {
-        d_ptr[0] = *a_ptr;
-        d_ptr[1] = *b_ptr;
-        if (components >= 3) d_ptr[2] = *c_ptr;
-        if (components >= 4) d_ptr[3] = *d_in_ptr;
+        ((f32*)d_ptr)[0] = *(f32*)a_ptr;
+        ((f32*)d_ptr)[1] = *(f32*)b_ptr;
+        if (components >= 3) ((f32*)d_ptr)[2] = *(f32*)c_ptr;
+        if (components >= 4) ((f32*)d_ptr)[3] = *(f32*)d_in_ptr;
 
         a_ptr += st1;
         b_ptr += st2;

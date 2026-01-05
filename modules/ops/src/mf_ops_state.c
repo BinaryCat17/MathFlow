@@ -13,8 +13,8 @@ void op_COPY(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     u8* s_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
     u8* d_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
 
-    i32 st0 = MF_GET_STRIDE_D(inst) * (i32)esize;
-    i32 st1 = MF_GET_STRIDE_S1(inst) * (i32)esize;
+    i32 st0 = MF_GET_STRIDE_D(inst);
+    i32 st1 = MF_GET_STRIDE_S1(inst);
 
     for(size_t i=0; i<sz; ++i) {
         memcpy(d_ptr, s_ptr, esize);

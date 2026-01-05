@@ -15,43 +15,40 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf
     state->register_count = prog->meta.tensor_count;
     state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
     state->ownership_flags = MF_ARENA_PUSH(arena, uint8_t, state->register_count);
-    state->providers = MF_ARENA_PUSH(arena, const char*, state->register_count);
     
-    if (!state->registers || !state->ownership_flags || !state->providers) {
+    if (!state->registers || !state->ownership_flags) {
         MF_LOG_ERROR("Engine: Failed to allocate state registers for program.");
         return;
     }
     
     memset(state->ownership_flags, 0, state->register_count);
-    memset(state->providers, 0, sizeof(const char*) * state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
-        // ... (existing tensor init logic)
         mf_type_info* info_prog = &prog->tensor_infos[i];
         void* data_prog = prog->tensor_data[i];
         mf_tensor* t_reg = &state->registers[i];
+        uint8_t flags = prog->tensor_flags[i];
         
+        t_reg->info = *info_prog;
+        t_reg->byte_offset = 0;
+        t_reg->buffer = NULL;
+
         if (data_prog) {
-            t_reg->info = *info_prog;
-            t_reg->byte_offset = 0;
-            t_reg->buffer = MF_ARENA_PUSH(arena, mf_buffer, 1);
+            t_reg->buffer = state->allocator->alloc(state->allocator, sizeof(mf_buffer));
             mf_buffer_init_view(t_reg->buffer, data_prog, mf_shape_calc_bytes(info_prog->dtype, info_prog->shape, info_prog->ndim));
+            state->ownership_flags[i] = 1; // Mark for cleanup
         } else {
-            t_reg->info = *info_prog;
-            bool is_external = false;
-            if (prog->symbols) {
-                for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
-                    if (prog->symbols[s].register_idx == i) {
-                        if (prog->symbols[s].flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT)) is_external = true;
-                        break;
-                    }
-                }
-            }
-            if (!is_external) {
+            if (!(flags & MF_TENSOR_FLAG_ALIAS) && !(flags & MF_TENSOR_FLAG_GENERATOR)) {
                 bool is_static = true;
                 for (int d = 0; d < t_reg->info.ndim; ++d) if (t_reg->info.shape[d] < 0) { is_static = false; break; }
-                if (is_static && t_reg->info.ndim > 0) {
-                    if (mf_tensor_alloc(t_reg, state->allocator, &t_reg->info)) state->ownership_flags[i] = 1;
+                if (is_static) {
+                    t_reg->buffer = state->allocator->alloc(state->allocator, sizeof(mf_buffer));
+                    if (mf_tensor_alloc(t_reg, state->allocator, &t_reg->info)) {
+                        state->ownership_flags[i] = 1;
+                    } else {
+                        state->allocator->free(state->allocator, t_reg->buffer);
+                        t_reg->buffer = NULL;
+                    }
                 }
             }
         }
@@ -212,7 +209,6 @@ void mf_engine_dispatch(mf_engine* engine) {
             t->buffer = (bind->flags & MF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
             t->byte_offset = 0;
             t->info = res->desc.info; // Sync metadata
-            ker->state.providers[bind->local_reg] = res->provider;
 
             MF_LOG_TRACE("  Binding: Reg %u -> Resource '%s' (Provider: %s, Buffer: %p, Size: %zu)", 
                 bind->local_reg, res->name, res->provider ? res->provider : "NONE", (void*)t->buffer->data, t->buffer->size_bytes);

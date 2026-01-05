@@ -9,7 +9,7 @@ static bool op_metadata_initialized = false;
 static void init_op_metadata() {
     if (op_metadata_initialized) return;
 
-#define MF_OP(suffix, op_name, op_suffix, cat, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) \
+#define MF_OP(suffix, op_name, op_suffix, cat, strategy, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kernel, karity) \
     if ((int)MF_OP_##op_suffix < MF_OP_LIMIT) { \
         OP_METADATA[(int)MF_OP_##op_suffix].name = op_name; \
         OP_METADATA[(int)MF_OP_##op_suffix].ports[0] = p1; \

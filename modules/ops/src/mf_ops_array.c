@@ -9,8 +9,8 @@
 // --- Op: CumSum (Prefix Sum) ---
 void op_CUMSUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     size_t count = ctx->batch_size;
-    f32* src_ptr = (f32*)ctx->reg_ptrs[inst->src1_idx];
-    f32* dst_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    u8* src_ptr = (u8*)ctx->reg_ptrs[inst->src1_idx];
+    u8* dst_ptr = (u8*)ctx->reg_ptrs[inst->dest_idx];
 
     i32 st0 = MF_GET_STRIDE_D(inst);
     i32 st1 = MF_GET_STRIDE_S1(inst);
@@ -19,8 +19,8 @@ void op_CUMSUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         // Pass 0: Local Scan + Reporting chunk total
         f32 sum = 0.0f;
         for (size_t i = 0; i < count; ++i) {
-            sum += *src_ptr;
-            *dst_ptr = sum;
+            sum += *(f32*)src_ptr;
+            *(f32*)dst_ptr = sum;
             src_ptr += st1;
             dst_ptr += st0;
         }
@@ -32,7 +32,7 @@ void op_CUMSUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         if (offset == 0.0f) return; // Nothing to add
 
         for (size_t i = 0; i < count; ++i) {
-            *dst_ptr += offset;
+            *(f32*)dst_ptr += offset;
             dst_ptr += st0;
         }
     }
@@ -40,8 +40,8 @@ void op_CUMSUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         // Fallback: Sequential (if no sync context)
         f32 sum = 0.0f;
         for (size_t i = 0; i < count; ++i) {
-            sum += *src_ptr;
-            *dst_ptr = sum;
+            sum += *(f32*)src_ptr;
+            *(f32*)dst_ptr = sum;
             src_ptr += st1;
             dst_ptr += st0;
         }
@@ -85,13 +85,11 @@ void op_GATHER(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
         int idx = -1;
         if (idx_info->dtype == MF_DTYPE_F32) {
             idx = (int)(*(f32*)idx_ptr);
-            idx_ptr += st_idx * sizeof(f32);
         } else {
             idx = *(i32*)idx_ptr;
-            idx_ptr += st_idx * sizeof(i32);
         }
 
-        u8* target = dst_ptr + (i * st_dst * elem_size);
+        u8* target = dst_ptr;
         if (idx >= 0 && (size_t)idx < data_count) {
             void* src_item_ptr = NULL;
             if (is_contiguous) {
@@ -115,5 +113,7 @@ void op_GATHER(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
                              idx, i, data_count);
             }
         }
+        dst_ptr += st_dst;
+        idx_ptr += st_idx;
     }
 }

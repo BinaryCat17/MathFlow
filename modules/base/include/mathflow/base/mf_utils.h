@@ -25,6 +25,9 @@ const char* mf_path_get_ext(const char* path);
 // Join directory and file (handling separators)
 char* mf_path_join(const char* dir, const char* file, mf_arena* arena);
 
+// Parse provider string (e.g. "host.index.0") into builtin ID and axis
+void mf_provider_parse(const char* provider, u16* out_builtin_id, u8* out_builtin_axis);
+
 // Check if file exists
 bool mf_file_exists(const char* path);
 
