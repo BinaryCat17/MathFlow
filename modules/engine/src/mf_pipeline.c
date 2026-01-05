@@ -29,10 +29,11 @@ static void _setup_resource_inst(mf_resource_inst* res, const char* name, const 
     res->name_hash = mf_fnv1a_hash(res->name);
     res->provider = provider ? mf_arena_strdup(arena, provider) : NULL;
     res->flags = flags;
+    
     memset(&res->desc, 0, sizeof(mf_tensor));
     res->desc.info.dtype = dtype;
     res->desc.info.ndim = ndim;
-    if (ndim > 0) memcpy(res->desc.info.shape, shape, sizeof(int32_t) * ndim);
+    if (ndim > 0 && shape) memcpy(res->desc.info.shape, shape, sizeof(int32_t) * ndim);
     mf_shape_calc_strides(&res->desc.info);
     
     res->size_bytes = mf_tensor_size_bytes(&res->desc);
@@ -43,10 +44,12 @@ static void analyze_transience(mf_engine* engine) {
     for (u32 r_idx = 0; r_idx < engine->resource_count; ++r_idx) {
         mf_resource_inst* res = &engine->resources[r_idx];
         if (res->flags & (MF_RESOURCE_FLAG_PERSISTENT | MF_RESOURCE_FLAG_TRANSIENT)) continue;
+        
         bool read_before_write = false, write_happened = false;
         for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
             mf_kernel_inst* ker = &engine->kernels[k_idx];
             bool k_reads = false, k_writes = false;
+            
             for (u32 b = 0; b < ker->binding_count; ++b) {
                 if (ker->bindings[b].global_res == r_idx) {
                     if (ker->bindings[b].flags & MF_SYMBOL_FLAG_INPUT) k_reads = true;
@@ -73,14 +76,19 @@ static void allocate_resources(mf_engine* engine) {
         res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
         if (res->size_bytes > 0) {
             mf_buffer_alloc(res->buffers[0], alloc, res->size_bytes);
-        } else memset(res->buffers[0], 0, sizeof(mf_buffer));
+        } else {
+            memset(res->buffers[0], 0, sizeof(mf_buffer));
+        }
 
-        if (trans) res->buffers[1] = res->buffers[0];
-        else {
+        if (trans) {
+            res->buffers[1] = res->buffers[0];
+        } else {
             res->buffers[1] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
             if (res->size_bytes > 0) {
                 mf_buffer_alloc(res->buffers[1], alloc, res->size_bytes);
-            } else memset(res->buffers[1], 0, sizeof(mf_buffer));
+            } else {
+                memset(res->buffers[1], 0, sizeof(mf_buffer));
+            }
         }
     }
 }
@@ -95,10 +103,22 @@ static void apply_initial_data(mf_engine* engine) {
                 mf_resource_inst* res = &engine->resources[bind->global_res];
                 if (res->size_bytes > 0 && res->buffers[0]->data) {
                     memcpy(res->buffers[0]->data, data, res->size_bytes);
-                    if (res->buffers[1] != res->buffers[0]) memcpy(res->buffers[1]->data, data, res->size_bytes);
+                    if (res->buffers[1] != res->buffers[0]) {
+                        memcpy(res->buffers[1]->data, data, res->size_bytes);
+                    }
                 }
             }
         }
+    }
+}
+
+static void mf_engine_finalize_setup(mf_engine* engine) {
+    analyze_transience(engine);
+    allocate_resources(engine);
+    apply_initial_data(engine);
+
+    for (u32 k = 0; k < engine->kernel_count; ++k) {
+        mf_state_reset(&engine->kernels[k].state, engine->kernels[k].program, &engine->arena, &engine->backend);
     }
 }
 
@@ -158,13 +178,7 @@ void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const ch
         }
     }
 
-    analyze_transience(engine);
-    allocate_resources(engine);
-    apply_initial_data(engine);
-
-    for (u32 k = 0; k < count; ++k) {
-        mf_state_reset(&engine->kernels[k].state, engine->kernels[k].program, &engine->arena, &engine->backend);
-    }
+    mf_engine_finalize_setup(engine);
 }
 
 void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs) {
@@ -218,11 +232,5 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         }
     }
 
-    analyze_transience(engine);
-    allocate_resources(engine);
-    apply_initial_data(engine);
-
-    for (u32 k = 0; k < pipe->kernel_count; ++k) {
-        mf_state_reset(&engine->kernels[k].state, engine->kernels[k].program, &engine->arena, &engine->backend);
-    }
+    mf_engine_finalize_setup(engine);
 }

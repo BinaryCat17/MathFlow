@@ -18,14 +18,6 @@ typedef struct {
 } mf_kernel_binding;
 
 /**
- * @brief Relationship for automatic resizing (e.g. Out follows In).
- */
-typedef struct {
-    u16 src_res_idx;
-    u16 dst_res_idx;
-} mf_auto_resize_task;
-
-/**
  * @brief Runtime instance of a Kernel (Program + State).
  */
 typedef struct {
@@ -37,9 +29,6 @@ typedef struct {
     
     mf_kernel_binding* bindings;
     u32                binding_count;
-
-    mf_auto_resize_task* resize_tasks;
-    u32                  resize_task_count;
 } mf_kernel_inst;
 
 /**

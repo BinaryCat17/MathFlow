@@ -12,12 +12,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         if (sorted[i]->out_reg_idx > max_reg) max_reg = sorted[i]->out_reg_idx;
     }
 
-    u32 extra_tensor_count = 0;
-    for (size_t i = 0; i < ir->node_count; ++i) {
-        if (ir->nodes[i].type == MF_NODE_SIZE) extra_tensor_count++;
-    }
-
-    prog->meta.tensor_count = (u32)max_reg + 1 + extra_tensor_count; 
+    prog->meta.tensor_count = (u32)max_reg + 1; 
     
     u32 symbol_count = 0;
     for (size_t i = 0; i < ir->node_count; ++i) {
@@ -46,14 +41,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
     
     mf_bin_task_binding* bindings = MF_ARENA_PUSH(arena, mf_bin_task_binding, ir->node_count * 10);
     u32 total_binding_count = 0;
-
-    typedef struct {
-        u16 reg_idx;
-        i32 byte_stride;
-        bool is_reduction;
-    } temp_binding;
-    temp_binding current_bindings[MF_MAX_REGISTERS];
-    u32 current_binding_count = 0;
 
     size_t instr_count = 0;
     u32 task_count = 0;
@@ -88,23 +75,10 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             }
         }
 
-        // --- 2. Register Metadata (with Inflation) ---
+        // --- 2. Register Metadata ---
         mf_type_info* t_info = &prog->tensor_infos[r_idx];
-        size_t node_elements = mf_shape_calc_count(node->out_info.shape, node->out_info.ndim);
-        if (node->is_spatial) {
-            u32 dom_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
-            size_t task_cnt = mf_shape_calc_count(ir->nodes[dom_idx].out_info.shape, ir->nodes[dom_idx].out_info.ndim);
-            if (task_cnt > node_elements) node_elements = task_cnt;
-        }
-
-        size_t current_elements = mf_shape_calc_count(t_info->shape, t_info->ndim);
-        if (t_info->ndim == 0 || node_elements > current_elements) {
+        if (t_info->ndim == 0) {
             *t_info = node->out_info;
-            if (node->is_spatial && node_elements > mf_shape_calc_count(node->out_info.shape, node->out_info.ndim)) {
-                t_info->ndim = 1;
-                t_info->shape[0] = (int32_t)node_elements;
-                mf_shape_calc_strides(t_info);
-            }
         }
 
         if (node->builtin_id != MF_BUILTIN_NONE) {
@@ -126,13 +100,7 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
         uint32_t start_instr_idx = (uint32_t)instr_count;
         bool emitted = false;
 
-        if (node->type == MF_NODE_SIZE && inputs[0]) {
-            prog->tensor_infos[r_idx] = (mf_type_info){MF_DTYPE_F32, 0, {1}, {0}};
-            f32* count_data = MF_ARENA_PUSH(arena, f32, 1);
-            *count_data = (f32)mf_shape_calc_count(inputs[0]->out_info.shape, inputs[0]->out_info.ndim);
-            prog->tensor_data[r_idx] = count_data;
-            prog->tensor_flags[r_idx] |= MF_TENSOR_FLAG_CONSTANT;
-        } else if (meta->category != MF_OP_CAT_SPECIAL || node->type == MF_NODE_COPY || node->type == MF_NODE_INPUT || node->type == MF_NODE_OUTPUT) {
+        if (meta->category != MF_OP_CAT_SPECIAL || node->type == MF_NODE_COPY || node->type == MF_NODE_OUTPUT) {
             mf_instruction* inst = &instrs[instr_count++];
             memset(inst, 0, sizeof(mf_instruction));
             inst->dest_idx = r_idx;
@@ -160,15 +128,6 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
             if (needs_split && task_count > 0) {
                 mf_task* prev_task = &tasks[task_count - 1];
                 prev_task->inst_count = start_instr_idx - prev_task->start_inst;
-                prev_task->binding_offset = total_binding_count;
-                prev_task->binding_count = current_binding_count;
-                for (u32 b = 0; b < current_binding_count; ++b) {
-                    bindings[total_binding_count].reg_idx = current_bindings[b].reg_idx;
-                    bindings[total_binding_count].byte_stride = current_bindings[b].byte_stride;
-                    bindings[total_binding_count].flags = current_bindings[b].is_reduction ? MF_BINDING_FLAG_REDUCTION : 0;
-                    total_binding_count++;
-                }
-                current_binding_count = 0;
             }
 
             if (needs_split || task_count == 0) {
@@ -176,6 +135,8 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                 tasks[task_count].strategy = meta->strategy;
                 u32 dom_node_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
                 tasks[task_count].domain_reg = ir->nodes[dom_node_idx].out_reg_idx;
+                tasks[task_count].binding_offset = total_binding_count;
+                tasks[task_count].binding_count = 0;
                 current_domain_node_idx = node->domain_node_idx;
                 current_strategy = meta->strategy;
                 task_count++;
@@ -187,38 +148,30 @@ bool mf_codegen_emit(mf_program* prog, mf_graph_ir* ir, mf_ir_node** sorted, siz
                            inputs[2] ? inputs[2]->out_reg_idx : 0,
                            inputs[3] ? inputs[3]->out_reg_idx : 0 };
             
+            mf_task* curr_task = &tasks[task_count - 1];
             for (int k = 0; k < 5; ++k) {
                 if (k > 0 && !inputs[k-1]) continue;
                 u16 r = ops[k];
-                i32 b_stride = node->strides[k] * (i32)mf_dtype_size(prog->tensor_infos[r].dtype);
                 bool found = false;
-                for (u32 b = 0; b < current_binding_count; ++b) {
-                    if (current_bindings[b].reg_idx == r) {
-                        if (is_reduction && k == 0) current_bindings[b].is_reduction = true;
+                for (u32 b = 0; b < curr_task->binding_count; ++b) {
+                    if (bindings[curr_task->binding_offset + b].reg_idx == r) {
+                        if (is_reduction && k == 0) bindings[curr_task->binding_offset + b].flags |= MF_BINDING_FLAG_REDUCTION;
                         found = true; break;
                     }
                 }
                 if (!found) {
-                    current_bindings[current_binding_count].reg_idx = r;
-                    current_bindings[current_binding_count].byte_stride = b_stride;
-                    current_bindings[current_binding_count].is_reduction = (is_reduction && k == 0);
-                    current_binding_count++;
+                    mf_bin_task_binding* b = &bindings[total_binding_count++];
+                    b->reg_idx = r;
+                    b->byte_stride = 0; // Filled by backend or during serialization
+                    b->flags = (is_reduction && k == 0) ? MF_BINDING_FLAG_REDUCTION : 0;
+                    curr_task->binding_count++;
                 }
             }
         }
     }
 
     if (task_count > 0) {
-        mf_task* last_task = &tasks[task_count - 1];
-        last_task->inst_count = (u32)instr_count - last_task->start_inst;
-        last_task->binding_offset = total_binding_count;
-        last_task->binding_count = current_binding_count;
-        for (u32 b = 0; b < current_binding_count; ++b) {
-            bindings[total_binding_count].reg_idx = current_bindings[b].reg_idx;
-            bindings[total_binding_count].byte_stride = current_bindings[b].byte_stride;
-            bindings[total_binding_count].flags = current_bindings[b].is_reduction ? MF_BINDING_FLAG_REDUCTION : 0;
-            total_binding_count++;
-        }
+        tasks[task_count - 1].inst_count = (u32)instr_count - tasks[task_count - 1].start_inst;
     }
         
     prog->code = instrs;

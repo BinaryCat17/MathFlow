@@ -5,33 +5,6 @@
 #include <string.h>
 #include <stdlib.h>
 
-// --- Internal Manifest Parser ---
-
-static void _parse_window_settings(const mf_json_value* root, mf_graph_ir* out_ir) {
-    const mf_json_value* window = mf_json_get_field(root, "window");
-    if (!window || window->type != MF_JSON_VAL_OBJECT) return;
-
-    const mf_json_value* title = mf_json_get_field(window, "title");
-    if (title && title->type == MF_JSON_VAL_STRING) {
-        strncpy(out_ir->app_title, title->as.s, MF_MAX_TITLE_NAME - 1);
-    }
-
-    const mf_json_value* w = mf_json_get_field(window, "width");
-    if (w && w->type == MF_JSON_VAL_NUMBER) out_ir->window_width = (u32)w->as.n;
-
-    const mf_json_value* h = mf_json_get_field(window, "height");
-    if (h && h->type == MF_JSON_VAL_NUMBER) out_ir->window_height = (u32)h->as.n;
-
-    const mf_json_value* resizable = mf_json_get_field(window, "resizable");
-    if (resizable && resizable->type == MF_JSON_VAL_BOOL) out_ir->resizable = resizable->as.b;
-
-    const mf_json_value* vsync = mf_json_get_field(window, "vsync");
-    if (vsync && vsync->type == MF_JSON_VAL_BOOL) out_ir->vsync = vsync->as.b;
-
-    const mf_json_value* fullscreen = mf_json_get_field(window, "fullscreen");
-    if (fullscreen && fullscreen->type == MF_JSON_VAL_BOOL) out_ir->fullscreen = fullscreen->as.b;
-}
-
 bool mf_compiler_load_manifest(const char* path, mf_compiler_manifest* out_manifest, mf_arena* arena) {
     if (!path || !out_manifest) return false;
     memset(out_manifest, 0, sizeof(mf_compiler_manifest));
@@ -42,7 +15,7 @@ bool mf_compiler_load_manifest(const char* path, mf_compiler_manifest* out_manif
     mf_json_value* root = mf_json_parse(json_str, arena);
     if (!root || root->type != MF_JSON_VAL_OBJECT) return false;
 
-    _parse_window_settings(root, &out_manifest->app_ir);
+    mf_ir_parse_window_settings(root, &out_manifest->app_ir);
     char* base_dir = mf_path_get_dir(path, arena);
 
     // 1. Kernels
@@ -73,6 +46,17 @@ bool mf_compiler_load_manifest(const char* path, mf_compiler_manifest* out_manif
                 out_manifest->kernels[i].id = id ? id->as.s : "kernel";
                 out_manifest->kernels[i].path = entry ? mf_path_join(base_dir, entry->as.s, arena) : NULL;
             }
+        }
+    }
+
+    // Case C: Raw Graph (no pipeline/runtime, but has nodes)
+    if (out_manifest->kernel_count == 0) {
+        const mf_json_value* nodes = mf_json_get_field(root, "nodes");
+        if (nodes && nodes->type == MF_JSON_VAL_ARRAY) {
+            out_manifest->kernel_count = 1;
+            out_manifest->kernels = MF_ARENA_PUSH(arena, mf_compiler_kernel_desc, 1);
+            out_manifest->kernels[0].id = "main";
+            out_manifest->kernels[0].path = mf_arena_strdup(arena, path);
         }
     }
 

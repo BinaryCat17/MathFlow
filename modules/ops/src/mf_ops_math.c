@@ -164,3 +164,14 @@ void op_SUM(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
     f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
     *d_ptr = sum;
 }
+
+void op_SIZE(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
+    const mf_type_info* src_info = &ctx->reg_info[inst->src1_idx];
+    size_t count = 1;
+    for (int i = 0; i < src_info->ndim; ++i) {
+        count *= (src_info->shape[i] > 0 ? (size_t)src_info->shape[i] : 1);
+    }
+    
+    f32* d_ptr = (f32*)ctx->reg_ptrs[inst->dest_idx];
+    *d_ptr = (f32)count;
+}

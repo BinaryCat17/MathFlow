@@ -65,8 +65,26 @@ bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_com
                 // Can reuse if register becomes free at or before current instruction
                 // AND it's not a persistent register.
                 if (reg_free_at[r] <= (u32)i) {
-                    found_reg = r;
-                    break;
+                    // SAFETY CHECK: Does the new node fit in the existing register's "type profile"?
+                    // To be safe, we only reuse if dtype and element count match,
+                    // OR if the register was only used for compatible types.
+                    // Since we only store ONE type info per register in the binary,
+                    // we MUST NOT reuse for different dtypes.
+                    
+                    bool compatible = true;
+                    for (u32 j = 0; j < i; ++j) {
+                        if (sorted[j]->out_reg_idx == r) {
+                            if (sorted[j]->out_info.dtype != node->out_info.dtype) { compatible = false; break; }
+                            size_t old_cnt = mf_shape_calc_count(sorted[j]->out_info.shape, sorted[j]->out_info.ndim);
+                            size_t new_cnt = mf_shape_calc_count(node->out_info.shape, node->out_info.ndim);
+                            if (old_cnt != new_cnt) { compatible = false; break; }
+                        }
+                    }
+
+                    if (compatible) {
+                        found_reg = r;
+                        break;
+                    }
                 }
             }
 

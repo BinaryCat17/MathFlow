@@ -149,18 +149,7 @@ void mf_engine_dispatch(mf_engine* engine) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
         if (mf_atomic_load(&engine->error_code) != 0) break;
         
-        // 1. Auto-Resize
-        for (u32 i = 0; i < ker->resize_task_count; ++i) {
-            mf_resource_inst* res_in = &engine->resources[ker->resize_tasks[i].src_res_idx];
-            mf_resource_inst* res_out = &engine->resources[ker->resize_tasks[i].dst_res_idx];
-            if (!mf_tensor_same_shape(&res_in->desc, &res_out->desc)) {
-                if (res_in->desc.buffer && res_in->desc.buffer->data) {
-                    mf_engine_resize_resource(engine, res_out->name, res_in->desc.info.shape, res_in->desc.info.ndim);
-                }
-            }
-        }
-
-        // 2. Resource Binding
+        // 1. Resource Binding
         for (u32 b = 0; b < ker->binding_count; ++b) {
             mf_kernel_binding* bind = &ker->bindings[b];
             mf_resource_inst* res = &engine->resources[bind->global_res];

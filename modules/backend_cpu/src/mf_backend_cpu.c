@@ -193,6 +193,7 @@ static inline void mf_cpu_exec(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* ba
 
         u32 inst_idx = batch->start_inst + i;
         const mf_instruction* inst = &batch->program->code[inst_idx];
+        
         mf_op_func op = batch->op_table[inst->opcode];
         if (op) {
             op(ctx, inst);
@@ -239,16 +240,27 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         u16 i = bind->reg_idx;
         
         ctx->reg_info[i] = prog->tensor_infos[i];
-        ctx->reg_strides[i] = bind->byte_stride;
+        
+        // For dynamic resources (aliased), we must update the info to match the bound resource
+        mf_tensor* t = &batch->main_state->registers[i];
+        uint8_t flags = prog->tensor_flags[i];
+        
+        if (flags & MF_TENSOR_FLAG_ALIAS) {
+            ctx->reg_info[i] = t->info;
+        }
+
+        // DYNAMIC STRIDE CALCULATION
+        // The baked bind->byte_stride is only valid if shapes haven't changed.
+        // We recalculate it based on current info and batch total elements.
+        size_t reg_elements = mf_shape_calc_count(ctx->reg_info[i].shape, ctx->reg_info[i].ndim);
+        i32 elem_stride = mf_shape_calc_linear_stride(reg_elements, batch->total_elements);
+        ctx->reg_strides[i] = elem_stride * (i32)mf_dtype_size(ctx->reg_info[i].dtype);
 
         if (batch->reduction_scratch && (bind->flags & MF_BINDING_FLAG_REDUCTION)) {
             ctx->reg_ptrs[i] = &batch->reduction_scratch[tid * batch->reduction_scratch_per_thread + i];
             ctx->reg_strides[i] = 0;
             continue;
         }
-
-        mf_tensor* t = &batch->main_state->registers[i];
-        uint8_t flags = prog->tensor_flags[i];
 
         if (flags & MF_TENSOR_FLAG_GENERATOR) {
             mf_builtin_id bid = (mf_builtin_id)prog->builtin_ids[i];
@@ -265,11 +277,11 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
         } else {
             // Buffer-based (Symbol, Constant, or Scratch)
             if (t->buffer && t->buffer->data) {
-                ctx->reg_ptrs[i] = (u8*)t->buffer->data + t->byte_offset + (start_idx * bind->byte_stride);
+                ctx->reg_ptrs[i] = (u8*)t->buffer->data + t->byte_offset + (start_idx * ctx->reg_strides[i]);
             } else {
                 ctx->reg_ptrs[i] = NULL;
                 if (ctx->error == MF_ERROR_NONE) {
-                    MF_LOG_ERROR("Backend: Reg %u has NULL buffer data (Flags: 0x%X)", i, flags);
+                    MF_LOG_ERROR("Backend: Reg %u (%s) has NULL buffer data (Flags: 0x%X)", i, find_reg_name(prog, i), flags);
                     ctx->error = MF_ERROR_RUNTIME;
                 }
             }
@@ -305,6 +317,7 @@ static void cpu_worker_job(u32 job_idx, void* thread_local_data, void* user_data
         }
     } else {
         state->ctx.tile_offset[0] = (u32)start_idx;
+        for (int i = 1; i < MF_MAX_DIMS; ++i) state->ctx.tile_offset[i] = 0;
     }
     
     for(int d=0; d<batch->ndim; ++d) state->ctx.domain_shape[d] = batch->domain_shape[d];
@@ -363,7 +376,6 @@ static void mf_backend_cpu_free_baked(void* backend_state, void* baked_data) {
 }
 
 static void mf_backend_cpu_dispatch(void* backend_state, const struct mf_program* program, struct mf_state* main_state, const mf_tensor* domain, uint32_t start_inst, uint32_t inst_count) {
-    (void)start_inst; (void)inst_count;
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
     mf_cpu_baked_kernel* baked = (mf_cpu_baked_kernel*)main_state->baked_data;
     if (!domain || !baked) return;
@@ -377,29 +389,48 @@ static void mf_backend_cpu_dispatch(void* backend_state, const struct mf_program
     };
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
     
-    if (batch.reduction_scratch) memset(batch.reduction_scratch, 0, baked->reduction_scratch_size * sizeof(f32));
+    // Find the task that matches this instruction range
+    const mf_task* target_task = NULL;
     for (u32 s = 0; s < program->meta.task_count; ++s) {
-        const mf_task* task = &program->tasks[s];
-        if (task->strategy == MF_STRATEGY_TWO_PASS_SYNC) {
-            u32 total_jobs = (u32)((batch.total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
-            f32* sync_ptr = baked->sync_scratch;
-            if (total_jobs > baked->sync_scratch_size) sync_ptr = calloc(total_jobs, sizeof(f32));
-            batch.sync_pass = 0; batch.sync_data = sync_ptr;
-            mf_backend_cpu_dispatch_batch(state, &batch, task);
-            f32 global_acc = 0;
-            for (u32 j = 0; j < total_jobs; ++j) { f32 chunk_total = sync_ptr[j]; sync_ptr[j] = global_acc; global_acc += chunk_total; }
-            batch.sync_pass = 1;
-            mf_backend_cpu_dispatch_batch(state, &batch, task);
-            if (sync_ptr != baked->sync_scratch) free(sync_ptr);
-        } else mf_backend_cpu_dispatch_batch(state, &batch, task);
+        if (program->tasks[s].start_inst == start_inst) {
+            target_task = &program->tasks[s];
+            break;
+        }
     }
-    if (batch.reduction_scratch) {
+
+    if (!target_task) {
+        MF_LOG_ERROR("Backend: Could not find task starting at %u", start_inst);
+        return;
+    }
+
+    if (batch.reduction_scratch && (target_task->strategy == MF_STRATEGY_REDUCTION)) {
+        memset(batch.reduction_scratch, 0, baked->reduction_scratch_size * sizeof(f32));
+    }
+
+    if (target_task->strategy == MF_STRATEGY_TWO_PASS_SYNC) {
+        u32 total_jobs = (u32)((batch.total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
+        f32* sync_ptr = baked->sync_scratch;
+        if (total_jobs > baked->sync_scratch_size) sync_ptr = calloc(total_jobs, sizeof(f32));
+        batch.sync_pass = 0; batch.sync_data = sync_ptr;
+        mf_backend_cpu_dispatch_batch(state, &batch, target_task);
+        f32 global_acc = 0;
+        for (u32 j = 0; j < total_jobs; ++j) { f32 chunk_total = sync_ptr[j]; sync_ptr[j] = global_acc; global_acc += chunk_total; }
+        batch.sync_pass = 1;
+        mf_backend_cpu_dispatch_batch(state, &batch, target_task);
+        if (sync_ptr != baked->sync_scratch) free(sync_ptr);
+    } else {
+        mf_backend_cpu_dispatch_batch(state, &batch, target_task);
+    }
+
+    if (batch.reduction_scratch && (target_task->strategy == MF_STRATEGY_REDUCTION)) {
         for (u32 i = 0; i < program->meta.tensor_count; ++i) {
             if (program->tensor_flags[i] & MF_TENSOR_FLAG_REDUCTION) {
                 f32 final_val = 0;
                 for (int t = 0; t < num_threads; ++t) final_val += batch.reduction_scratch[t * batch.reduction_scratch_per_thread + i];
                 mf_tensor* main_t = &main_state->registers[i];
-                *((f32*)main_t->buffer->data + main_t->byte_offset / sizeof(f32)) = final_val;
+                if (main_t->buffer && main_t->buffer->data) {
+                    *((f32*)main_t->buffer->data + main_t->byte_offset / sizeof(f32)) = final_val;
+                }
             }
         }
     }
