@@ -135,21 +135,11 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
 }
 
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {
-    // A scalar (1 element) always has stride 0 to stay fixed during iteration (broadcasting)
-    if (op_count == 1) return 0;
-    
-    if (dom_count <= 1) {
-        return (op_count == 0) ? 1 : 0;
-    }
-    
-    if (op_count == 0) return 1;
-
-    // Support for vector streams: op_count is multiple of dom_count
-    if (op_count >= dom_count && (op_count % dom_count) == 0) {
-        return (i32)(op_count / dom_count);
-    }
-    
-    return 0; 
+    if (dom_count <= 1) return (op_count > 0) ? 1 : 0;
+    if (op_count == dom_count) return 1;
+    if (op_count == 1) return 0; // Broadcast
+    if (op_count > dom_count && (op_count % dom_count) == 0) return (i32)(op_count / dom_count);
+    return 0;
 }
 
 bool mf_shape_is_compatible(const mf_type_info* port, const mf_type_info* res, bool is_output) {

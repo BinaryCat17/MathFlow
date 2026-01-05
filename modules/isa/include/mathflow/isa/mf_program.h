@@ -30,6 +30,7 @@ typedef enum {
 #define MF_TENSOR_FLAG_REDUCTION  (1 << 1)
 #define MF_TENSOR_FLAG_GENERATOR  (1 << 2)
 #define MF_TENSOR_FLAG_ALIAS      (1 << 3) // Bound to external resource (Input/Output)
+#define MF_TENSOR_FLAG_SPATIAL    (1 << 4) // Needs domain-sized buffer
 
 // Binding Flags
 #define MF_BINDING_FLAG_REDUCTION (1 << 0)

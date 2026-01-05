@@ -152,9 +152,9 @@ static void format_tensor_debug(char* buf, const mf_exec_ctx* ctx, int reg_idx, 
         if (info->dtype == MF_DTYPE_F32) val = *(f32*)data;
         else if (info->dtype == MF_DTYPE_I32) val = (f32)*(int32_t*)data;
         else if (info->dtype == MF_DTYPE_U8) val = (f32)*(u8*)data;
-        sprintf(buf, "%-30s : Value: %-10.3f (%s) Stride: %d", tag, val, _dtype_to_str(info->dtype), ctx->reg_strides[reg_idx]);
+        sprintf(buf, "%-30s : Value: %-10.3f (%s)", tag, val, _dtype_to_str(info->dtype));
     } else {
-        sprintf(buf, "%-30s : Tensor[%-10s] (%s) Ptr: %p Stride: %d", tag, shape_str, _dtype_to_str(info->dtype), data, ctx->reg_strides[reg_idx]);
+        sprintf(buf, "%-30s : Tensor[%-10s] (%s) Ptr: %p", tag, shape_str, _dtype_to_str(info->dtype), data);
     }
 }
 
@@ -264,10 +264,6 @@ static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_p
             }
         } else {
             // Buffer-based (Symbol, Constant, or Scratch)
-            if (!t->buffer) {
-                // On-demand allocation for internal scratch registers that aren't pre-allocated
-                mf_exec_ctx_resize_tensor(ctx, t, t->info.shape, t->info.ndim);
-            }
             if (t->buffer && t->buffer->data) {
                 ctx->reg_ptrs[i] = (u8*)t->buffer->data + t->byte_offset + (start_idx * bind->byte_stride);
             } else {

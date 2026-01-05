@@ -103,23 +103,32 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
         if (dtype == MF_DTYPE_UNKNOWN) dtype = (out->dtype != MF_DTYPE_UNKNOWN) ? out->dtype : MF_DTYPE_F32;
         out->dtype = dtype;
 
-        // 3. Strides & Liveness
+        // 3. Strides & Spatial Analysis
         mf_shape_calc_strides(out);
         u32 dom_idx = (node->domain_node_idx == UINT32_MAX) ? node_idx : node->domain_node_idx;
         size_t task_cnt = mf_shape_calc_count(ir->nodes[dom_idx].out_info.shape, ir->nodes[dom_idx].out_info.ndim);
         
-        // A node is spatial if:
-        // 1. It's explicitly tied to a multi-element domain
-        // 2. OR it's a built-in generator (like host.index)
-        // 3. OR it depends on at least one spatial input
+        bool is_generator = (node->builtin_id != MF_BUILTIN_NONE);
         bool has_spatial_input = false;
         for (int k = 0; k < 4; ++k) if (inputs[k] && inputs[k]->is_spatial) has_spatial_input = true;
 
-        node->is_spatial = (task_cnt > 1) || (node->builtin_id != MF_BUILTIN_NONE) || has_spatial_input;
+        node->is_spatial = (task_cnt > 1) || is_generator || has_spatial_input;
 
-        node->strides[0] = node->is_spatial ? (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(out->shape, out->ndim), task_cnt) : 0;
+        // Inflation for generators: they must match the domain to produce a stream
+        if (is_generator && task_cnt > 1) {
+            const mf_type_info* dom_info = &ir->nodes[dom_idx].out_info;
+            out->ndim = dom_info->ndim;
+            memcpy(out->shape, dom_info->shape, sizeof(int32_t) * dom_info->ndim);
+            mf_shape_calc_strides(out);
+        }
+
+        node->strides[0] = (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(out->shape, out->ndim), task_cnt);
         for (int k = 0; k < 4; ++k) {
-            node->strides[k+1] = inputs[k] ? (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(inputs[k]->out_info.shape, inputs[k]->out_info.ndim), task_cnt) : 0;
+            if (inputs[k]) {
+                node->strides[k+1] = (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(inputs[k]->out_info.shape, inputs[k]->out_info.ndim), task_cnt);
+            } else {
+                node->strides[k+1] = 0;
+            }
         }
     }
     return true;

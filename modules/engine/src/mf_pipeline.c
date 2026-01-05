@@ -15,7 +15,7 @@ int32_t find_resource_idx(mf_engine* engine, u32 name_hash) {
 }
 
 int32_t find_symbol_idx(const mf_program* prog, u32 name_hash) {
-    if (!prog->symbols) return -1;
+    if (!prog || !prog->symbols) return -1;
     for (u32 i = 0; i < prog->meta.symbol_count; ++i) {
         if (prog->symbols[i].name_hash == name_hash) return (int32_t)i;
     }
@@ -30,10 +30,12 @@ static void _setup_resource_inst(mf_resource_inst* res, const char* name, const 
     res->provider = provider ? mf_arena_strdup(arena, provider) : NULL;
     res->flags = flags;
     memset(&res->desc, 0, sizeof(mf_tensor));
-    mf_type_info_init_contiguous(&res->desc.info, dtype, shape, ndim);
-    bool is_dynamic = false;
-    for (int k = 0; k < ndim; ++k) if (shape[k] <= 0) is_dynamic = true;
-    res->size_bytes = is_dynamic ? 0 : mf_tensor_size_bytes(&res->desc);
+    res->desc.info.dtype = dtype;
+    res->desc.info.ndim = ndim;
+    if (ndim > 0) memcpy(res->desc.info.shape, shape, sizeof(int32_t) * ndim);
+    mf_shape_calc_strides(&res->desc.info);
+    
+    res->size_bytes = mf_tensor_size_bytes(&res->desc);
     res->buffers[0] = res->buffers[1] = NULL;
 }
 
@@ -63,14 +65,22 @@ static void allocate_resources(mf_engine* engine) {
     for (u32 i = 0; i < engine->resource_count; ++i) {
         mf_resource_inst* res = &engine->resources[i];
         bool trans = (res->flags & MF_RESOURCE_FLAG_TRANSIENT) != 0;
+        
+        if (res->size_bytes == 0 && res->desc.info.ndim > 0) {
+            res->size_bytes = mf_tensor_size_bytes(&res->desc);
+        }
+
         res->buffers[0] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
-        if (res->size_bytes > 0) mf_buffer_alloc(res->buffers[0], alloc, res->size_bytes);
-        else memset(res->buffers[0], 0, sizeof(mf_buffer));
+        if (res->size_bytes > 0) {
+            mf_buffer_alloc(res->buffers[0], alloc, res->size_bytes);
+        } else memset(res->buffers[0], 0, sizeof(mf_buffer));
+
         if (trans) res->buffers[1] = res->buffers[0];
         else {
             res->buffers[1] = MF_ARENA_PUSH(&engine->arena, mf_buffer, 1);
-            if (res->size_bytes > 0) mf_buffer_alloc(res->buffers[1], alloc, res->size_bytes);
-            else memset(res->buffers[1], 0, sizeof(mf_buffer));
+            if (res->size_bytes > 0) {
+                mf_buffer_alloc(res->buffers[1], alloc, res->size_bytes);
+            } else memset(res->buffers[1], 0, sizeof(mf_buffer));
         }
     }
 }
@@ -97,10 +107,11 @@ static void apply_initial_data(mf_engine* engine) {
 void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const char** names, uint32_t count) {
     if (!engine || !programs || count == 0) return;
 
-    // 1. Discover Resources directly from Symbols
+    // 1. Gather unique resources
     u32 total_syms = 0;
     for (u32 k = 0; k < count; ++k) total_syms += programs[k]->meta.symbol_count;
-    engine->resources = MF_ARENA_PUSH(&engine->arena, mf_resource_inst, total_syms);
+    
+    engine->resources = (total_syms > 0) ? MF_ARENA_PUSH(&engine->arena, mf_resource_inst, total_syms) : NULL;
     engine->resource_count = 0;
 
     for (u32 k = 0; k < count; ++k) {
@@ -108,7 +119,12 @@ void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const ch
         for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
             mf_bin_symbol* sym = &prog->symbols[s];
             if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
-            if (find_resource_idx(engine, sym->name_hash) != -1) continue;
+
+            int32_t r_idx = find_resource_idx(engine, sym->name_hash);
+            if (r_idx != -1) {
+                engine->resources[r_idx].flags |= sym->flags;
+                continue;
+            }
 
             mf_type_info* t = &prog->tensor_infos[sym->register_idx];
             _setup_resource_inst(&engine->resources[engine->resource_count++], sym->name, sym->provider[0] ? sym->provider : NULL, t->dtype, t->shape, t->ndim, sym->flags, &engine->arena);
@@ -126,10 +142,8 @@ void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const ch
         inst->program = prog;
         inst->frequency = 1;
         inst->state.allocator = (mf_allocator*)&engine->heap;
-        mf_state_reset(&inst->state, inst->program, &engine->arena, &engine->backend);
-
-        // Bindings (1:1 by name)
-        inst->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, prog->meta.symbol_count);
+        
+        inst->bindings = (prog->meta.symbol_count > 0) ? MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, prog->meta.symbol_count) : NULL;
         inst->binding_count = 0;
         for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
             mf_bin_symbol* sym = &prog->symbols[s];
@@ -147,21 +161,24 @@ void mf_engine_bind_cartridge(mf_engine* engine, mf_program** programs, const ch
     analyze_transience(engine);
     allocate_resources(engine);
     apply_initial_data(engine);
-    MF_LOG_INFO("Engine: Cartridge bound. %u resources, %u kernels.", engine->resource_count, engine->kernel_count);
+
+    for (u32 k = 0; k < count; ++k) {
+        mf_state_reset(&engine->kernels[k].state, engine->kernels[k].program, &engine->arena, &engine->backend);
+    }
 }
 
 void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf_program** programs) {
     if (!engine || !pipe) return;
 
     // 1. Init Resources from Desc
-    engine->resources = MF_ARENA_PUSH(&engine->arena, mf_resource_inst, pipe->resource_count);
+    engine->resources = (pipe->resource_count > 0) ? MF_ARENA_PUSH(&engine->arena, mf_resource_inst, pipe->resource_count) : NULL;
     engine->resource_count = pipe->resource_count;
     for (u32 i = 0; i < pipe->resource_count; ++i) {
         mf_pipeline_resource* d = &pipe->resources[i];
         _setup_resource_inst(&engine->resources[i], d->name, d->provider, d->dtype, d->shape, d->ndim, d->flags, &engine->arena);
     }
 
-    // 2. Init Kernels and Resolve Bindings (Complex path)
+    // 2. Init Kernels
     engine->kernels = MF_ARENA_PUSH(&engine->arena, mf_kernel_inst, pipe->kernel_count);
     engine->kernel_count = pipe->kernel_count;
     for (u32 i = 0; i < pipe->kernel_count; ++i) {
@@ -172,11 +189,9 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
         k->program = programs[i];
         k->frequency = d->frequency;
         k->state.allocator = (mf_allocator*)&engine->heap;
-        mf_state_reset(&k->state, k->program, &engine->arena, &engine->backend);
 
         k->bindings = MF_ARENA_PUSH(&engine->arena, mf_kernel_binding, d->binding_count + k->program->meta.symbol_count);
         k->binding_count = 0;
-        // Explicit
         for (u32 b = 0; b < d->binding_count; ++b) {
             int32_t s_idx = find_symbol_idx(k->program, mf_fnv1a_hash(d->bindings[b].kernel_port));
             int32_t r_idx = find_resource_idx(engine, mf_fnv1a_hash(d->bindings[b].global_resource));
@@ -187,7 +202,6 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
                 kb->flags = k->program->symbols[s_idx].flags;
             }
         }
-        // Implicit
         for (u32 s = 0; s < k->program->meta.symbol_count; ++s) {
             mf_bin_symbol* sym = &k->program->symbols[s];
             if (!(sym->flags & (MF_SYMBOL_FLAG_INPUT | MF_SYMBOL_FLAG_OUTPUT))) continue;
@@ -207,5 +221,8 @@ void mf_engine_bind_pipeline(mf_engine* engine, const mf_pipeline_desc* pipe, mf
     analyze_transience(engine);
     allocate_resources(engine);
     apply_initial_data(engine);
-    MF_LOG_INFO("Engine: Pipeline bound. %u resources, %u kernels.", engine->resource_count, engine->kernel_count);
+
+    for (u32 k = 0; k < pipe->kernel_count; ++k) {
+        mf_state_reset(&engine->kernels[k].state, engine->kernels[k].program, &engine->arena, &engine->backend);
+    }
 }

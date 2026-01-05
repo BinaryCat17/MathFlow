@@ -38,6 +38,7 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf
             mf_buffer_init_view(t_reg->buffer, data_prog, mf_shape_calc_bytes(info_prog->dtype, info_prog->shape, info_prog->ndim));
             state->ownership_flags[i] = 1; // Mark for cleanup
         } else {
+            // Pre-allocate only non-alias, non-generator static tensors
             if (!(flags & MF_TENSOR_FLAG_ALIAS) && !(flags & MF_TENSOR_FLAG_GENERATOR)) {
                 bool is_static = true;
                 for (int d = 0; d < t_reg->info.ndim; ++d) if (t_reg->info.shape[d] < 0) { is_static = false; break; }
@@ -63,7 +64,6 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf
 static void mf_state_shutdown(mf_state* state, mf_backend* backend) {
     if (!state->registers || !state->allocator) return;
     
-    // --- FREE BAKED DATA ---
     if (backend && backend->free_baked && state->baked_data) {
         backend->free_baked(backend->state, state->baked_data);
         state->baked_data = NULL;
@@ -86,34 +86,20 @@ static void mf_state_shutdown(mf_state* state, mf_backend* backend) {
 mf_engine* mf_engine_create(const mf_engine_desc* desc) {
     MF_LOG_INFO("Creating Engine...");
     mf_engine* engine = calloc(1, sizeof(mf_engine));
-    if (!engine) {
-        MF_LOG_FATAL("Failed to allocate memory for engine structure.");
-        return NULL;
-    }
+    if (!engine) return NULL;
 
     size_t arena_size = (desc && desc->arena_size > 0) ? desc->arena_size : MF_MB(8);
     size_t heap_size = (desc && desc->heap_size > 0) ? desc->heap_size : MF_MB(64);
 
     engine->arena_buffer = malloc(arena_size);
-    if (!engine->arena_buffer) {
-        MF_LOG_FATAL("Failed to allocate memory for engine arena (%zu bytes).", arena_size);
-        free(engine);
-        return NULL;
-    }
+    if (!engine->arena_buffer) { free(engine); return NULL; }
     mf_arena_init(&engine->arena, engine->arena_buffer, arena_size);
 
     engine->heap_buffer = malloc(heap_size);
-    if (!engine->heap_buffer) {
-        MF_LOG_FATAL("Failed to allocate memory for engine heap (%zu bytes).", heap_size);
-        free(engine->arena_buffer);
-        free(engine);
-        return NULL;
-    }
+    if (!engine->heap_buffer) { free(engine->arena_buffer); free(engine); return NULL; }
     mf_heap_init(&engine->heap, engine->heap_buffer, heap_size);
 
-    if (desc) {
-        engine->backend = desc->backend;
-    }
+    if (desc) engine->backend = desc->backend;
 
     engine->front_idx = 0;
     engine->back_idx = 1;
@@ -124,128 +110,75 @@ mf_engine* mf_engine_create(const mf_engine_desc* desc) {
 
 void mf_engine_destroy(mf_engine* engine) {
     if (!engine) return;
-    MF_LOG_DEBUG("Destroying Engine...");
     mf_engine_reset(engine);
     if (engine->backend.shutdown) engine->backend.shutdown(engine->backend.state);
-    
-    if (engine->heap_buffer) {
-        MF_LOG_DEBUG("Freeing Heap Buffer...");
-        free(engine->heap_buffer);
-    }
-    if (engine->arena_buffer) {
-        MF_LOG_DEBUG("Freeing Arena Buffer...");
-        free(engine->arena_buffer);
-    }
-    MF_LOG_DEBUG("Freeing Engine Structure...");
+    if (engine->heap_buffer) free(engine->heap_buffer);
+    if (engine->arena_buffer) free(engine->arena_buffer);
     free(engine);
 }
 
 void mf_engine_reset(mf_engine* engine) {
     if (!engine) return;
-
     for (u32 i = 0; i < engine->kernel_count; ++i) {
         mf_state_shutdown(&engine->kernels[i].state, &engine->backend);
     }
     for (u32 i = 0; i < engine->resource_count; ++i) {
-        // Free resource buffers (from Heap)
         if (engine->resources[i].buffers[0]) mf_buffer_free(engine->resources[i].buffers[0]);
-        if (engine->resources[i].buffers[1]) mf_buffer_free(engine->resources[i].buffers[1]);
+        if (engine->resources[i].buffers[1] && engine->resources[i].buffers[1] != engine->resources[i].buffers[0]) {
+            mf_buffer_free(engine->resources[i].buffers[1]);
+        }
     }
-
     mf_arena_reset(&engine->arena);
-    
-    if (engine->heap_buffer) {
-        mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
-    }
-    
+    if (engine->heap_buffer) mf_heap_init(&engine->heap, engine->heap_buffer, engine->heap.size);
     engine->kernel_count = 0;
     engine->resource_count = 0;
     mf_atomic_store(&engine->error_code, 0);
 }
 
 mf_arena* mf_engine_get_arena(mf_engine* engine) {
-    if (!engine) return NULL;
-    return &engine->arena;
+    return engine ? &engine->arena : NULL;
 }
 
 void mf_engine_dispatch(mf_engine* engine) {
-    if (!engine) return;
+    if (!engine || mf_atomic_load(&engine->error_code) != 0) return;
 
-    if (mf_atomic_load(&engine->error_code) != 0) {
-        return; // Global Kill Switch is active
-    }
-
-    MF_LOG_TRACE("Dispatching Pipeline frame %llu", (unsigned long long)engine->frame_index);
-    
     u8 front = engine->front_idx;
     u8 back  = engine->back_idx;
 
     for (u32 k_idx = 0; k_idx < engine->kernel_count; ++k_idx) {
         mf_kernel_inst* ker = &engine->kernels[k_idx];
-
-        // Double check error before starting each kernel
         if (mf_atomic_load(&engine->error_code) != 0) break;
         
-        // 1. Pre-Execution Tasks: Auto-Resize
+        // 1. Auto-Resize
         for (u32 i = 0; i < ker->resize_task_count; ++i) {
             mf_resource_inst* res_in = &engine->resources[ker->resize_tasks[i].src_res_idx];
             mf_resource_inst* res_out = &engine->resources[ker->resize_tasks[i].dst_res_idx];
-            
             if (!mf_tensor_same_shape(&res_in->desc, &res_out->desc)) {
                 if (res_in->desc.buffer && res_in->desc.buffer->data) {
-                    MF_LOG_TRACE("Auto-Resizing '%s' to match '%s'", res_out->name, res_in->name);
                     mf_engine_resize_resource(engine, res_out->name, res_in->desc.info.shape, res_in->desc.info.ndim);
                 }
             }
         }
 
-        // 2. Linear Binding: Map Global Resources to Local Registers
+        // 2. Resource Binding
         for (u32 b = 0; b < ker->binding_count; ++b) {
             mf_kernel_binding* bind = &ker->bindings[b];
             mf_resource_inst* res = &engine->resources[bind->global_res];
             mf_tensor* t = &ker->state.registers[bind->local_reg];
-
-            // Zero-Copy buffer assignment
+            *t = res->desc;
             t->buffer = (bind->flags & MF_SYMBOL_FLAG_OUTPUT) ? res->buffers[back] : res->buffers[front];
             t->byte_offset = 0;
-            t->info = res->desc.info; // Sync metadata
-
-            MF_LOG_TRACE("  Binding: Reg %u -> Resource '%s' (Provider: %s, Buffer: %p, Size: %zu)", 
-                bind->local_reg, res->name, res->provider ? res->provider : "NONE", (void*)t->buffer->data, t->buffer->size_bytes);
         }
         
-        // 3. Execution (Frequency Loop)
-        MF_LOG_TRACE("  Executing Kernel: %s", ker->id);
-
+        // 3. Execution
         for (u32 f = 0; f < ker->frequency; ++f) {
             if (engine->backend.dispatch) {
-                // Ensure kernel knows about global error state
                 ker->state.global_error_ptr = &engine->error_code;
-
-                // Execute each task in the program
                 for (u32 t = 0; t < ker->program->meta.task_count; ++t) {
                     mf_task* task = &ker->program->tasks[t];
                     const mf_tensor* task_domain = &ker->state.registers[task->domain_reg];
-                    
-                    engine->backend.dispatch(
-                        engine->backend.state, 
-                        ker->program, 
-                        &ker->state, 
-                        task_domain, 
-                        task->start_inst, 
-                        task->inst_count
-                    );
-                    
-                    if (ker->state.error_code != 0 || mf_atomic_load(&engine->error_code) != 0) {
-                        MF_LOG_ERROR("Kernel '%s' task %u failed or interrupted. Engine Error: %d, Local Error: %d", 
-                            ker->id, t, (int)mf_atomic_load(&engine->error_code), (int)mf_atomic_load(&ker->state.error_code));
-                        
-                        // Propagate local error to global if not already set
-                        if (mf_atomic_load(&engine->error_code) == 0) {
-                            mf_atomic_store(&engine->error_code, (int32_t)mf_atomic_load(&ker->state.error_code));
-                        }
-                        goto end_dispatch;
-                    }
+                    engine->backend.dispatch(engine->backend.state, ker->program, &ker->state, task_domain, task->start_inst, task->inst_count);
+                    if (mf_atomic_load(&engine->error_code) != 0) goto end_dispatch;
                 }
             }
         }
@@ -272,7 +205,6 @@ mf_tensor* mf_engine_map_resource(mf_engine* engine, const char* name) {
 
 bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_t* new_shape, uint8_t new_ndim) {
     if (!engine || !name) return false;
-    
     u32 hash = mf_fnv1a_hash(name);
     int32_t res_idx = find_resource_idx(engine, hash);
     if (res_idx == -1) return false;
@@ -282,33 +214,20 @@ bool mf_engine_resize_resource(mf_engine* engine, const char* name, const int32_
     
     mf_type_info new_info;
     mf_type_info_init_contiguous(&new_info, res->desc.info.dtype, new_shape, new_ndim);
-    
-    size_t new_bytes = 1;
-    for(int d=0; d<new_ndim; ++d) new_bytes *= (new_shape[d] > 0 ? new_shape[d] : 1);
-    new_bytes *= mf_dtype_size(new_info.dtype);
+    size_t new_bytes = mf_shape_calc_count(new_shape, new_ndim) * mf_dtype_size(new_info.dtype);
     
     if (res->size_bytes != new_bytes) {
         bool is_transient = (res->buffers[0] == res->buffers[1]);
-
-        mf_buffer_free(res->buffers[0]);
-        if (!mf_buffer_alloc(res->buffers[0], alloc, new_bytes)) {
-            MF_LOG_ERROR("Engine: Failed to reallocate front buffer for resource '%s' (%zu bytes)", name, new_bytes);
-            return false;
-        }
+        if (res->buffers[0] && res->buffers[0]->data) mf_buffer_free(res->buffers[0]);
+        if (!mf_buffer_alloc(res->buffers[0], alloc, new_bytes)) return false;
         
-        if (is_transient) {
-            res->buffers[1] = res->buffers[0];
-        } else {
-            mf_buffer_free(res->buffers[1]);
-            if (!mf_buffer_alloc(res->buffers[1], alloc, new_bytes)) {
-                MF_LOG_ERROR("Engine: Failed to reallocate back buffer for resource '%s' (%zu bytes)", name, new_bytes);
-                return false;
-            }
+        if (is_transient) res->buffers[1] = res->buffers[0];
+        else {
+            if (res->buffers[1] && res->buffers[1]->data) mf_buffer_free(res->buffers[1]);
+            if (!mf_buffer_alloc(res->buffers[1], alloc, new_bytes)) return false;
         }
-        
         res->size_bytes = new_bytes;
     }
-    
     res->desc.info = new_info;
     return true;
 }
@@ -318,43 +237,30 @@ void mf_engine_sync_resource(mf_engine* engine, const char* name) {
     u32 hash = mf_fnv1a_hash(name);
     int32_t idx = find_resource_idx(engine, hash);
     if (idx == -1) return;
-
     mf_resource_inst* res = &engine->resources[idx];
     if (res->buffers[0] && res->buffers[1] && res->buffers[0] != res->buffers[1]) {
         if (res->buffers[0]->data && res->buffers[1]->data) {
-            size_t bytes = res->size_bytes;
-            u8 front = engine->front_idx;
-            u8 back = 1 - front;
-            // Sync from current front to back
-            memcpy(res->buffers[back]->data, res->buffers[front]->data, bytes);
+            memcpy(res->buffers[1 - engine->front_idx]->data, res->buffers[engine->front_idx]->data, res->size_bytes);
         }
     }
 }
 
 mf_engine_error mf_engine_get_error(mf_engine* engine) {
     if (!engine) return MF_ENGINE_ERR_NONE;
-    
     int32_t err = mf_atomic_load(&engine->error_code);
-    if (err != 0) {
-        switch(err) {
-            case MF_ERROR_OOM:            return MF_ENGINE_ERR_OOM;
-            case MF_ERROR_SHAPE_MISMATCH: return MF_ENGINE_ERR_SHAPE;
-            case MF_ERROR_INVALID_OP:     return MF_ENGINE_ERR_INVALID_OP;
-            default:                      return MF_ENGINE_ERR_RUNTIME;
-        }
-    }
-    
-    return MF_ENGINE_ERR_NONE;
+    if (err == 0) return MF_ENGINE_ERR_NONE;
+    if (err == MF_ERROR_OOM) return MF_ENGINE_ERR_OOM;
+    if (err == MF_ERROR_SHAPE_MISMATCH) return MF_ENGINE_ERR_SHAPE;
+    if (err == MF_ERROR_INVALID_OP) return MF_ENGINE_ERR_INVALID_OP;
+    return MF_ENGINE_ERR_RUNTIME;
 }
 
 void mf_engine_iterate_resources(mf_engine* engine, mf_engine_resource_cb cb, void* user_data) {
     if (!engine || !cb) return;
-
     for (u32 i = 0; i < engine->resource_count; ++i) {
         mf_resource_inst* res = &engine->resources[i];
         res->desc.buffer = res->buffers[engine->front_idx];
         res->desc.byte_offset = 0;
-
         cb(res->name, &res->desc, user_data);
     }
 }

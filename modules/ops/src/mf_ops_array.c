@@ -106,12 +106,11 @@ void op_GATHER(mf_exec_ctx* ctx, const struct mf_instruction* inst) {
             memcpy(target, src_item_ptr, elem_size);
         } else {
             memset(target, 0, elem_size);
-            // Non-fatal warning for OOB in Gather
-            static bool warned = false;
-            if (!warned) {
-                MF_LOG_WARN("Gather OOB: Index %d at batch element %zu. Data size: %zu. Returning 0. (Further warnings suppressed)", 
+            if (_mf_should_log_error(ctx)) {
+                ctx->error = MF_ERROR_OUT_OF_BOUNDS;
+                ctx->error_idx = (u32)i;
+                MF_LOG_ERROR("Gather OOB: Index %d at batch element %zu. Data size: %zu. Using 0.", 
                              idx, i, data_count);
-                warned = true;
             }
         }
         dst_ptr += st_dst;

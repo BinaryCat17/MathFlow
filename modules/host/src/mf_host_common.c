@@ -183,19 +183,13 @@ void mf_host_app_set_resolution(mf_host_app* app, int width, int height) {
     mf_tensor* t_rx = mf_engine_map_resource(app->engine, "u_ResX");
     if (t_rx) { 
         f32* d = mf_tensor_data(t_rx); 
-        if (d) {
-            *d = (f32)width; 
-            MF_LOG_DEBUG("Host: Updated u_ResX to %.2f at Ptr %p (Buffer Ptr: %p)", *d, (void*)d, (void*)t_rx->buffer->data);
-        }
+        if (d) *d = (f32)width; 
         mf_engine_sync_resource(app->engine, "u_ResX");
     }
     mf_tensor* t_ry = mf_engine_map_resource(app->engine, "u_ResY");
     if (t_ry) { 
         f32* d = mf_tensor_data(t_ry); 
-        if (d) {
-            *d = (f32)height; 
-            MF_LOG_DEBUG("Host: Updated u_ResY to %.2f at Ptr %p (Buffer Ptr: %p)", *d, (void*)d, (void*)t_ry->buffer->data);
-        }
+        if (d) *d = (f32)height; 
         mf_engine_sync_resource(app->engine, "u_ResY");
     }
     mf_tensor* t_aspect = mf_engine_map_resource(app->engine, "u_Aspect");
