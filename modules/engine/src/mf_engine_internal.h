@@ -91,7 +91,7 @@ struct mf_engine {
  * @brief Resets/Initializes the internal state for a kernel program.
  * Defined in mf_engine.c, used in mf_pipeline.c.
  */
-void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena);
+void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf_backend* backend);
 
 /**
  * @brief Finds resource index by its name hash.

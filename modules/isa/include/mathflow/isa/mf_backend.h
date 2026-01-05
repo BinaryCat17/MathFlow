@@ -29,6 +29,12 @@ typedef void (*mf_backend_dispatch_func)(
     uint32_t inst_count
 );
 
+// Bake function to prepare a program for execution (pre-calculates plans, etc.)
+typedef void* (*mf_backend_bake_func)(void* backend_state, const struct mf_program* program);
+
+// Cleanup function for baked program data
+typedef void (*mf_backend_free_baked_func)(void* backend_state, void* baked_data);
+
 // Cleanup function for backend resources
 typedef void (*mf_backend_shutdown_func)(void* backend_state);
 
@@ -38,6 +44,8 @@ typedef struct {
 
     mf_hook_map on_map;
     
+    mf_backend_bake_func bake;
+    mf_backend_free_baked_func free_baked;
     mf_backend_dispatch_func dispatch;
     mf_backend_shutdown_func shutdown;
 } mf_backend;

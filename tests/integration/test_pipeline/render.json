@@ -11,9 +11,8 @@
 
         { "id": "abs_dist", "type": "Abs" },
         { "id": "circle_pos_x", "type": "Add" },
-        { "id": "color_val", "type": "Step", "data": {"value": 0.1} },
+        { "id": "color_val", "type": "Step" },
         { "id": "dist", "type": "Sub" },
-        { "id": "norm_x", "type": "Div" },
         { "id": "pos_x", "type": "Sin" }
     ],
     "links": [
@@ -23,7 +22,8 @@
         { "src": "frag_coord", "src_port": "out", "dst": "dist", "dst_port": "a" },
         { "src": "circle_pos_x", "src_port": "out", "dst": "dist", "dst_port": "b" },
         { "src": "dist", "src_port": "out", "dst": "abs_dist", "dst_port": "x" },
-        { "src": "abs_dist", "src_port": "out", "dst": "color_val", "dst_port": "edge" },
+        { "src": "in_val", "src_port": "out", "dst": "color_val", "dst_port": "edge" },
+        { "src": "abs_dist", "src_port": "out", "dst": "color_val", "dst_port": "x" },
         { "src": "color_val", "src_port": "out", "dst": "out_Color", "dst_port": "in" }
     ]
 }

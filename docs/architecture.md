@@ -112,11 +112,10 @@ graph TD
 
 ## Memory Safety & Error Handling
 
-MathFlow priorities visibility and fault isolation through three defensive layers:
+MathFlow priorities visibility and fault isolation through two defensive layers:
 
-1.  **Protected Iterators:** `mf_tensor_iter` tracks `start` and `limit` pointers. Every step (`advance`) triggers a bounds check. Violation causes an immediate `MF_LOG_FATAL`.
-2.  **Atomic Kill Switch:** The `mf_engine` maintains an atomic error code. If any thread fails, it sets the global flag, stopping all other threads and kernels immediately.
-3.  **Kernel Crash Reports:** Detailed reports on failure including **Opcode Names**, register IDs, domain coordinates, and memory ranges.
+1.  **Atomic Kill Switch:** The `mf_engine` maintains an atomic error code. If any thread fails, it sets the global flag, stopping all other threads and kernels immediately.
+2.  **Kernel Crash Reports:** Detailed reports on failure including **Opcode Names**, register IDs, domain coordinates, and memory ranges.
 
 ---
 
@@ -220,8 +219,9 @@ The compiler calculates how pointers advance per domain element:
 Kernels perform unconditional pointer arithmetic (`ptr += stride`), eliminating branching in the hot loop.
 
 ### Intrinsic Coordinates (Index)
-To know "where" the current thread is running (e.g. pixel coordinate), the graph must use `Index` nodes (`u_FragX`, `u_FragY`).
-*   **Mechanism:** These nodes read the current multi-dimensional index from the execution context (`tile_offset`) and output it as a spatial stream.
+To know "where" the current thread is running (e.g. pixel coordinate), the graph must use `Input` nodes with specialized **Providers**.
+*   **Mechanism:** These nodes (e.g., `provider: "host.index.0"`) read the current multi-dimensional index from the execution context (`tile_offset`) and output it as a spatial stream.
+*   **Builtin Mapping:** The compiler recognizes `host.index.N` and maps it to `MF_BUILTIN_INDEX` with a specific axis.
 
 ### Random Access (Gather)
 Standard operations are linear. For non-linear logic, MathFlow uses `MF_OP_GATHER`.

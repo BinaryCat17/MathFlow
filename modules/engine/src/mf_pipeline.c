@@ -123,7 +123,7 @@ static void init_kernels(mf_engine* engine, const mf_pipeline_desc* pipe, mf_pro
         ker->frequency = desc->frequency;
         ker->state.allocator = (mf_allocator*)&engine->heap;
         
-        mf_state_reset(&ker->state, ker->program, &engine->arena);
+        mf_state_reset(&ker->state, ker->program, &engine->arena, &engine->backend);
     }
 }
 

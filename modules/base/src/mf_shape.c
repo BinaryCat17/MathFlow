@@ -70,9 +70,9 @@ bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_in
     size_t sz_b = 1;
     for(int i=0; i<b->ndim; ++i) sz_b *= (b->shape[i] > 0 ? b->shape[i] : 1);
     
-    // Scalar Broadcast
-    if (sz_a == 1 && a->ndim == 0) { *out = *b; return true; }
-    if (sz_b == 1 && b->ndim == 0) { *out = *a; return true; }
+    // Any 1-element tensor can be broadcasted to any shape
+    if (sz_a == 1) { *out = *b; return true; }
+    if (sz_b == 1) { *out = *a; return true; }
     
     // Strict Match
     bool same = (a->ndim == b->ndim);

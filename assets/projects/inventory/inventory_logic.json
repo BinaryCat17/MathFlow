@@ -19,7 +19,6 @@
 
         { "id": "threshold", "type": "Input", "data": {"shape": [], "dtype": "f32"} },
         { "id": "my_idx", "type": "Input", "data": {"shape": [], "dtype": "f32", "provider": "host.index.0"} },
-        { "id": "calc_total", "type": "Mul" },
 
         { "id": "uv_x", "type": "Div" },
         { "id": "uv_y", "type": "Div" },

@@ -16,6 +16,9 @@ typedef struct mf_state {
     size_t register_count;
     mf_allocator* allocator;
     
+    // Backend-specific prepared execution plan
+    void* baked_data;
+
     // Error flag set by execution contexts.
     // 0 = No Error. Uses mf_exec_error codes.
     mf_atomic_i32  error_code;

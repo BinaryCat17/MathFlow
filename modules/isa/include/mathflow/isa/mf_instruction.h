@@ -8,10 +8,9 @@
  * @brief Standard 4-address code instruction.
  * 
  * Layout: [ Opcode (16) | Dest (16) | Src1 (16) | Src2 (16) | Src3 (16) | Src4 (16) ]
- * Total Size: 12 bytes.
  * 
- * Strides are no longer stored per-instruction. Instead, they are inferred 
- * at runtime from the tensor's identity (Spatial vs Uniform).
+ * Strides are calculated by the compiler during the Analyze pass and stored 
+ * directly in the instruction to minimize runtime overhead (STEP_N model).
  */
 typedef struct mf_instruction {
     u16 opcode;

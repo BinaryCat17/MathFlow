@@ -204,6 +204,16 @@ static mf_program* load_prog_from_file(mf_arena* arena, const char* path, const 
         }
 
         mf_program* prog = mf_compile(&ir, &contract, arena, &diag);
+        
+        if (!prog && diag.has_error) {
+            for (u32 e = 0; e < diag.error_count; ++e) {
+                MF_LOG_ERROR("Compiler: %s:%u:%u: %s", 
+                    diag.errors[e].loc.file ? diag.errors[e].loc.file : "unknown",
+                    diag.errors[e].loc.line, diag.errors[e].loc.column,
+                    diag.errors[e].message);
+            }
+        }
+        
         return prog;
     } else if (strcmp(ext, "bin") == 0) {
         return _load_binary(path, arena);

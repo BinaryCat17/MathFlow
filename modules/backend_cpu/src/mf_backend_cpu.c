@@ -27,20 +27,38 @@ typedef enum {
     MF_SRC_SCRATCH    // Temporary buffer (Scratchpad)
 } mf_reg_source_type;
 
+// Static plan for a single register
 typedef struct {
     mf_reg_source_type type;
-    
-    // For BUFFER
+    mf_builtin_id builtin_id;
+    u8 builtin_axis;
+    mf_type_info info;
+    ssize_t stride_elements; // -1 for reduction
+} mf_cpu_reg_static_plan;
+
+// Dynamic plan (updated every frame/dispatch)
+typedef struct {
     mf_buffer* buffer;
     size_t base_offset;
     ssize_t stride_bytes;
+} mf_cpu_reg_dynamic_plan;
 
-    // For GENERATOR
-    mf_builtin_id builtin_id;
-    u8 builtin_axis;
-      
-    mf_type_info info;     
-} mf_cpu_reg_plan;
+typedef struct {
+    uint32_t start_inst;
+    uint32_t inst_count;
+    bool is_sync;
+    u16 active_regs[MF_MAX_REGISTERS];
+    u32 active_reg_count;
+} mf_cpu_segment;
+
+typedef struct {
+    const mf_program* program;
+    mf_cpu_reg_static_plan static_plans[MF_MAX_REGISTERS];
+    
+    mf_cpu_segment* segments;
+    u32 segment_count;
+    bool has_reductions;
+} mf_cpu_baked_kernel;
 
 typedef struct {
     mf_thread_pool* pool;
@@ -68,7 +86,11 @@ typedef struct {
     size_t total_elements;
     u8 ndim;
     u32 domain_shape[MF_MAX_DIMS];
-    mf_cpu_reg_plan plans[MF_MAX_REGISTERS];
+    
+    const mf_cpu_reg_static_plan* static_plans;
+    mf_cpu_reg_dynamic_plan dynamic_plans[MF_MAX_REGISTERS];
+    const u16* active_regs;
+    u32 active_reg_count;
 
     // Parallel Sync Support
     int sync_pass;
@@ -77,10 +99,6 @@ typedef struct {
     // Parallel Reduction Support
     f32* reduction_scratch; // [num_threads * num_registers]
     int num_threads;
-
-    // Active Register Tracking
-    u16 active_regs[MF_MAX_REGISTERS];
-    u32 active_reg_count;
 } mf_cpu_parallel_batch;
 
 // --- Worker Lifecycle ---
@@ -207,8 +225,7 @@ static void report_crash(mf_exec_ctx* ctx, const mf_cpu_parallel_batch* batch, u
     }
 
     char s1_info[128], s2_info[128], s3_info[128], s4_info[128], d_info[128];
-    u32 reg_count = batch->program->meta.tensor_count;
-
+    
     format_tensor_debug(d_info,  ctx, inst->dest_idx, batch->program, "out");
     format_tensor_debug(s1_info, ctx, inst->src1_idx, batch->program, meta ? meta->ports[0] : "src1");
     format_tensor_debug(s2_info, ctx, inst->src2_idx, batch->program, meta ? meta->ports[1] : "src2");
@@ -293,42 +310,44 @@ static void mf_generate_index_chunk(void* out_raw, mf_dtype dtype, u32 count, u3
 
 static void prepare_registers(mf_backend_cpu_worker_state* state, const mf_cpu_parallel_batch* batch, size_t start_idx, size_t count) {
     mf_exec_ctx* ctx = &state->ctx;
-    const mf_program* prog = batch->program;
     int tid = state->thread_idx;
     
-    for (u32 i = 0; i < prog->meta.tensor_count; ++i) {
-        const mf_cpu_reg_plan* plan = &batch->plans[i];
-        ctx->reg_info[i] = plan->info;
+    for (u32 idx = 0; idx < batch->active_reg_count; ++idx) {
+        u16 i = batch->active_regs[idx];
+        const mf_cpu_reg_static_plan* s_plan = &batch->static_plans[i];
+        const mf_cpu_reg_dynamic_plan* d_plan = &batch->dynamic_plans[i];
+        
+        ctx->reg_info[i] = s_plan->info;
 
-        switch (plan->type) {
+        switch (s_plan->type) {
             case MF_SRC_BUFFER:
-                ctx->reg_ptrs[i] = (u8*)plan->buffer->data + plan->base_offset + (start_idx * plan->stride_bytes);
+                ctx->reg_ptrs[i] = (u8*)d_plan->buffer->data + d_plan->base_offset + (start_idx * d_plan->stride_bytes);
                 break;
 
             case MF_SRC_GENERATOR:
-                if (plan->builtin_id == MF_BUILTIN_INDEX) {
-                    bool is_vector = (plan->info.ndim > batch->ndim);
-                    size_t vec_size = is_vector ? (size_t)plan->info.shape[plan->info.ndim - 1] : 1;
-                    size_t bytes = count * vec_size * mf_dtype_size(plan->info.dtype);
+                if (s_plan->builtin_id == MF_BUILTIN_INDEX) {
+                    bool is_vector = (s_plan->info.ndim > batch->ndim);
+                    size_t vec_size = is_vector ? (size_t)s_plan->info.shape[s_plan->info.ndim - 1] : 1;
+                    size_t bytes = count * vec_size * mf_dtype_size(s_plan->info.dtype);
                     void* mem = mf_exec_ctx_scratch_alloc(ctx, bytes);
                     if (mem) {
-                        mf_generate_index_chunk(mem, plan->info.dtype, (u32)count, (u32)start_idx, plan->builtin_axis, is_vector, batch->ndim, batch->domain_shape);
+                        mf_generate_index_chunk(mem, s_plan->info.dtype, (u32)count, (u32)start_idx, s_plan->builtin_axis, is_vector, batch->ndim, batch->domain_shape);
                         ctx->reg_ptrs[i] = mem;
                     }
                 }
                 break;
 
             case MF_SRC_SCRATCH: {
-                size_t dtype_sz = mf_dtype_size(plan->info.dtype);
+                size_t dtype_sz = mf_dtype_size(s_plan->info.dtype);
                 // For scratch, if stride is 0 (broadcast/scalar), we only need 1 element per job
-                size_t elements = (plan->stride_bytes != 0) ? count : 1;
+                size_t elements = (s_plan->stride_elements != 0) ? count : 1;
                 size_t bytes = elements * dtype_sz;
                 void* mem = mf_exec_ctx_scratch_alloc(ctx, bytes);
                 ctx->reg_ptrs[i] = mem;
             } break;
         }
 
-        if (batch->reduction_scratch && plan->stride_bytes == -1) {
+        if (batch->reduction_scratch && s_plan->stride_elements == -1) {
             ctx->reg_ptrs[i] = &batch->reduction_scratch[tid * MF_MAX_REGISTERS + i];
         }
     }
@@ -428,8 +447,90 @@ static void mf_backend_cpu_dispatch_batch(
             mf_thread_pool_run(state->pool, total_jobs, cpu_worker_job, batch);
         } else {
             // Fallback for single-thread without pool (rare)
-            // Need a worker_state here, but this path is not used in normal conditions
         }
+    }
+}
+
+static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* program) {
+    (void)backend_state;
+    mf_cpu_baked_kernel* baked = calloc(1, sizeof(mf_cpu_baked_kernel));
+    baked->program = program;
+    
+    // 1. Pre-calculate static plans for all registers
+    for (u32 i = 0; i < program->meta.tensor_count; ++i) {
+        mf_cpu_reg_static_plan* sp = &baked->static_plans[i];
+        sp->info = program->tensor_infos[i];
+        if (program->builtin_ids[i] != MF_BUILTIN_NONE) {
+            sp->type = MF_SRC_GENERATOR;
+            sp->builtin_id = (mf_builtin_id)program->builtin_ids[i];
+            sp->builtin_axis = program->builtin_axes[i];
+        } else if (program->tensor_data[i]) {
+            sp->type = MF_SRC_BUFFER; // Constants are also buffers
+        } else {
+            sp->type = MF_SRC_SCRATCH;
+        }
+    }
+
+    // 2. Discover segments and active registers
+    u32 seg_count = 1;
+    for (u32 i = 0; i < program->meta.instruction_count; ++i) {
+        if (is_sync_op(program->code[i].opcode)) seg_count += 2; // Split
+    }
+
+    baked->segments = calloc(seg_count, sizeof(mf_cpu_segment));
+    u32 cur_seg = 0;
+    u32 cur_start = 0;
+
+    for (u32 i = 0; i < program->meta.instruction_count; ++i) {
+        bool is_sync = is_sync_op(program->code[i].opcode);
+        if (is_sync) {
+            // Flush preceding segment
+            if (i > cur_start) {
+                baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = cur_start, .inst_count = i - cur_start };
+            }
+            // Add sync segment
+            baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = i, .inst_count = 1, .is_sync = true };
+            cur_start = i + 1;
+        }
+    }
+    if (cur_start < program->meta.instruction_count) {
+        baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = cur_start, .inst_count = program->meta.instruction_count - cur_start };
+    }
+    baked->segment_count = cur_seg;
+
+    // 3. Analyze active registers and strides for each segment
+    for (u32 s = 0; s < baked->segment_count; ++s) {
+        mf_cpu_segment* seg = &baked->segments[s];
+        bool reg_used[MF_MAX_REGISTERS] = {0};
+        
+        for (u32 i = seg->start_inst; i < seg->start_inst + seg->inst_count; ++i) {
+            const mf_instruction* inst = &program->code[i];
+            for (int r = 0; r < 5; ++r) {
+                u16 reg_idx = (r == 0) ? inst->dest_idx : ((r == 1) ? inst->src1_idx : ((r == 2) ? inst->src2_idx : ((r == 3) ? inst->src3_idx : inst->src4_idx)));
+                if (reg_idx >= program->meta.tensor_count) continue;
+                
+                if (!reg_used[reg_idx]) {
+                    seg->active_regs[seg->active_reg_count++] = reg_idx;
+                    reg_used[reg_idx] = true;
+                }
+                
+                // Set stride in static plan (takes max stride if used in multiple instructions)
+                i32 stride = inst->strides[r];
+                if (stride == -1) { baked->static_plans[reg_idx].stride_elements = -1; baked->has_reductions = true; }
+                else if (stride != 0) baked->static_plans[reg_idx].stride_elements = stride;
+            }
+        }
+    }
+
+    return baked;
+}
+
+static void mf_backend_cpu_free_baked(void* backend_state, void* baked_data) {
+    (void)backend_state;
+    mf_cpu_baked_kernel* baked = (mf_cpu_baked_kernel*)baked_data;
+    if (baked) {
+        free(baked->segments);
+        free(baked);
     }
 }
 
@@ -441,8 +542,10 @@ static void mf_backend_cpu_dispatch(
     uint32_t start_inst,
     uint32_t inst_count
 ) {
+    (void)start_inst; (void)inst_count; // Now we use baked segments
     mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
-    if (!domain) return;
+    mf_cpu_baked_kernel* baked = (mf_cpu_baked_kernel*)main_state->baked_data;
+    if (!domain || !baked) return;
 
     size_t total_elements = mf_tensor_count(domain);
     if (total_elements == 0) return;
@@ -456,104 +559,71 @@ static void mf_backend_cpu_dispatch(
         .total_elements = total_elements,
         .ndim = domain->info.ndim,
         .num_threads = num_threads,
-        .reduction_scratch = NULL
+        .reduction_scratch = NULL,
+        .static_plans = baked->static_plans
     };
     memcpy(batch.domain_shape, domain->info.shape, sizeof(u32) * MF_MAX_DIMS);
 
-    // 0. Pre-calculate Shapes and Allocate Memory
+    // 0. Pre-allocate Scratch Memory (for non-buffer tensors)
     for (uint32_t i = 0; i < program->meta.tensor_count; ++i) {
         mf_tensor* t = &main_state->registers[i];
-        if (!t->buffer && program->builtin_ids[i] == MF_BUILTIN_NONE && program->tensor_data[i] == NULL) {
+        if (!t->buffer && program->builtin_ids[i] == MF_BUILTIN_NONE) {
             mf_exec_ctx_resize_tensor(NULL, t, t->info.shape, t->info.ndim);
         }
     }
 
-    // 1. Build Global Execution Plan (Strides)
-    bool reg_processed[MF_MAX_REGISTERS] = {0};
-    bool has_reductions = false;
-    for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
-        const mf_instruction* inst = &program->code[i];
-        for (int r = 0; r < 5; ++r) {
-            uint16_t reg_idx = (r == 0) ? inst->dest_idx : 
-                               ((r == 1) ? inst->src1_idx : 
-                               ((r == 2) ? inst->src2_idx : 
-                               ((r == 3) ? inst->src3_idx : inst->src4_idx)));
-            if (reg_idx >= program->meta.tensor_count) continue;
-            mf_cpu_reg_plan* plan = &batch.plans[reg_idx];
-            mf_tensor* main_t = &main_state->registers[reg_idx];
-            i32 stride = inst->strides[r];
-            if (!reg_processed[reg_idx] || (plan->stride_bytes == 0 && stride != 0)) {
-                plan->info = main_t->info;
-                if (stride == -1) { plan->stride_bytes = -1; has_reductions = true; }
-                else plan->stride_bytes = (ssize_t)stride * (ssize_t)mf_dtype_size(plan->info.dtype);
-                if (program->builtin_ids[reg_idx] != MF_BUILTIN_NONE) {
-                    plan->type = MF_SRC_GENERATOR;
-                    plan->builtin_id = (mf_builtin_id)program->builtin_ids[reg_idx];
-                    plan->builtin_axis = program->builtin_axes[reg_idx];
-                } else if (main_t->buffer) {
-                    plan->type = MF_SRC_BUFFER; plan->buffer = main_t->buffer; plan->base_offset = main_t->byte_offset;
-                } else plan->type = MF_SRC_SCRATCH;
-                reg_processed[reg_idx] = true;
-            }
+    // 1. Fill Dynamic Plans (Pointers can change every frame)
+    for (u32 i = 0; i < program->meta.tensor_count; ++i) {
+        mf_cpu_reg_dynamic_plan* dp = &batch.dynamic_plans[i];
+        const mf_cpu_reg_static_plan* sp = &baked->static_plans[i];
+        mf_tensor* main_t = &main_state->registers[i];
+        
+        if (sp->type == MF_SRC_BUFFER || (sp->type == MF_SRC_SCRATCH && main_t->buffer)) {
+            dp->buffer = main_t->buffer;
+            dp->base_offset = main_t->byte_offset;
+            dp->stride_bytes = (sp->stride_elements > 0) ? (ssize_t)sp->stride_elements * (ssize_t)mf_dtype_size(sp->info.dtype) : 0;
         }
     }
 
-    if (has_reductions && num_threads > 1) {
+    if (baked->has_reductions && num_threads > 1) {
         batch.reduction_scratch = calloc(num_threads * MF_MAX_REGISTERS, sizeof(f32));
     }
 
-    // 2. Linear execution with barrier-splitting
-    uint32_t current_batch_start = start_inst;
-    for (uint32_t i = start_inst; i < start_inst + inst_count; ++i) {
-        if (is_sync_op(program->code[i].opcode)) {
-            // Flush preceding tile ops
-            if (i > current_batch_start) {
-                mf_backend_cpu_dispatch_batch(state, &batch, current_batch_start, i - current_batch_start);
-            }
-            
-            // Execute Sync Op
-            if (program->code[i].opcode == MF_OP_CUMSUM) {
+    // 2. Linear execution of baked segments
+    for (u32 s = 0; s < baked->segment_count; ++s) {
+        const mf_cpu_segment* seg = &baked->segments[s];
+        batch.active_regs = seg->active_regs;
+        batch.active_reg_count = seg->active_reg_count;
+
+        if (seg->is_sync) {
+            u16 opcode = program->code[seg->start_inst].opcode;
+            if (opcode == MF_OP_CUMSUM) {
                 u32 total_jobs = (u32)((batch.total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
                 f32* sync_scratch = calloc(total_jobs, sizeof(f32));
-                
-                // Pass 1: Local Scans
-                batch.sync_pass = 0;
-                batch.sync_data = sync_scratch;
-                mf_backend_cpu_dispatch_batch(state, &batch, i, 1);
-                
-                // Barrier + Sequential Scan of chunk sums
+                batch.sync_pass = 0; batch.sync_data = sync_scratch;
+                mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
                 f32 global_acc = 0;
                 for (u32 j = 0; j < total_jobs; ++j) {
                     f32 chunk_total = sync_scratch[j];
-                    sync_scratch[j] = global_acc; // Store OFFSET for this chunk
+                    sync_scratch[j] = global_acc;
                     global_acc += chunk_total;
                 }
-                
-                // Pass 2: Global Adjustment
                 batch.sync_pass = 1;
-                mf_backend_cpu_dispatch_batch(state, &batch, i, 1);
-                
+                mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
                 free(sync_scratch);
-                batch.sync_pass = 0;
-                batch.sync_data = NULL;
+                batch.sync_pass = 0; batch.sync_data = NULL;
             } else {
-                // Other sync ops (like Compress) - currently single batch
-                mf_backend_cpu_dispatch_batch(state, &batch, i, 1);
+                mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
             }
-            
-            current_batch_start = i + 1;
+        } else {
+            mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, seg->inst_count);
         }
     }
 
-    // Flush last batch
-    if (start_inst + inst_count > current_batch_start) {
-        mf_backend_cpu_dispatch_batch(state, &batch, current_batch_start, (start_inst + inst_count) - current_batch_start);
-    }
-
     // 3. Merge Reductions
-    if (has_reductions && batch.reduction_scratch) {
+    if (baked->has_reductions && batch.reduction_scratch) {
         for (u32 reg_idx = 0; reg_idx < program->meta.tensor_count; ++reg_idx) {
-            if (reg_processed[reg_idx] && batch.plans[reg_idx].stride_bytes == -1) {
+            if (baked->static_plans[reg_idx].stride_elements == -1) {
                 f32 final_val = 0;
                 for (int t = 0; t < num_threads; ++t) final_val += batch.reduction_scratch[t * MF_MAX_REGISTERS + reg_idx];
                 mf_tensor* main_t = &main_state->registers[reg_idx];
@@ -582,6 +652,8 @@ void mf_backend_cpu_init(mf_backend* backend, int num_threads) {
     state->pool = mf_thread_pool_create(&pool_desc);
     mf_ops_fill_table(state->op_table);
     backend->state = state;
+    backend->bake = mf_backend_cpu_bake;
+    backend->free_baked = mf_backend_cpu_free_baked;
     backend->shutdown = mf_backend_cpu_shutdown;
     backend->dispatch = mf_backend_cpu_dispatch;
 }

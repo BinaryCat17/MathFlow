@@ -9,7 +9,7 @@
 
 // --- Internal State Management ---
 
-void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
+void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf_backend* backend) {
     if (!prog) return;
     
     state->register_count = prog->meta.tensor_count;
@@ -26,23 +26,18 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
     memset(state->providers, 0, sizeof(const char*) * state->register_count);
 
     for (u32 i = 0; i < state->register_count; ++i) {
+        // ... (existing tensor init logic)
         mf_type_info* info_prog = &prog->tensor_infos[i];
         void* data_prog = prog->tensor_data[i];
         mf_tensor* t_reg = &state->registers[i];
         
         if (data_prog) {
-            // Constant -> View into Program Data
             t_reg->info = *info_prog;
             t_reg->byte_offset = 0;
-            // Create a temporary buffer object pointing to program data
-            // NOTE: This buffer is NOT owned by the state
             t_reg->buffer = MF_ARENA_PUSH(arena, mf_buffer, 1);
             mf_buffer_init_view(t_reg->buffer, data_prog, mf_shape_calc_bytes(info_prog->dtype, info_prog->shape, info_prog->ndim));
         } else {
-            // Temps & Bindings
             t_reg->info = *info_prog;
-            
-            // Check if it's an internal temporary that needs allocation
             bool is_external = false;
             if (prog->symbols) {
                 for (u32 s = 0; s < prog->meta.symbol_count; ++s) {
@@ -52,7 +47,6 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
                     }
                 }
             }
-
             if (!is_external) {
                 bool is_static = true;
                 for (int d = 0; d < t_reg->info.ndim; ++d) if (t_reg->info.shape[d] < 0) { is_static = false; break; }
@@ -62,11 +56,22 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena) {
             }
         }
     }
+
+    // --- BAKING PHASE ---
+    if (backend && backend->bake) {
+        state->baked_data = backend->bake(backend->state, prog);
+    }
 }
 
-static void mf_state_shutdown(mf_state* state) {
+static void mf_state_shutdown(mf_state* state, mf_backend* backend) {
     if (!state->registers || !state->allocator) return;
     
+    // --- FREE BAKED DATA ---
+    if (backend && backend->free_baked && state->baked_data) {
+        backend->free_baked(backend->state, state->baked_data);
+        state->baked_data = NULL;
+    }
+
     for (u32 i = 0; i < state->register_count; ++i) {
         if (state->ownership_flags && state->ownership_flags[i]) {
             mf_tensor* t = &state->registers[i];
@@ -142,7 +147,7 @@ void mf_engine_reset(mf_engine* engine) {
     if (!engine) return;
 
     for (u32 i = 0; i < engine->kernel_count; ++i) {
-        mf_state_shutdown(&engine->kernels[i].state);
+        mf_state_shutdown(&engine->kernels[i].state, &engine->backend);
     }
     for (u32 i = 0; i < engine->resource_count; ++i) {
         // Free resource buffers (from Heap)
