@@ -138,7 +138,10 @@ static bool parse_node_attributes(mf_ir_node* dst, const mf_json_value* data, co
 // --- Main Pass ---
 
 bool mf_pass_lower(mf_ast_graph* ast, mf_graph_ir* out_ir, mf_arena* arena, const char* base_path, mf_compiler_diag* diag) {
-    if (!ast) return false;
+    if (!ast) {
+        MF_REPORT(diag, NULL, "Lowering Pass: AST is NULL");
+        return false;
+    }
 
     out_ir->node_count = ast->node_count;
     out_ir->node_cap = ast->node_count;

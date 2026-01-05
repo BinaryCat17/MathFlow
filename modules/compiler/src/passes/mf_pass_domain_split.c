@@ -45,7 +45,10 @@ static void mark_domain(mf_graph_ir* ir, u32 node_idx, u32 domain_idx) {
 }
 
 bool mf_pass_domain_split(mf_graph_ir* ir, mf_compiler_diag* diag) {
-    if (!ir) return false;
+    if (!ir) {
+        MF_REPORT(diag, NULL, "Domain Split Pass: IR is NULL");
+        return false;
+    }
 
     // 1. Reset all domain indices
     for (size_t i = 0; i < ir->node_count; ++i) {

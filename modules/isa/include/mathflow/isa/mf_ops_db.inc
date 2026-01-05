@@ -57,6 +57,17 @@
  * Format:
  * MF_OP(node_suffix, json_name, opcode_suffix, category, in_mask, out_mask, type_rule, shape_rule, access_rule, p1, p2, p3, p4, ktype, kexpr, karity)
  */
+
+/* --- Semantic Wrappers --- */
+#define MF_MATH_BIN(node, json, opcode, expr) \
+    MF_OP(node, json, opcode, MF_OP_CAT_ATOMIC, MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST, MF_ACCESS_LINEAR, "a", "b", NULL, NULL, AUTO, expr, 2)
+
+#define MF_MATH_UNARY(node, json, opcode, expr) \
+    MF_OP(node, json, opcode, MF_OP_CAT_ATOMIC, MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR, "in", NULL, NULL, NULL, AUTO, expr, 1)
+
+#define MF_LOGIC_BIN(node, json, opcode, expr) \
+    MF_OP(node, json, opcode, MF_OP_CAT_ATOMIC, MF_TYPE_MASK_ALL, MF_TYPE_MASK_LOGIC, MF_OUT_FORCE_U8, MF_SHAPE_BROADCAST, MF_ACCESS_LINEAR, "a", "b", NULL, NULL, AUTO, expr, 2)
+
 #define MF_OP_LIST \
     /* --- Special Nodes (Compiler Intrinsics) --- */ \
     MF_OP(CONST,   "Const",   NOOP,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SPECIAL,    MF_ACCESS_SPECIAL, NULL,  NULL,  NULL,  NULL, MANUAL, NULL, 0) \
@@ -66,11 +77,11 @@
     MF_OP(COPY,    "Copy",    COPY,    MF_OP_CAT_SPECIAL, MF_TYPE_MASK_ALL,     MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, MANUAL, NULL, 1) \
     \
     /* --- Atomic Math (1:1 element mapping) --- */ \
-    MF_OP(ADD,     "Add",     ADD,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va + vb), 2) \
-    MF_OP(SUB,     "Sub",     SUB,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va - vb), 2) \
-    MF_OP(MUL,     "Mul",     MUL,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va * vb), 2) \
-    MF_OP(DIV,     "Div",     DIV,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va / vb), 2) \
-    MF_OP(ABS,     "Abs",     ABS,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, AUTO, fabsf(va), 1) \
+    MF_MATH_BIN(ADD,     "Add",     ADD,     (va + vb)) \
+    MF_MATH_BIN(SUB,     "Sub",     SUB,     (va - vb)) \
+    MF_MATH_BIN(MUL,     "Mul",     MUL,     (va * vb)) \
+    MF_MATH_BIN(DIV,     "Div",     DIV,     (va / vb)) \
+    MF_MATH_UNARY(ABS,     "Abs",     ABS,     fabsf(va)) \
     MF_OP(SIN,     "Sin",     SIN,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_F32,     MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, AUTO, sinf(va), 1) \
     MF_OP(COS,     "Cos",     COS,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_F32,     MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, AUTO, cosf(va), 1) \
     MF_OP(SQRT,    "Sqrt",    SQRT,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_F32,     MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, AUTO, sqrtf(va), 1) \
@@ -78,8 +89,8 @@
     MF_OP(CEIL,    "Ceil",    CEIL,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_F32,     MF_TYPE_MASK_F32,     MF_OUT_FORCE_F32,     MF_SHAPE_SAME_AS_S1, MF_ACCESS_LINEAR,  "in",  NULL,  NULL,  NULL, AUTO, ceilf(va), 1) \
     MF_OP(POW,     "Pow",     POW,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "base","exp", NULL,  NULL, AUTO, powf(va, vb), 2) \
     MF_OP(ATAN2,   "Atan2",   ATAN2,   MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "y",   "x",   NULL,  NULL, AUTO, atan2f(va, vb), 2) \
-    MF_OP(MIN,     "Min",     MIN,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va < vb ? va : vb), 2) \
-    MF_OP(MAX,     "Max",     MAX,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va > vb ? va : vb), 2) \
+    MF_MATH_BIN(MIN,     "Min",     MIN,     (va < vb ? va : vb)) \
+    MF_MATH_BIN(MAX,     "Max",     MAX,     (va > vb ? va : vb)) \
     MF_OP(FMA,     "Fma",     FMA,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   "c",   NULL, AUTO, fmaf(va, vb, vc), 3) \
     MF_OP(CLAMP,   "Clamp",   CLAMP,   MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "x",   "min", "max", NULL, AUTO, fminf(fmaxf(va, vb), vc), 3) \
     MF_OP(STEP,    "Step",    STEP,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_NUMERIC, MF_TYPE_MASK_NUMERIC, MF_OUT_SAME_AS_INPUT, MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "edge","x",   NULL,  NULL, AUTO, (vb < va ? 0.0f : 1.0f), 2) \
@@ -88,12 +99,12 @@
     MF_OP(SELECT,  "Select",  SELECT,  MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_ALL,     MF_OUT_SAME_AS_INPUT_2, MF_SHAPE_BROADCAST,MF_ACCESS_LINEAR,  "cond","true","false",NULL, AUTO, (va ? vb : vc), 3) \
     \
     /* --- Atomic Logic --- */ \
-    MF_OP(LESS,    "Less",    LESS,    MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va < vb), 2) \
-    MF_OP(GREATER, "Greater", GREATER, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va > vb), 2) \
-    MF_OP(EQUAL,   "Equal",   EQUAL,   MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va == vb), 2) \
-    MF_OP(NEQUAL,  "NotEqual",NEQUAL,  MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va != vb), 2) \
-    MF_OP(LEQUAL,  "LessEqual",LEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va <= vb), 2) \
-    MF_OP(GEQUAL,  "GreaterEqual",GEQUAL, MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_ALL,     MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va >= vb), 2) \
+    MF_LOGIC_BIN(LESS,    "Less",    LESS,    (va < vb)) \
+    MF_LOGIC_BIN(GREATER, "Greater", GREATER, (va > vb)) \
+    MF_LOGIC_BIN(EQUAL,   "Equal",   EQUAL,   (va == vb)) \
+    MF_LOGIC_BIN(NEQUAL,  "NotEqual",NEQUAL,  (va != vb)) \
+    MF_LOGIC_BIN(LEQUAL,  "LessEqual",LEQUAL, (va <= vb)) \
+    MF_LOGIC_BIN(GEQUAL,  "GreaterEqual",GEQUAL, (va >= vb)) \
     MF_OP(AND,     "And",     AND,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va && vb), 2) \
     MF_OP(OR,      "Or",      OR,      MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, (va || vb), 2) \
     MF_OP(XOR,     "Xor",     XOR,     MF_OP_CAT_ATOMIC,  MF_TYPE_MASK_LOGIC,   MF_TYPE_MASK_LOGIC,   MF_OUT_FORCE_U8,      MF_SHAPE_BROADCAST,  MF_ACCESS_LINEAR,  "a",   "b",   NULL,  NULL, AUTO, ((int)va != (int)vb), 2) \

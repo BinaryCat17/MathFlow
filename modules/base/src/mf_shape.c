@@ -16,6 +16,37 @@ size_t mf_shape_calc_bytes(mf_dtype dtype, const int32_t* shape, uint8_t ndim) {
     return mf_shape_calc_count(shape, ndim) * mf_dtype_size(dtype);
 }
 
+bool mf_shape_is_scalar(const mf_type_info* info) {
+    if (info->ndim == 0) return true;
+    for (int i = 0; i < info->ndim; ++i) {
+        if (info->shape[i] > 1) return false;
+    }
+    return true;
+}
+
+void mf_shape_normalize(mf_type_info* info) {
+    if (info->ndim == 0) return;
+    
+    int32_t new_shape[MF_MAX_DIMS];
+    uint8_t new_ndim = 0;
+    
+    for (int i = 0; i < info->ndim; ++i) {
+        if (info->shape[i] != 1) {
+            new_shape[new_ndim++] = info->shape[i];
+        }
+    }
+    
+    // If all dimensions were 1, it's a scalar []
+    // Special case: we might want to keep at least 1D if it's [1]
+    // But for pure normalization, [] is better.
+    
+    info->ndim = new_ndim;
+    if (new_ndim > 0) {
+        memcpy(info->shape, new_shape, sizeof(int32_t) * new_ndim);
+    }
+    mf_shape_calc_strides(info);
+}
+
 void mf_shape_calc_strides(mf_type_info* info) {
     int32_t stride = 1;
     for (int k = info->ndim - 1; k >= 0; --k) {
@@ -65,54 +96,42 @@ void mf_shape_format(const mf_type_info* info, char* buf, size_t size) {
 }
 
 bool mf_shape_broadcast(const mf_type_info* a, const mf_type_info* b, mf_type_info* out) {
-    size_t sz_a = 1;
-    for(int i=0; i<a->ndim; ++i) sz_a *= (a->shape[i] > 0 ? a->shape[i] : 1);
-    size_t sz_b = 1;
-    for(int i=0; i<b->ndim; ++i) sz_b *= (b->shape[i] > 0 ? b->shape[i] : 1);
+    // 1. Handle Scalars (any 1-element tensor)
+    if (mf_shape_is_scalar(a)) { *out = *b; return true; }
+    if (mf_shape_is_scalar(b)) { *out = *a; return true; }
     
-    // Any 1-element tensor can be broadcasted to any shape
-    if (sz_a == 1) { *out = *b; return true; }
-    if (sz_b == 1) { *out = *a; return true; }
+    // 2. NumPy-style Broadcasting (Align Right)
+    int ndim_a = a->ndim;
+    int ndim_b = b->ndim;
+    int max_ndim = (ndim_a > ndim_b) ? ndim_a : ndim_b;
     
-    // Strict Match
-    bool same = (a->ndim == b->ndim);
-    if (same) {
-        for(int i=0; i<a->ndim; ++i) if(a->shape[i] != b->shape[i]) same = false;
-    }
-    if (same) { *out = *a; return true; }
+    out->ndim = (uint8_t)max_ndim;
+    out->dtype = a->dtype; // Assume compatible dtypes for now (checked elsewhere)
     
-    // Simple Suffix Broadcasting: [Batch, N] vs [N]
-    if (a->ndim == b->ndim + 1) {
-        bool match = true;
-        for (int i=0; i<b->ndim; ++i) if (a->shape[i+1] != b->shape[i]) match = false;
-        if (match) { *out = *a; return true; }
-    }
-    if (b->ndim == a->ndim + 1) {
-        bool match = true;
-        for (int i=0; i<a->ndim; ++i) if (b->shape[i+1] != a->shape[i]) match = false;
-        if (match) { *out = *b; return true; }
-    }
-
-    // Dynamic Wildcard Match (Treat 0 or -1 as 'Any')
-    if (a->ndim == b->ndim) {
-        bool match = true;
-        out->ndim = a->ndim;
-        out->dtype = a->dtype;
-        for (int i=0; i<a->ndim; ++i) {
-             if (a->shape[i] != b->shape[i]) {
-                 if (a->shape[i] > 0 && b->shape[i] > 0) match = false;
-                 else out->shape[i] = (a->shape[i] > 0) ? a->shape[i] : b->shape[i];
-             } else {
-                 out->shape[i] = a->shape[i];
-             }
-        }
-        if (match) {
-            mf_shape_calc_strides(out);
-            return true;
+    for (int i = 0; i < max_ndim; ++i) {
+        int idx_a = ndim_a - 1 - i;
+        int idx_b = ndim_b - 1 - i;
+        int idx_out = max_ndim - 1 - i;
+        
+        int32_t dim_a = (idx_a >= 0) ? a->shape[idx_a] : 1;
+        int32_t dim_b = (idx_b >= 0) ? b->shape[idx_b] : 1;
+        
+        if (dim_a == dim_b) {
+            out->shape[idx_out] = dim_a;
+        } else if (dim_a == 1) {
+            out->shape[idx_out] = dim_b;
+        } else if (dim_b == 1) {
+            out->shape[idx_out] = dim_a;
+        } else if (dim_a < 0 || dim_b < 0) {
+            // Wildcards: take the specific dimension if available
+            out->shape[idx_out] = (dim_a > 0) ? dim_a : dim_b;
+        } else {
+            return false; // Incompatible
         }
     }
-
-    return false;
+    
+    mf_shape_calc_strides(out);
+    return true;
 }
 
 i32 mf_shape_calc_linear_stride(size_t op_count, size_t dom_count) {

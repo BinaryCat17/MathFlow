@@ -5,6 +5,16 @@
 #include <mathflow/compiler/mf_compiler.h>
 #include <mathflow/base/mf_memory.h>
 
+#define MF_REPORT(diag, loc_ptr, msg, ...) \
+    do { \
+        mf_source_loc _loc = {0}; \
+        if (loc_ptr) _loc = *((const mf_source_loc*)(loc_ptr)); \
+        mf_compiler_diag_report(diag, _loc, msg, ##__VA_ARGS__); \
+    } while(0)
+
+#define MF_REPORT_NODE(diag, node, msg, ...) \
+    mf_compiler_diag_report(diag, (node)->loc, msg, ##__VA_ARGS__)
+
 // --- Pass: AST -> IR (Lowering & Validation) ---
 // Converts the AST into the Semantic Graph IR.
 // - Resolves Node Types and Enums

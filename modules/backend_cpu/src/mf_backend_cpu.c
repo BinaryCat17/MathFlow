@@ -58,6 +58,13 @@ typedef struct {
     mf_cpu_segment* segments;
     u32 segment_count;
     bool has_reductions;
+
+    // Pre-allocated scratchpads
+    f32* reduction_scratch;
+    u32 reduction_scratch_size;
+
+    f32* sync_scratch;
+    u32 sync_scratch_size; // Max elements supported for sync ops
 } mf_cpu_baked_kernel;
 
 typedef struct {
@@ -452,11 +459,12 @@ static void mf_backend_cpu_dispatch_batch(
 }
 
 static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* program) {
-    (void)backend_state;
+    mf_backend_cpu_state* state = (mf_backend_cpu_state*)backend_state;
     mf_cpu_baked_kernel* baked = calloc(1, sizeof(mf_cpu_baked_kernel));
     baked->program = program;
     
     // 1. Pre-calculate static plans for all registers
+    // ... (rest of the logic remains same until reductions check)
     for (u32 i = 0; i < program->meta.tensor_count; ++i) {
         mf_cpu_reg_static_plan* sp = &baked->static_plans[i];
         sp->info = program->tensor_infos[i];
@@ -465,7 +473,7 @@ static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* p
             sp->builtin_id = (mf_builtin_id)program->builtin_ids[i];
             sp->builtin_axis = program->builtin_axes[i];
         } else if (program->tensor_data[i]) {
-            sp->type = MF_SRC_BUFFER; // Constants are also buffers
+            sp->type = MF_SRC_BUFFER;
         } else {
             sp->type = MF_SRC_SCRATCH;
         }
@@ -473,8 +481,9 @@ static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* p
 
     // 2. Discover segments and active registers
     u32 seg_count = 1;
+    bool has_sync = false;
     for (u32 i = 0; i < program->meta.instruction_count; ++i) {
-        if (is_sync_op(program->code[i].opcode)) seg_count += 2; // Split
+        if (is_sync_op(program->code[i].opcode)) { seg_count += 2; has_sync = true; }
     }
 
     baked->segments = calloc(seg_count, sizeof(mf_cpu_segment));
@@ -484,11 +493,7 @@ static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* p
     for (u32 i = 0; i < program->meta.instruction_count; ++i) {
         bool is_sync = is_sync_op(program->code[i].opcode);
         if (is_sync) {
-            // Flush preceding segment
-            if (i > cur_start) {
-                baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = cur_start, .inst_count = i - cur_start };
-            }
-            // Add sync segment
+            if (i > cur_start) baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = cur_start, .inst_count = i - cur_start };
             baked->segments[cur_seg++] = (mf_cpu_segment){ .start_inst = i, .inst_count = 1, .is_sync = true };
             cur_start = i + 1;
         }
@@ -498,28 +503,33 @@ static void* mf_backend_cpu_bake(void* backend_state, const struct mf_program* p
     }
     baked->segment_count = cur_seg;
 
-    // 3. Analyze active registers and strides for each segment
     for (u32 s = 0; s < baked->segment_count; ++s) {
         mf_cpu_segment* seg = &baked->segments[s];
         bool reg_used[MF_MAX_REGISTERS] = {0};
-        
         for (u32 i = seg->start_inst; i < seg->start_inst + seg->inst_count; ++i) {
             const mf_instruction* inst = &program->code[i];
             for (int r = 0; r < 5; ++r) {
                 u16 reg_idx = (r == 0) ? inst->dest_idx : ((r == 1) ? inst->src1_idx : ((r == 2) ? inst->src2_idx : ((r == 3) ? inst->src3_idx : inst->src4_idx)));
                 if (reg_idx >= program->meta.tensor_count) continue;
-                
-                if (!reg_used[reg_idx]) {
-                    seg->active_regs[seg->active_reg_count++] = reg_idx;
-                    reg_used[reg_idx] = true;
-                }
-                
-                // Set stride in static plan (takes max stride if used in multiple instructions)
+                if (!reg_used[reg_idx]) { seg->active_regs[seg->active_reg_count++] = reg_idx; reg_used[reg_idx] = true; }
                 i32 stride = inst->strides[r];
                 if (stride == -1) { baked->static_plans[reg_idx].stride_elements = -1; baked->has_reductions = true; }
                 else if (stride != 0) baked->static_plans[reg_idx].stride_elements = stride;
             }
         }
+    }
+
+    // 3. Pre-allocate scratchpads
+    int num_threads = state->pool ? mf_thread_pool_get_thread_count(state->pool) : 1;
+    if (baked->has_reductions && num_threads > 1) {
+        baked->reduction_scratch_size = num_threads * MF_MAX_REGISTERS;
+        baked->reduction_scratch = calloc(baked->reduction_scratch_size, sizeof(f32));
+    }
+
+    if (has_sync) {
+        // Default max jobs: 1024 (covers ~4M elements)
+        baked->sync_scratch_size = 1024; 
+        baked->sync_scratch = calloc(baked->sync_scratch_size, sizeof(f32));
     }
 
     return baked;
@@ -529,6 +539,8 @@ static void mf_backend_cpu_free_baked(void* backend_state, void* baked_data) {
     (void)backend_state;
     mf_cpu_baked_kernel* baked = (mf_cpu_baked_kernel*)baked_data;
     if (baked) {
+        if (baked->reduction_scratch) free(baked->reduction_scratch);
+        if (baked->sync_scratch) free(baked->sync_scratch);
         free(baked->segments);
         free(baked);
     }
@@ -586,7 +598,8 @@ static void mf_backend_cpu_dispatch(
     }
 
     if (baked->has_reductions && num_threads > 1) {
-        batch.reduction_scratch = calloc(num_threads * MF_MAX_REGISTERS, sizeof(f32));
+        batch.reduction_scratch = baked->reduction_scratch;
+        memset(batch.reduction_scratch, 0, baked->reduction_scratch_size * sizeof(f32));
     }
 
     // 2. Linear execution of baked segments
@@ -599,18 +612,25 @@ static void mf_backend_cpu_dispatch(
             u16 opcode = program->code[seg->start_inst].opcode;
             if (opcode == MF_OP_CUMSUM) {
                 u32 total_jobs = (u32)((batch.total_elements + MF_CPU_JOB_SIZE - 1) / MF_CPU_JOB_SIZE);
-                f32* sync_scratch = calloc(total_jobs, sizeof(f32));
-                batch.sync_pass = 0; batch.sync_data = sync_scratch;
+                
+                f32* sync_ptr = baked->sync_scratch;
+                if (total_jobs > baked->sync_scratch_size) {
+                    MF_LOG_ERROR("CPU Backend: Sync scratchpad too small (%u jobs vs %u capacity). Fallback to slow alloc.", total_jobs, baked->sync_scratch_size);
+                    sync_ptr = calloc(total_jobs, sizeof(f32));
+                }
+
+                batch.sync_pass = 0; batch.sync_data = sync_ptr;
                 mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
                 f32 global_acc = 0;
                 for (u32 j = 0; j < total_jobs; ++j) {
-                    f32 chunk_total = sync_scratch[j];
-                    sync_scratch[j] = global_acc;
+                    f32 chunk_total = sync_ptr[j];
+                    sync_ptr[j] = global_acc;
                     global_acc += chunk_total;
                 }
                 batch.sync_pass = 1;
                 mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
-                free(sync_scratch);
+                
+                if (sync_ptr != baked->sync_scratch) free(sync_ptr);
                 batch.sync_pass = 0; batch.sync_data = NULL;
             } else {
                 mf_backend_cpu_dispatch_batch(state, &batch, seg->start_inst, 1);
@@ -630,7 +650,6 @@ static void mf_backend_cpu_dispatch(
                 *((f32*)main_t->buffer->data + main_t->byte_offset / sizeof(f32)) = final_val;
             }
         }
-        free(batch.reduction_scratch);
     }
 }
 

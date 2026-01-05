@@ -263,6 +263,11 @@ static bool expand_graph_step(mf_graph_ir* src, mf_graph_ir* dst, mf_arena* aren
 }
 
 bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag) {
+    if (!ir) {
+        MF_REPORT(diag, NULL, "Inline Pass: IR is NULL");
+        return false;
+    }
+
     mf_graph_ir current_ir = *ir;
     
     // Iteratively expand until no Calls remain
@@ -274,6 +279,7 @@ bool mf_pass_inline(mf_graph_ir* ir, mf_arena* arena, mf_compiler_diag* diag) {
         
         mf_graph_ir next_ir;
         if (!expand_graph_step(&current_ir, &next_ir, arena, diag)) {
+            MF_REPORT(diag, NULL, "Inline Pass: Expansion step failed");
             return false;
         }
         current_ir = next_ir;

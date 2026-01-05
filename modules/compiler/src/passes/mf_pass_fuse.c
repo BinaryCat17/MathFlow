@@ -5,11 +5,17 @@
 #include <stdlib.h>
 
 bool mf_pass_fuse(mf_graph_ir* ir, mf_compiler_diag* diag) {
-    if (!ir) return false;
+    if (!ir) {
+        MF_REPORT(diag, NULL, "Fuse Pass: Internal Error - IR is NULL");
+        return false;
+    }
 
     // 1. Calculate use counts
     u32* use_count = calloc(ir->node_count, sizeof(u32));
-    if (!use_count) return false;
+    if (!use_count) {
+        MF_REPORT(diag, NULL, "Fuse Pass: Out of memory for use_count");
+        return false;
+    }
 
     for (size_t i = 0; i < ir->link_count; ++i) {
         if (ir->links[i].src_node_idx < ir->node_count) {

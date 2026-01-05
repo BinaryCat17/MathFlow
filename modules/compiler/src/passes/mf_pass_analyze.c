@@ -7,9 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-#define MF_REPORT(node, msg, ...) \
-    mf_compiler_diag_report(diag, (node)->loc, msg, ##__VA_ARGS__)
-
 static const char* _dtype_name(mf_dtype type) {
     switch(type) {
         case MF_DTYPE_F32: return "F32";
@@ -25,7 +22,7 @@ static bool check_broadcast(mf_ir_node* node, const mf_type_info* a, const mf_ty
     char s_a[64], s_b[64];
     mf_shape_format(a, s_a, sizeof(s_a));
     mf_shape_format(b, s_b, sizeof(s_b));
-    MF_REPORT(node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
+    MF_REPORT_NODE(diag, node, "Incompatible shapes for broadcast: %s vs %s", s_a, s_b);
     return false;
 }
 
@@ -49,10 +46,14 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
                 node->out_info.dtype = cp->dtype;
                 node->out_info.ndim = cp->ndim;
                 memcpy(node->out_info.shape, cp->shape, sizeof(int32_t) * MF_MAX_DIMS);
-                mf_shape_calc_strides(&node->out_info);
+                mf_shape_normalize(&node->out_info); // Normalize contract shapes
                 node->builtin_id = cp->builtin_id;
                 node->builtin_axis = cp->builtin_axis;
             }
+        }
+        if (node->type == MF_NODE_CONST) {
+            mf_shape_normalize(&node->const_info);
+            node->out_info = node->const_info;
         }
     }
 
@@ -73,7 +74,7 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
         // 1. Resolve Output Shape
         switch (meta->shape_rule) {
             case MF_SHAPE_SPECIAL:
-                if (node->type == MF_NODE_CONST) node->out_info = node->const_info;
+                if (node->type == MF_NODE_CONST) { /* Handled in pre-pass */ }
                 else if (node->type == MF_NODE_INPUT) {
                     if (node->builtin_id == MF_BUILTIN_INDEX) {
                         u32 dom_idx = node->domain_node_idx;
@@ -91,27 +92,27 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, c
                 }
                 break;
 
-            case MF_SHAPE_SAME_AS_S1: if (inputs[0]) { out->ndim = inputs[0]->out_info.ndim; memcpy(out->shape, inputs[0]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); } else { MF_REPORT(node, "Missing S1 input for %s", meta->name); return false; } break;
-            case MF_SHAPE_SAME_AS_S2: if (inputs[1]) { out->ndim = inputs[1]->out_info.ndim; memcpy(out->shape, inputs[1]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); } else { MF_REPORT(node, "Missing S2 input for %s", meta->name); return false; } break;
+            case MF_SHAPE_SAME_AS_S1: if (inputs[0]) { out->ndim = inputs[0]->out_info.ndim; memcpy(out->shape, inputs[0]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); } else { MF_REPORT_NODE(diag, node, "Missing S1 input for %s", meta->name); return false; } break;
+            case MF_SHAPE_SAME_AS_S2: if (inputs[1]) { out->ndim = inputs[1]->out_info.ndim; memcpy(out->shape, inputs[1]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); } else { MF_REPORT_NODE(diag, node, "Missing S2 input for %s", meta->name); return false; } break;
             case MF_SHAPE_BROADCAST:
-                if (!inputs[0] || !inputs[1]) { MF_REPORT(node, "Missing inputs for broadcast in %s", meta->name); return false; }
+                if (!inputs[0] || !inputs[1]) { MF_REPORT_NODE(diag, node, "Missing inputs for broadcast in %s", meta->name); return false; }
                 if (inputs[2]) { mf_type_info tmp; if (!check_broadcast(node, &inputs[0]->out_info, &inputs[1]->out_info, &tmp, diag)) return false; if (!check_broadcast(node, &tmp, &inputs[2]->out_info, out, diag)) return false; }
                 else if (!check_broadcast(node, &inputs[0]->out_info, &inputs[1]->out_info, out, diag)) return false;
                 break;
 
             case MF_SHAPE_MATMUL:
-                if (!inputs[0] || !inputs[1]) { MF_REPORT(node, "Missing inputs for matmul"); return false; }
+                if (!inputs[0] || !inputs[1]) { MF_REPORT_NODE(diag, node, "Missing inputs for matmul"); return false; }
                 out->ndim = 2;
                 out->shape[0] = inputs[0]->out_info.shape[inputs[0]->out_info.ndim - 2];
                 out->shape[1] = inputs[1]->out_info.shape[inputs[1]->out_info.ndim - 1];
                 break;
 
-            case MF_SHAPE_TRANSPOSE: if (!inputs[0]) { MF_REPORT(node, "Missing input for transpose"); return false; } *out = inputs[0]->out_info; if (out->ndim >= 2) { int32_t t = out->shape[out->ndim-2]; out->shape[out->ndim-2] = out->shape[out->ndim-1]; out->shape[out->ndim-1] = t; } break;
-            case MF_SHAPE_DOT: if (!inputs[0]) { MF_REPORT(node, "Missing input for dot"); return false; } out->ndim = inputs[0]->out_info.ndim > 0 ? inputs[0]->out_info.ndim - 1 : 0; for(int k=0; k<out->ndim; ++k) out->shape[k] = inputs[0]->out_info.shape[k]; break;
-            case MF_SHAPE_JOIN: if (!inputs[0] || !inputs[1]) { MF_REPORT(node, "Missing inputs for join"); return false; } *out = inputs[0]->out_info; { int comps = 2; if (inputs[2]) comps++; if (inputs[3]) comps++; out->shape[out->ndim++] = comps; } break;
-            case MF_SHAPE_GATHER: if (!inputs[1]) { MF_REPORT(node, "Missing indices for gather"); return false; } out->ndim = inputs[1]->out_info.ndim; memcpy(out->shape, inputs[1]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); break;
-            case MF_SHAPE_RESHAPE: if (!inputs[1] || !inputs[1]->const_data) { MF_REPORT(node, "Reshape needs constant shape input"); return false; } { int cnt = (int)mf_shape_calc_count(inputs[1]->const_info.shape, inputs[1]->const_info.ndim); out->ndim = (uint8_t)cnt; for(int k=0; k<cnt && k<MF_MAX_DIMS; ++k) out->shape[k] = (inputs[1]->const_info.dtype == MF_DTYPE_F32) ? (int)((f32*)inputs[1]->const_data)[k] : ((int*)inputs[1]->const_data)[k]; } break;
-            case MF_SHAPE_SLICE: if (!inputs[1] || !inputs[1]->const_data) { MF_REPORT(node, "Slice needs constant range input"); return false; } out->ndim = 1; out->shape[0] = (inputs[1]->const_info.dtype == MF_DTYPE_F32) ? (int)((f32*)inputs[1]->const_data)[1] : ((int*)inputs[1]->const_data)[1]; break;
+            case MF_SHAPE_TRANSPOSE: if (!inputs[0]) { MF_REPORT_NODE(diag, node, "Missing input for transpose"); return false; } *out = inputs[0]->out_info; if (out->ndim >= 2) { int32_t t = out->shape[out->ndim-2]; out->shape[out->ndim-2] = out->shape[out->ndim-1]; out->shape[out->ndim-1] = t; } break;
+            case MF_SHAPE_DOT: if (!inputs[0]) { MF_REPORT_NODE(diag, node, "Missing input for dot"); return false; } out->ndim = inputs[0]->out_info.ndim > 0 ? inputs[0]->out_info.ndim - 1 : 0; for(int k=0; k<out->ndim; ++k) out->shape[k] = inputs[0]->out_info.shape[k]; break;
+            case MF_SHAPE_JOIN: if (!inputs[0] || !inputs[1]) { MF_REPORT_NODE(diag, node, "Missing inputs for join"); return false; } *out = inputs[0]->out_info; { int comps = 2; if (inputs[2]) comps++; if (inputs[3]) comps++; out->shape[out->ndim++] = comps; } break;
+            case MF_SHAPE_GATHER: if (!inputs[1]) { MF_REPORT_NODE(diag, node, "Missing indices for gather"); return false; } out->ndim = inputs[1]->out_info.ndim; memcpy(out->shape, inputs[1]->out_info.shape, sizeof(int32_t)*MF_MAX_DIMS); break;
+            case MF_SHAPE_RESHAPE: if (!inputs[1] || !inputs[1]->const_data) { MF_REPORT_NODE(diag, node, "Reshape needs constant shape input"); return false; } { int cnt = (int)mf_shape_calc_count(inputs[1]->const_info.shape, inputs[1]->const_info.ndim); out->ndim = (uint8_t)cnt; for(int k=0; k<cnt && k<MF_MAX_DIMS; ++k) out->shape[k] = (inputs[1]->const_info.dtype == MF_DTYPE_F32) ? (int)((f32*)inputs[1]->const_data)[k] : ((int*)inputs[1]->const_data)[k]; } break;
+            case MF_SHAPE_SLICE: if (!inputs[1] || !inputs[1]->const_data) { MF_REPORT_NODE(diag, node, "Slice needs constant range input"); return false; } out->ndim = 1; out->shape[0] = (inputs[1]->const_info.dtype == MF_DTYPE_F32) ? (int)((f32*)inputs[1]->const_data)[1] : ((int*)inputs[1]->const_data)[1]; break;
             case MF_SHAPE_SCALAR: out->ndim = 0; out->shape[0] = 1; break;
         }
 

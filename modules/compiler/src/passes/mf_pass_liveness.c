@@ -5,11 +5,17 @@
 #include <string.h>
 
 bool mf_pass_liveness(mf_graph_ir* ir, mf_ir_node** sorted, size_t count, mf_compiler_diag* diag) {
-    if (!ir || !sorted) return false;
+    if (!ir || !sorted) {
+        MF_REPORT(diag, NULL, "Liveness Pass: Internal Error - IR or sorted nodes is NULL");
+        return false;
+    }
 
-    // 1. Pre-calculate sorted positions
-    u32* sorted_pos = malloc(ir->node_count * sizeof(u32));
-    if (!sorted_pos) return false;
+    // 1. Map node pointers to their sorted position
+    u32* sorted_pos = calloc(ir->node_count, sizeof(u32));
+    if (!sorted_pos) {
+        MF_REPORT(diag, NULL, "Liveness Pass: Out of memory for sorted_pos");
+        return false;
+    }
     for(u32 i=0; i<ir->node_count; ++i) sorted_pos[i] = UINT32_MAX;
     for(u32 i=0; i<count; ++i) sorted_pos[sorted[i] - ir->nodes] = (u32)i;
 
