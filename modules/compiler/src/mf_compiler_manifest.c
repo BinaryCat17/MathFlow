@@ -1,4 +1,5 @@
 #include <mathflow/compiler/mf_compiler.h>
+#include "mf_compiler_internal.h"
 #include <mathflow/base/mf_json.h>
 #include <mathflow/base/mf_utils.h>
 #include <mathflow/base/mf_log.h>

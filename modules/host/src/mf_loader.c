@@ -57,17 +57,26 @@ static mf_program* _load_program_from_mem(const u8* data, size_t len, mf_arena* 
         offset += sizeof(mf_bin_task_binding) * head->binding_count;
     } else prog->bindings = NULL;
 
-    // 5. Tensor Descriptors
+    // 5. Tensor Descriptors (Metadata block)
     mf_bin_tensor_desc* descs = (mf_bin_tensor_desc*)(data + offset);
     offset += sizeof(mf_bin_tensor_desc) * head->tensor_count;
 
-    prog->tensor_infos = MF_ARENA_PUSH(arena, mf_type_info, head->tensor_count);
-    prog->tensor_data = MF_ARENA_PUSH(arena, void*, head->tensor_count);
-    prog->builtin_ids = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
-    prog->builtin_axes = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
-    prog->tensor_flags = MF_ARENA_PUSH(arena, uint8_t, head->tensor_count);
+    size_t n = head->tensor_count;
+    size_t sz_info  = sizeof(mf_type_info) * n;
+    size_t sz_data  = sizeof(void*) * n;
+    size_t sz_bid   = sizeof(uint8_t) * n;
+    size_t sz_axis  = sizeof(uint8_t) * n;
+    size_t sz_flags = sizeof(uint8_t) * n;
     
-    for (u32 i = 0; i < head->tensor_count; ++i) {
+    u8* block = MF_ARENA_PUSH(arena, u8, sz_info + sz_data + sz_bid + sz_axis + sz_flags);
+    
+    prog->tensor_infos = (mf_type_info*)block;
+    prog->tensor_data  = (void**)(block + sz_info);
+    prog->builtin_ids  = (uint8_t*)(block + sz_info + sz_data);
+    prog->builtin_axes = (uint8_t*)(block + sz_info + sz_data + sz_bid);
+    prog->tensor_flags = (uint8_t*)(block + sz_info + sz_data + sz_bid + sz_axis);
+    
+    for (u32 i = 0; i < n; ++i) {
         mf_bin_tensor_desc* d = &descs[i];
         mf_type_info_init_contiguous(&prog->tensor_infos[i], (mf_dtype)d->dtype, d->shape, d->ndim);
         prog->builtin_ids[i] = d->builtin_id;

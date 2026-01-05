@@ -74,7 +74,6 @@ typedef struct {
     u16 out_reg_idx;    // Index in the global Tensor Pool
     u32 domain_node_idx; // Index of the node that defines the domain for this node
     mf_type_info out_info; // Predicted output shape and dtype
-    i32 strides[5];       // Inferred linear strides [Dest, S1, S2, S3, S4]
     bool is_spatial;     // Explicitly tracked spatial status
     uint8_t resource_flags; // MF_RESOURCE_FLAG_*
 } mf_ir_node;

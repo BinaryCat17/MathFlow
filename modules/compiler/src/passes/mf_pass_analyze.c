@@ -94,13 +94,17 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
 
         // 2. Resolve DType
         mf_dtype dtype = MF_DTYPE_UNKNOWN;
-        if (meta->out_rule == MF_OUT_FORCE_F32) dtype = MF_DTYPE_F32;
-        else if (meta->out_rule == MF_OUT_FORCE_U8) dtype = MF_DTYPE_U8;
-        else if (meta->out_rule == MF_OUT_FORCE_I32) dtype = MF_DTYPE_I32;
-        else if (meta->out_rule == MF_OUT_SAME_AS_INPUT && inputs[0]) dtype = inputs[0]->out_info.dtype;
-        else if (meta->out_rule == MF_OUT_SAME_AS_INPUT_2 && inputs[1]) dtype = inputs[1]->out_info.dtype;
+        switch (meta->out_rule) {
+            case MF_OUT_FORCE_F32:       dtype = MF_DTYPE_F32; break;
+            case MF_OUT_FORCE_U8:        dtype = MF_DTYPE_U8;  break;
+            case MF_OUT_FORCE_I32:       dtype = MF_DTYPE_I32; break;
+            case MF_OUT_SAME_AS_INPUT:   if (inputs[0]) dtype = inputs[0]->out_info.dtype; break;
+            case MF_OUT_SAME_AS_INPUT_2: if (inputs[1]) dtype = inputs[1]->out_info.dtype; break;
+        }
         
-        if (dtype == MF_DTYPE_UNKNOWN) dtype = (out->dtype != MF_DTYPE_UNKNOWN) ? out->dtype : MF_DTYPE_F32;
+        if (dtype == MF_DTYPE_UNKNOWN) {
+            dtype = (out->dtype != MF_DTYPE_UNKNOWN) ? out->dtype : MF_DTYPE_F32;
+        }
         out->dtype = dtype;
 
         // 3. Strides & Spatial Analysis
@@ -120,15 +124,6 @@ bool mf_pass_analyze(mf_graph_ir* ir, mf_ir_node** sorted_nodes, size_t count, m
             out->ndim = dom_info->ndim;
             memcpy(out->shape, dom_info->shape, sizeof(int32_t) * dom_info->ndim);
             mf_shape_calc_strides(out);
-        }
-
-        node->strides[0] = (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(out->shape, out->ndim), task_cnt);
-        for (int k = 0; k < 4; ++k) {
-            if (inputs[k]) {
-                node->strides[k+1] = (i32)mf_shape_calc_linear_stride(mf_shape_calc_count(inputs[k]->out_info.shape, inputs[k]->out_info.ndim), task_cnt);
-            } else {
-                node->strides[k+1] = 0;
-            }
         }
     }
     return true;

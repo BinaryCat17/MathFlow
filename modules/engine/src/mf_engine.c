@@ -13,13 +13,14 @@ void mf_state_reset(mf_state* state, const mf_program* prog, mf_arena* arena, mf
     if (!prog) return;
     
     state->register_count = prog->meta.tensor_count;
-    state->registers = MF_ARENA_PUSH(arena, mf_tensor, state->register_count);
-    state->ownership_flags = MF_ARENA_PUSH(arena, uint8_t, state->register_count);
     
-    if (!state->registers || !state->ownership_flags) {
-        MF_LOG_ERROR("Engine: Failed to allocate state registers for program.");
-        return;
-    }
+    // Consolidate allocations: registers + ownership flags
+    size_t regs_sz = sizeof(mf_tensor) * state->register_count;
+    size_t flags_sz = sizeof(uint8_t) * state->register_count;
+    u8* block = MF_ARENA_PUSH(arena, u8, regs_sz + flags_sz);
+    
+    state->registers = (mf_tensor*)block;
+    state->ownership_flags = block + regs_sz;
     
     memset(state->ownership_flags, 0, state->register_count);
 
